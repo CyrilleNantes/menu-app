@@ -1,6 +1,8 @@
 from django import forms
 from django.contrib.auth.models import User
 
+from .models import Recipe
+
 
 class InscriptionForm(forms.Form):
     prenom = forms.CharField(max_length=50, label="Prénom")
@@ -25,3 +27,34 @@ class InscriptionForm(forms.Form):
         if User.objects.filter(email=cleaned.get("email", "")).exists():
             raise forms.ValidationError("Cet email est déjà utilisé.")
         return cleaned
+
+
+SAISON_CHOICES = [
+    ("printemps", "Printemps"), ("ete", "Été"), ("automne", "Automne"), ("hiver", "Hiver"),
+]
+HEALTH_CHOICES = [
+    ("leger", "Léger"), ("equilibre", "Équilibré"), ("plaisir", "Plaisir raisonné"),
+    ("proteine", "Protéiné"), ("vegetarien", "Végétarien"), ("vegan", "Végétalien"),
+]
+
+
+class RecipeForm(forms.Form):
+    title = forms.CharField(max_length=200, label="Titre")
+    description = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Description courte"
+    )
+    photo = forms.ImageField(required=False, label="Photo du plat")
+    base_servings = forms.IntegerField(min_value=1, label="Nombre de parts")
+    prep_time = forms.IntegerField(required=False, min_value=0, label="Préparation (min)")
+    cook_time = forms.IntegerField(required=False, min_value=0, label="Cuisson (min)")
+    category = forms.ChoiceField(choices=Recipe.CATEGORY_CHOICES, label="Catégorie")
+    cuisine_type = forms.CharField(required=False, max_length=50, label="Type de cuisine")
+    complexity = forms.ChoiceField(choices=Recipe.COMPLEXITY_CHOICES, label="Complexité")
+    seasons = forms.MultipleChoiceField(
+        required=False, choices=SAISON_CHOICES,
+        widget=forms.CheckboxSelectMultiple, label="Saisons",
+    )
+    health_tags = forms.MultipleChoiceField(
+        required=False, choices=HEALTH_CHOICES,
+        widget=forms.CheckboxSelectMultiple, label="Tags santé",
+    )

@@ -764,6 +764,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 
 ---
 
+> [LOG 2026-04-25] Étape 5 complétée — Création/édition/suppression recettes. integrations/cloudinary.py (upload avec fallback si CLOUDINARY_URL absent). services.py : sauvegarder_recette_depuis_post (parse POST groups/ings/steps/sections + re-création atomique) + calculer_macros_recette. RecipeForm ajouté à forms.py. Vues creer_recette, modifier_recette, supprimer_recette (soft delete + dialog <dialog>). recette_form.js : ajout/suppression dynamique groupes+ingrédients+étapes+sections avec re-indexation complète. allauth + django.contrib.sites ajoutés à INSTALLED_APPS, migrations appliquées.
+
 > [LOG 2026-04-25] Étape 4 complétée — Catalogue recettes (lecture) : vues liste_recettes (filtres catégorie/saison/complexité/recherche, tri) et detail_recette (prefetch groupes+ingrédients+étapes+sections+avis, note moyenne, alertes allergies par keywords). Templatetag format_timer. Stub mode_cuisine (étape 10). Templates liste.html (grid cards) + detail.html (ingrédients groupés, étapes numérotées avec timer, sections libres, avis). CSS catalogue complet. Nav mise à jour avec lien Recettes.
 
 > [LOG 2026-04-25] Étape 3 complétée — Authentification custom (sans allauth) : InscriptionForm (rôle Cuisinier/Convive, création famille automatique), vues inscription/connexion/déconnexion/rejoindre_famille. LOGIN_URL, AUTHENTICATION_BACKENDS configurés. Templates mobile-first : inscription.html (JS toggle champ famille), connexion.html, rejoindre.html, planning/index.html (placeholder). Nav mise à jour avec liens auth contextuels. CSS formulaires ajouté. Allauth configuré en amont (ACCOUNT_SIGNUP_FIELDS) pour étape 14.

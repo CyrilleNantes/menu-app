@@ -9,8 +9,10 @@ from django.db.models import Avg, Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .forms import InscriptionForm
+from .forms import InscriptionForm, RecipeForm
+from .integrations.cloudinary import upload_photo
 from .models import Family, Ingredient, Recipe, UserProfile
+from .services import sauvegarder_recette_depuis_post
 
 logger = logging.getLogger("menu")
 
@@ -239,3 +241,118 @@ def detail_recette(request, id):
         "alertes": alertes,
     }
     return render(request, "menu/recettes/detail.html", ctx)
+
+
+# ─── Création / édition / suppression ────────────────────────────────────────
+
+def _verifier_cuisinier(request):
+    """Retourne le profil si Cuisinier, sinon None."""
+    try:
+        profile = request.user.profile
+        return profile if profile.role in ("cuisinier", "chef_etoile") else None
+    except UserProfile.DoesNotExist:
+        return None
+
+
+@login_required
+def creer_recette(request):
+    if not _verifier_cuisinier(request):
+        messages.error(request, "Seuls les Cuisiniers peuvent créer des recettes.")
+        return redirect("menu:liste_recettes")
+
+    form = RecipeForm(request.POST or None, request.FILES or None)
+    if request.method == "POST" and form.is_valid():
+        cd = form.cleaned_data
+        photo_url = None
+        if cd.get("photo"):
+            photo_url = upload_photo(cd["photo"])
+            if cd["photo"] and photo_url is None:
+                messages.warning(request, "L'upload de la photo a échoué — recette sauvegardée sans photo.")
+
+        recipe = Recipe.objects.create(
+            title=cd["title"],
+            description=cd.get("description") or None,
+            photo_url=photo_url,
+            base_servings=cd["base_servings"],
+            prep_time=cd.get("prep_time"),
+            cook_time=cd.get("cook_time"),
+            category=cd["category"],
+            cuisine_type=cd.get("cuisine_type") or None,
+            seasons=cd.get("seasons") or [],
+            health_tags=cd.get("health_tags") or [],
+            complexity=cd["complexity"],
+            created_by=request.user,
+        )
+        sauvegarder_recette_depuis_post(recipe, request.POST)
+        messages.success(request, "Recette enregistrée !")
+        return redirect("menu:detail_recette", id=recipe.id)
+
+    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": None})
+
+
+@login_required
+def modifier_recette(request, id):
+    recipe = get_object_or_404(Recipe, id=id, actif=True)
+    if recipe.created_by != request.user and not _verifier_cuisinier(request):
+        messages.error(request, "Vous ne pouvez pas modifier cette recette.")
+        return redirect("menu:detail_recette", id=id)
+
+    if request.method == "POST":
+        form = RecipeForm(request.POST, request.FILES)
+        if form.is_valid():
+            cd = form.cleaned_data
+            if cd.get("photo"):
+                new_url = upload_photo(cd["photo"])
+                if new_url:
+                    recipe.photo_url = new_url
+                else:
+                    messages.warning(request, "L'upload de la photo a échoué — ancienne photo conservée.")
+
+            recipe.title = cd["title"]
+            recipe.description = cd.get("description") or None
+            recipe.base_servings = cd["base_servings"]
+            recipe.prep_time = cd.get("prep_time")
+            recipe.cook_time = cd.get("cook_time")
+            recipe.category = cd["category"]
+            recipe.cuisine_type = cd.get("cuisine_type") or None
+            recipe.seasons = cd.get("seasons") or []
+            recipe.health_tags = cd.get("health_tags") or []
+            recipe.complexity = cd["complexity"]
+            recipe.save()
+            sauvegarder_recette_depuis_post(recipe, request.POST)
+            messages.success(request, "Recette enregistrée !")
+            return redirect("menu:detail_recette", id=recipe.id)
+    else:
+        form = RecipeForm(initial={
+            "title": recipe.title,
+            "description": recipe.description,
+            "base_servings": recipe.base_servings,
+            "prep_time": recipe.prep_time,
+            "cook_time": recipe.cook_time,
+            "category": recipe.category,
+            "cuisine_type": recipe.cuisine_type,
+            "seasons": recipe.seasons,
+            "health_tags": recipe.health_tags,
+            "complexity": recipe.complexity,
+        })
+
+    recipe_data = recipe
+    recipe_data.groups_prefetched = recipe.ingredient_groups.prefetch_related("ingredients").all()
+    recipe_data.steps_prefetched = recipe.steps.all()
+    recipe_data.sections_prefetched = recipe.sections.all()
+
+    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": recipe_data})
+
+
+@require_POST
+@login_required
+def supprimer_recette(request, id):
+    recipe = get_object_or_404(Recipe, id=id, actif=True)
+    if recipe.created_by != request.user and not _verifier_cuisinier(request):
+        messages.error(request, "Vous ne pouvez pas supprimer cette recette.")
+        return redirect("menu:detail_recette", id=id)
+
+    recipe.actif = False
+    recipe.save(update_fields=["actif"])
+    messages.success(request, f"« {recipe.title} » a été supprimée.")
+    return redirect("menu:liste_recettes")

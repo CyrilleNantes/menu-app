@@ -140,6 +140,9 @@
 
     <div class="recette-detail__actions">
         <a href="{% url 'menu:liste_recettes' %}" class="btn btn--secondary">← Retour au catalogue</a>
+        {% if request.user == recipe.created_by or request.user.profile.role == 'chef_etoile' %}
+        <a href="{% url 'menu:modifier_recette' recipe.id %}" class="btn btn--primary">Modifier</a>
+        {% endif %}
     </div>
 
 </div>

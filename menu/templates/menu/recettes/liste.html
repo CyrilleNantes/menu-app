@@ -3,8 +3,11 @@
 {% block title %}Recettes — Menu Familial{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="recettes-toolbar">
     <h1>Catalogue des recettes</h1>
+    {% if request.user.is_authenticated %}
+    <a href="{% url 'menu:creer_recette' %}" class="btn btn--primary">+ Créer une recette</a>
+    {% endif %}
 </div>
 
 <form method="get" class="filters-bar">

@@ -42,12 +42,16 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # allauth
+    "django.contrib.sites",
+    # allauth (OAuth Google activé à l'étape 14)
     "allauth",
     "allauth.account",
+    "allauth.socialaccount",
     # app principale
     "menu",
 ]
+
+SITE_ID = 1
 
 # =========================================================
 # ⚙️ MIDDLEWARE

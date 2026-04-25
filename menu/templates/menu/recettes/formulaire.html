@@ -1,0 +1,245 @@
+{% extends "menu/base.html" %}
+
+{% block title %}{% if recipe %}Modifier{% else %}Créer{% endif %} une recette — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{% if recipe %}Modifier « {{ recipe.title }} »{% else %}Nouvelle recette{% endif %}</h1>
+</div>
+
+{% if form.non_field_errors %}
+<div class="message message--error">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" id="recipe-form" class="recipe-form">
+    {% csrf_token %}
+
+    <!-- ═══ INFOS GÉNÉRALES ═══════════════════════════════════════════════ -->
+    <section class="rf-section">
+        <h2 class="rf-section__title">Informations générales</h2>
+        <div class="form-group">
+            <label>{{ form.title.label }} *</label>
+            {{ form.title }}
+            {% if form.title.errors %}<span class="form-error">{{ form.title.errors.0 }}</span>{% endif %}
+        </div>
+        <div class="form-group">
+            <label>{{ form.description.label }}</label>
+            {{ form.description }}
+        </div>
+        <div class="form-row form-row--3">
+            <div class="form-group">
+                <label>{{ form.base_servings.label }} *</label>
+                {{ form.base_servings }}
+            </div>
+            <div class="form-group">
+                <label>{{ form.prep_time.label }}</label>
+                {{ form.prep_time }}
+            </div>
+            <div class="form-group">
+                <label>{{ form.cook_time.label }}</label>
+                {{ form.cook_time }}
+            </div>
+        </div>
+        <div class="form-row form-row--3">
+            <div class="form-group">
+                <label>{{ form.category.label }} *</label>
+                {{ form.category }}
+            </div>
+            <div class="form-group">
+                <label>{{ form.complexity.label }} *</label>
+                {{ form.complexity }}
+            </div>
+            <div class="form-group">
+                <label>{{ form.cuisine_type.label }}</label>
+                {{ form.cuisine_type }}
+            </div>
+        </div>
+        <div class="form-group">
+            <label>{{ form.photo.label }}</label>
+            {% if recipe and recipe.photo_url %}
+            <img src="{{ recipe.photo_url }}" alt="Photo actuelle" class="photo-preview">
+            <p class="form-help">Choisir un fichier remplace la photo existante.</p>
+            {% endif %}
+            {{ form.photo }}
+        </div>
+        <div class="form-row form-row--2">
+            <div class="form-group">
+                <label>{{ form.seasons.label }}</label>
+                <div class="checkbox-group">{% for cb in form.seasons %}<label class="checkbox-label">{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}</div>
+            </div>
+            <div class="form-group">
+                <label>{{ form.health_tags.label }}</label>
+                <div class="checkbox-group">{% for cb in form.health_tags %}<label class="checkbox-label">{{ cb.tag }} {{ cb.choice_label }}</label>{% endfor %}</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ INGRÉDIENTS ══════════════════════════════════════════════════ -->
+    <section class="rf-section">
+        <h2 class="rf-section__title">Ingrédients</h2>
+        <input type="hidden" id="group_count" name="group_count"
+               value="{{ recipe.groups_prefetched|length|default:'1' }}">
+
+        <div id="groups-container">
+            {% if recipe and recipe.groups_prefetched %}
+                {% for group in recipe.groups_prefetched %}
+                {% with g=forloop.counter0 %}
+                <div class="group-block" data-group-idx="{{ g }}">
+                    <div class="group-block__header">
+                        <input type="text" name="group_name_{{ g }}" value="{{ group.name }}"
+                               placeholder="Nom du groupe (ex. Base viande)" class="group-block__name">
+                        <button type="button" class="btn-icon btn-remove-group" title="Supprimer ce groupe">✕</button>
+                    </div>
+                    <input type="hidden" class="ing-count" name="group_ing_count_{{ g }}"
+                           value="{{ group.ingredients.all|length }}">
+                    <div class="ings-container" data-ing-count="{{ group.ingredients.all|length }}">
+                        {% for ing in group.ingredients.all %}
+                        {% with i=forloop.counter0 %}
+                        <div class="ing-row" data-ing-idx="{{ i }}">
+                            <input type="text" name="ing_name_{{ g }}_{{ i }}" value="{{ ing.name }}" placeholder="Ingrédient *" class="ing-name">
+                            <input type="number" name="ing_qty_{{ g }}_{{ i }}" value="{{ ing.quantity|default_if_none:'' }}" placeholder="Qté" step="any" class="ing-qty">
+                            <input type="text" name="ing_qty_note_{{ g }}_{{ i }}" value="{{ ing.quantity_note|default:'' }}" placeholder="Ex. 150–200g" class="ing-qty-note">
+                            <input type="text" name="ing_unit_{{ g }}_{{ i }}" value="{{ ing.unit|default:'' }}" placeholder="Unité" class="ing-unit">
+                            <input type="text" name="ing_category_{{ g }}_{{ i }}" value="{{ ing.category|default:'' }}" placeholder="Catégorie" class="ing-category">
+                            <label class="ing-optional-label"><input type="checkbox" name="ing_optional_{{ g }}_{{ i }}" {% if ing.is_optional %}checked{% endif %}> Opt.</label>
+                            <button type="button" class="btn-icon btn-remove-ing" title="Supprimer">✕</button>
+                        </div>
+                        {% endwith %}
+                        {% endfor %}
+                    </div>
+                    <button type="button" class="btn btn--secondary btn--sm btn-add-ing">+ Ingrédient</button>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            {% else %}
+                <div class="group-block" data-group-idx="0">
+                    <div class="group-block__header">
+                        <input type="text" name="group_name_0" placeholder="Nom du groupe (ex. Base viande)" class="group-block__name">
+                        <button type="button" class="btn-icon btn-remove-group" title="Supprimer ce groupe">✕</button>
+                    </div>
+                    <input type="hidden" class="ing-count" name="group_ing_count_0" value="1">
+                    <div class="ings-container" data-ing-count="1">
+                        <div class="ing-row" data-ing-idx="0">
+                            <input type="text" name="ing_name_0_0" placeholder="Ingrédient *" class="ing-name">
+                            <input type="number" name="ing_qty_0_0" placeholder="Qté" step="any" class="ing-qty">
+                            <input type="text" name="ing_qty_note_0_0" placeholder="Ex. 150–200g" class="ing-qty-note">
+                            <input type="text" name="ing_unit_0_0" placeholder="Unité" class="ing-unit">
+                            <input type="text" name="ing_category_0_0" placeholder="Catégorie" class="ing-category">
+                            <label class="ing-optional-label"><input type="checkbox" name="ing_optional_0_0"> Opt.</label>
+                            <button type="button" class="btn-icon btn-remove-ing" title="Supprimer">✕</button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn--secondary btn--sm btn-add-ing">+ Ingrédient</button>
+                </div>
+            {% endif %}
+        </div>
+        <button type="button" id="btn-add-group" class="btn btn--secondary">+ Groupe d'ingrédients</button>
+    </section>
+
+    <!-- ═══ ÉTAPES ════════════════════════════════════════════════════════ -->
+    <section class="rf-section">
+        <h2 class="rf-section__title">Étapes de préparation</h2>
+        <input type="hidden" id="step_count" name="step_count"
+               value="{{ recipe.steps_prefetched|length|default:'1' }}">
+
+        <div id="steps-container">
+            {% if recipe and recipe.steps_prefetched %}
+                {% for step in recipe.steps_prefetched %}
+                {% with s=forloop.counter0 %}
+                <div class="step-block" data-step-idx="{{ s }}">
+                    <div class="step-block__header">
+                        <span class="step-block__num">{{ forloop.counter }}</span>
+                        <button type="button" class="btn-icon btn-remove-step" title="Supprimer">✕</button>
+                    </div>
+                    <textarea name="step_instruction_{{ s }}" placeholder="Instruction de l'étape *" rows="3" class="step-instruction">{{ step.instruction }}</textarea>
+                    <input type="text" name="step_chef_note_{{ s }}" value="{{ step.chef_note|default:'' }}" placeholder="👉 Note du chef (optionnel)" class="step-chef-note">
+                    <div class="step-timer-row">
+                        <label>Timer :</label>
+                        <input type="number" name="step_timer_{{ s }}" value="{{ step.timer_seconds|default_if_none:'' }}" placeholder="secondes" min="0" class="step-timer">
+                        <span class="form-help">secondes (0 = pas de timer)</span>
+                    </div>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            {% else %}
+                <div class="step-block" data-step-idx="0">
+                    <div class="step-block__header">
+                        <span class="step-block__num">1</span>
+                        <button type="button" class="btn-icon btn-remove-step" title="Supprimer">✕</button>
+                    </div>
+                    <textarea name="step_instruction_0" placeholder="Instruction de l'étape *" rows="3" class="step-instruction"></textarea>
+                    <input type="text" name="step_chef_note_0" placeholder="👉 Note du chef (optionnel)" class="step-chef-note">
+                    <div class="step-timer-row">
+                        <label>Timer :</label>
+                        <input type="number" name="step_timer_0" placeholder="secondes" min="0" class="step-timer">
+                        <span class="form-help">secondes (0 = pas de timer)</span>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+        <button type="button" id="btn-add-step" class="btn btn--secondary">+ Étape</button>
+    </section>
+
+    <!-- ═══ SECTIONS LIBRES ═══════════════════════════════════════════════ -->
+    <section class="rf-section">
+        <h2 class="rf-section__title">Sections libres <small>(optionnel)</small></h2>
+        <input type="hidden" id="section_count" name="section_count"
+               value="{{ recipe.sections_prefetched|length|default:'0' }}">
+
+        <div id="sections-container">
+            {% if recipe and recipe.sections_prefetched %}
+                {% for sec in recipe.sections_prefetched %}
+                {% with s=forloop.counter0 %}
+                <div class="section-block" data-section-idx="{{ s }}">
+                    <div class="section-block__header">
+                        <select name="section_type_{{ s }}">
+                            <option value="critique" {% if sec.section_type == 'critique' %}selected{% endif %}>⚠️ Points critiques</option>
+                            <option value="conseil" {% if sec.section_type == 'conseil' %}selected{% endif %}>💡 Conseils</option>
+                            <option value="difference" {% if sec.section_type == 'difference' %}selected{% endif %}>🎯 Ce qui fait la différence</option>
+                            <option value="libre" {% if sec.section_type == 'libre' %}selected{% endif %}>Section libre</option>
+                        </select>
+                        <button type="button" class="btn-icon btn-remove-section" title="Supprimer">✕</button>
+                    </div>
+                    <input type="text" name="section_title_{{ s }}" value="{{ sec.title|default:'' }}" placeholder="Titre (optionnel)" class="section-title">
+                    <textarea name="section_content_{{ s }}" rows="4" placeholder="Contenu…" class="section-content">{{ sec.content }}</textarea>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            {% endif %}
+        </div>
+        <button type="button" id="btn-add-section" class="btn btn--secondary">+ Section</button>
+    </section>
+
+    <!-- ═══ ACTIONS ════════════════════════════════════════════════════════ -->
+    <div class="rf-actions">
+        <button type="submit" class="btn btn--primary btn--full">
+            {% if recipe %}Enregistrer les modifications{% else %}Créer la recette{% endif %}
+        </button>
+        {% if recipe %}
+        <a href="{% url 'menu:detail_recette' recipe.id %}" class="btn btn--secondary">Annuler</a>
+        <button type="button" id="btn-delete" class="btn btn--danger">Supprimer la recette</button>
+        {% else %}
+        <a href="{% url 'menu:liste_recettes' %}" class="btn btn--secondary">Annuler</a>
+        {% endif %}
+    </div>
+</form>
+
+{% if recipe %}
+<dialog id="dialog-delete" class="confirm-dialog">
+    <form method="post" action="{% url 'menu:supprimer_recette' recipe.id %}">
+        {% csrf_token %}
+        <p>Supprimer « <strong>{{ recipe.title }}</strong> » ? Cette action est irréversible.</p>
+        <div class="confirm-dialog__actions">
+            <button type="submit" class="btn btn--danger">Supprimer</button>
+            <button type="button" id="btn-cancel-delete" class="btn btn--secondary">Annuler</button>
+        </div>
+    </form>
+</dialog>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script src="{% static 'menu/js/recette_form.js' %}" defer></script>
+{% endblock %}
