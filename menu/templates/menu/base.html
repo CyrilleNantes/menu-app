@@ -38,7 +38,10 @@
             <a href="{% url 'menu:planning' %}">Planning</a>
             <a href="{% url 'menu:liste_recettes' %}">Recettes</a>
             {% if user.is_staff %}<a href="{% url 'menu:backup_page' %}">Backup</a>{% endif %}
-            <span>{{ user.first_name|default:user.email }}</span>
+            <a href="{% url 'menu:profil' %}" class="nav__profil">
+                {{ user.first_name|default:user.email }}
+                {% if user_rank and user_rank.0 > 0 %}<span class="rank-badge rank-badge--nav">{{ user_rank.1 }}</span>{% endif %}
+            </a>
             <form method="post" action="{% url 'menu:deconnexion' %}">
                 {% csrf_token %}
                 <button type="submit">Déconnexion</button>

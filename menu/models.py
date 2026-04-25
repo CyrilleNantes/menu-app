@@ -39,29 +39,80 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
 
+    # ── Seuils de progression ──────────────────────────────────────────────
+    _RANK_CUISINIER = [
+        (0,  1, "Commis",         "🥄"),
+        (3,  2, "Cuisinier",      "🍳"),
+        (8,  3, "Chef de Partie", "👨‍🍳"),
+        (15, 4, "Sous-Chef",      "⭐"),
+        (30, 5, "Chef Exécutif",  "🌟"),
+    ]
+    _RANK_CONVIVE = [
+        (0,  1, "Convive",        "🍽️"),
+        (2,  2, "Gourmet",        "😋"),
+        (5,  3, "Épicurien",      "🍷"),
+        (10, 4, "Critique",       "✍️"),
+        (20, 5, "Guide Michelin", "⭐⭐"),
+    ]
+
     @property
     def rank(self):
-        if self.role == "cuisinier":
-            count = Recipe.objects.filter(created_by=self.user, actif=True).count()
-            if count >= 30:
-                return (5, "Chef Exécutif")
-            if count >= 15:
-                return (4, "Sous-Chef")
-            if count >= 5:
-                return (2, "Cuisinier")
-            return (1, "Commis")
-        if self.role == "convive":
-            count = Review.objects.filter(user=self.user).count()
-            if count >= 20:
-                return (5, "Guide Michelin")
-            if count >= 10:
-                return (4, "Critique")
-            if count >= 5:
-                return (3, "Épicurien")
-            if count >= 2:
-                return (2, "Gourmet")
-            return (1, "Convive")
-        return (0, self.get_role_display())
+        """Retourne (niveau, nom) du rang courant."""
+        info = self.rank_info
+        return (info["level"], info["name"])
+
+    @property
+    def rank_info(self):
+        """Retourne le rang complet + progression vers le rang suivant."""
+        if self.role in ("cuisinier", "chef_etoile"):
+            metric   = Recipe.objects.filter(created_by=self.user, actif=True).count()
+            thresholds = self._RANK_CUISINIER
+            metric_label = "recette"
+        elif self.role == "convive":
+            from .models import MealProposal  # import local pour éviter circularité
+            reviews   = Review.objects.filter(user=self.user).count()
+            proposals = MealProposal.objects.filter(proposed_by=self.user).count()
+            metric    = reviews + proposals
+            thresholds = self._RANK_CONVIVE
+            metric_label = "contribution"
+        else:
+            return {
+                "level": 0, "name": self.get_role_display(), "emoji": "👤",
+                "progress": 100, "next_name": None, "next_threshold": None,
+                "metric": 0, "metric_label": "", "current_threshold": 0,
+            }
+
+        # Rang courant = dernier seuil franchi
+        current = thresholds[0]
+        for entry in thresholds:
+            if metric >= entry[0]:
+                current = entry
+        cur_threshold, cur_level, cur_name, cur_emoji = current
+
+        # Rang suivant
+        cur_idx = thresholds.index(current)
+        if cur_idx + 1 < len(thresholds):
+            next_t = thresholds[cur_idx + 1][0]
+            next_name = thresholds[cur_idx + 1][2]
+            span    = next_t - cur_threshold
+            progress = int((metric - cur_threshold) / span * 100) if span else 100
+            progress = max(0, min(99, progress))
+        else:
+            next_t    = None
+            next_name = None
+            progress  = 100
+
+        return {
+            "level":             cur_level,
+            "name":              cur_name,
+            "emoji":             cur_emoji,
+            "progress":          progress,
+            "next_name":         next_name,
+            "next_threshold":    next_t,
+            "metric":            metric,
+            "metric_label":      metric_label,
+            "current_threshold": cur_threshold,
+        }
 
 
 class TokenOAuth(models.Model):

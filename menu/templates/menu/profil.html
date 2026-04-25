@@ -1,0 +1,131 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Mon profil — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="profil-page">
+
+    <!-- ── En-tête profil ───────────────────────────────────────── -->
+    <div class="profil-header">
+        <div class="profil-avatar">
+            {{ request.user.first_name|first|upper|default:request.user.email|first|upper }}
+        </div>
+        <div class="profil-header__info">
+            <h1 class="profil-header__name">
+                {{ request.user.first_name }} {{ request.user.last_name }}
+                {% if not request.user.first_name %}<span class="text-muted">{{ request.user.email }}</span>{% endif %}
+            </h1>
+            <span class="profil-role-badge">{{ profile.get_role_display }}</span>
+            {% if profile.family %}
+            <span class="text-muted profil-family">👨‍👩‍👧 {{ profile.family.name }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ── Rang actuel ──────────────────────────────────────────── -->
+    <div class="profil-rank-card">
+        <div class="profil-rank-card__top">
+            <span class="profil-rank__emoji">{{ rank_info.emoji }}</span>
+            <div>
+                <div class="profil-rank__name">{{ rank_info.name }}</div>
+                <div class="profil-rank__level text-muted">Niveau {{ rank_info.level }}/5</div>
+            </div>
+            {% if rank_info.level == 5 %}
+            <span class="profil-rank__max">Rang maximum atteint 🎉</span>
+            {% endif %}
+        </div>
+
+        {% if rank_info.next_name %}
+        <div class="profil-rank__progress">
+            <div class="profil-rank__progress-bar">
+                <div class="profil-rank__progress-fill" style="width: {{ rank_info.progress }}%"></div>
+            </div>
+            <div class="profil-rank__progress-label">
+                {{ rank_info.metric }} / {{ rank_info.next_threshold }} {{ rank_info.metric_label }}{{ rank_info.metric|pluralize:"s" }}
+                → <strong>{{ rank_info.next_name }}</strong>
+            </div>
+        </div>
+        {% else %}
+        <p class="profil-rank__progress-label text-muted">
+            {{ rank_info.metric }} {{ rank_info.metric_label }}{{ rank_info.metric|pluralize:"s" }} au total
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- ── Stats ────────────────────────────────────────────────── -->
+    <div class="profil-stats">
+        {% if profile.role in "cuisinier,chef_etoile" %}
+        <div class="profil-stat">
+            <span class="profil-stat__value">{{ nb_recettes }}</span>
+            <span class="profil-stat__label">Recette{{ nb_recettes|pluralize }}</span>
+        </div>
+        {% endif %}
+        <div class="profil-stat">
+            <span class="profil-stat__value">{{ nb_avis }}</span>
+            <span class="profil-stat__label">Avis donnés</span>
+        </div>
+        <div class="profil-stat">
+            <span class="profil-stat__value">{{ nb_proposals }}</span>
+            <span class="profil-stat__label">Proposition{{ nb_proposals|pluralize }}</span>
+        </div>
+    </div>
+
+    <!-- ── Échelle des rangs ─────────────────────────────────────── -->
+    <section class="profil-section">
+        <h2 class="profil-section__title">Progression</h2>
+        {% if profile.role in "cuisinier,chef_etoile" %}
+        <ol class="rank-ladder">
+            {% for t, lvl, name, emoji in profile._RANK_CUISINIER %}
+            <li class="rank-ladder__item {% if rank_info.level >= lvl %}rank-ladder__item--reached{% endif %}">
+                <span class="rank-ladder__emoji">{{ emoji }}</span>
+                <span class="rank-ladder__name">{{ name }}</span>
+                <span class="rank-ladder__threshold text-muted">{% if t > 0 %}dès {{ t }} recette{{ t|pluralize }}{% else %}Départ{% endif %}</span>
+            </li>
+            {% endfor %}
+        </ol>
+        {% elif profile.role == "convive" %}
+        <ol class="rank-ladder">
+            {% for t, lvl, name, emoji in profile._RANK_CONVIVE %}
+            <li class="rank-ladder__item {% if rank_info.level >= lvl %}rank-ladder__item--reached{% endif %}">
+                <span class="rank-ladder__emoji">{{ emoji }}</span>
+                <span class="rank-ladder__name">{{ name }}</span>
+                <span class="rank-ladder__threshold text-muted">{% if t > 0 %}dès {{ t }} contribution{{ t|pluralize }}{% else %}Départ{% endif %}</span>
+            </li>
+            {% endfor %}
+        </ol>
+        {% endif %}
+    </section>
+
+    <!-- ── Famille ───────────────────────────────────────────────── -->
+    {% if profile.family %}
+    <section class="profil-section">
+        <h2 class="profil-section__title">👨‍👩‍👧 Ma famille — {{ profile.family.name }}</h2>
+        {% if famille_members %}
+        <ul class="profil-membres">
+            {% for m in famille_members %}
+            <li class="profil-membre">
+                <span class="profil-membre__avatar">{{ m.user.first_name|first|upper|default:m.user.email|first|upper }}</span>
+                <span class="profil-membre__name">{{ m.user.first_name|default:m.user.email }}</span>
+                <span class="profil-membre__role text-muted">{{ m.get_role_display }}</span>
+                <span class="rank-badge rank-badge--sm">{{ m.rank.1 }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">Tu es le seul membre pour l'instant.</p>
+        {% endif %}
+        <p class="profil-invite text-muted">
+            Lien d'invitation :
+            <code class="profil-invite__link">{{ request.META.HTTP_HOST }}{% url 'menu:rejoindre_famille' profile.family.invite_token %}</code>
+        </p>
+    </section>
+    {% endif %}
+
+    <!-- ── Actions ──────────────────────────────────────────────── -->
+    <div class="profil-actions">
+        <a href="{% url 'menu:planning' %}" class="btn btn--secondary">← Planning</a>
+        <a href="{% url 'menu:liste_recettes' %}" class="btn btn--secondary">Recettes</a>
+    </div>
+
+</div>
+{% endblock %}

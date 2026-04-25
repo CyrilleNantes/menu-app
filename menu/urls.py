@@ -5,6 +5,7 @@ app_name = "menu"
 
 urlpatterns = [
     path("sw.js", views.service_worker, name="service_worker"),
+    path("profil/", views.profil, name="profil"),
     path("", views.home, name="home"),
     path("inscription/", views.inscription, name="inscription"),
     path("connexion/", views.connexion, name="connexion"),

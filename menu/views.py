@@ -167,6 +167,43 @@ def rejoindre_famille_page(request):
     return render(request, "menu/auth/rejoindre.html")
 
 
+@login_required
+def profil(request):
+    """Page de profil : rang, progression, stats, membres de la famille."""
+    try:
+        profile = request.user.profile
+    except UserProfile.DoesNotExist:
+        return redirect("menu:home")
+
+    rank_info = profile.rank_info
+
+    # Stats selon le rôle
+    nb_recettes   = Recipe.objects.filter(created_by=request.user, actif=True).count()
+    nb_avis       = Review.objects.filter(user=request.user).count()
+    nb_proposals  = MealProposal.objects.filter(proposed_by=request.user).count()
+
+    # Membres de la famille
+    famille_members = []
+    if profile.family:
+        famille_members = list(
+            UserProfile.objects
+            .filter(family=profile.family)
+            .exclude(user=request.user)
+            .select_related("user")
+            .order_by("user__first_name")
+        )
+
+    ctx = {
+        "profile":         profile,
+        "rank_info":       rank_info,
+        "nb_recettes":     nb_recettes,
+        "nb_avis":         nb_avis,
+        "nb_proposals":    nb_proposals,
+        "famille_members": famille_members,
+    }
+    return render(request, "menu/profil.html", ctx)
+
+
 def _get_profile(request):
     """Retourne le profil utilisateur ou None."""
     try:
@@ -666,6 +703,23 @@ def detail_recette(request, id):
     except UserProfile.DoesNotExist:
         pass
 
+    # Pré-calcul des rangs par reviewer pour éviter le N+1
+    raw_reviews = list(
+        recipe.reviews
+        .select_related("user", "user__profile")
+        .order_by("-created_at")[:30]
+    )
+    rank_cache: dict = {}
+    all_reviews_with_rank = []
+    for r in raw_reviews:
+        uid = r.user_id
+        if uid not in rank_cache:
+            try:
+                rank_cache[uid] = r.user.profile.rank
+            except Exception:
+                rank_cache[uid] = (0, "")
+        all_reviews_with_rank.append((r, rank_cache[uid]))
+
     ctx = {
         "recipe": recipe,
         "note_moyenne": stats["note_moyenne"],
@@ -673,7 +727,7 @@ def detail_recette(request, id):
         "alertes": alertes,
         "user_last_review": user_last_review,
         "family_reviews": family_reviews,
-        "all_reviews": list(recipe.reviews.select_related("user").order_by("-created_at")[:30]),
+        "all_reviews": all_reviews_with_rank,
     }
     return render(request, "menu/recettes/detail.html", ctx)
 

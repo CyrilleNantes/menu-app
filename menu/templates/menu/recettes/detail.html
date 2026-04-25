@@ -171,10 +171,11 @@
     <section class="recette-section">
         <h2>Tous les avis <span class="text-muted" style="font-size:.85rem">(<span id="nb-avis-titre">{{ nb_avis }}</span>)</span></h2>
         <ul class="avis-list" id="avis-list">
-            {% for avis in all_reviews %}
+            {% for avis, avis_rank in all_reviews %}
             <li class="avis-item">
                 <div class="avis-item__header">
                     <span class="avis-item__user">{{ avis.user.first_name|default:avis.user.email }}</span>
+                    {% if avis_rank.0 > 0 %}<span class="rank-badge rank-badge--sm">{{ avis_rank.1 }}</span>{% endif %}
                     <span class="avis-item__stars stars">{% for i in "12345" %}{% if forloop.counter <= avis.stars %}★{% else %}☆{% endif %}{% endfor %}</span>
                     <span class="avis-item__date text-muted">{{ avis.created_at|date:"d/m/Y" }}</span>
                 </div>
