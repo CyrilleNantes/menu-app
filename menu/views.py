@@ -1,4 +1,6 @@
+import json
 import logging
+import zipfile
 from datetime import date
 
 from django.contrib import messages
@@ -6,16 +8,20 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Avg, Count, Q
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
-
-from django.http import JsonResponse
 
 from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
 from .integrations.openfoodfacts import rechercher_ingredient
 from .models import Family, Ingredient, Recipe, UserProfile
-from .services import sauvegarder_recette_depuis_post
+from .services import (
+    exporter_backup,
+    importer_recette_depuis_json,
+    restaurer_backup,
+    sauvegarder_recette_depuis_post,
+)
 
 logger = logging.getLogger("menu")
 
@@ -370,3 +376,124 @@ def supprimer_recette(request, id):
     recipe.save(update_fields=["actif"])
     messages.success(request, f"« {recipe.title} » a été supprimée.")
     return redirect("menu:liste_recettes")
+
+
+# ─── Backup / Restore / Import recettes ──────────────────────────────────────
+
+def _verifier_staff(request):
+    """Retourne True si l'utilisateur est staff Django."""
+    return request.user.is_staff
+
+
+@login_required
+def backup_page(request):
+    if not _verifier_staff(request):
+        messages.error(request, "Accès réservé aux administrateurs.")
+        return redirect("menu:home")
+    return render(request, "menu/admin/backup.html")
+
+
+@login_required
+def export_backup(request):
+    if not _verifier_staff(request):
+        messages.error(request, "Accès réservé aux administrateurs.")
+        return redirect("menu:home")
+    try:
+        zip_bytes = exporter_backup()
+        from datetime import datetime
+        filename = f"menu_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        response = HttpResponse(zip_bytes, content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        logger.info("Backup exporté par %s.", request.user.email)
+        return response
+    except Exception as exc:
+        logger.error("Erreur export backup : %s", exc)
+        messages.error(request, f"Erreur lors de l'export : {exc}")
+        return redirect("menu:backup_page")
+
+
+@require_POST
+@login_required
+def import_backup(request):
+    if not _verifier_staff(request):
+        messages.error(request, "Accès réservé aux administrateurs.")
+        return redirect("menu:home")
+
+    zip_file = request.FILES.get("backup_zip")
+    if not zip_file:
+        messages.error(request, "Aucun fichier sélectionné.")
+        return redirect("menu:backup_page")
+
+    try:
+        stats = restaurer_backup(zip_file.read())
+        messages.success(
+            request,
+            f"Restauration réussie — {stats['total']} objets restaurés. "
+            "Reconnectez-vous pour continuer.",
+        )
+        logout(request)
+        return redirect("menu:connexion")
+    except Exception as exc:
+        logger.error("Erreur restauration backup : %s", exc)
+        messages.error(request, f"Erreur lors de la restauration : {exc}")
+        return redirect("menu:backup_page")
+
+
+@require_POST
+@login_required
+def import_recettes(request):
+    if not _verifier_staff(request) and not _verifier_cuisinier(request):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:home")
+
+    json_file = request.FILES.get("recette_json")
+    zip_file = request.FILES.get("recettes_zip")
+    imported, skipped, errors = 0, 0, []
+
+    if json_file:
+        try:
+            data = json.loads(json_file.read().decode("utf-8"))
+            _, created = importer_recette_depuis_json(data, request.user)
+            if created:
+                imported += 1
+            else:
+                skipped += 1
+        except Exception as exc:
+            errors.append(str(exc))
+
+    elif zip_file:
+        try:
+            with zipfile.ZipFile(zip_file, "r") as zf:
+                json_names = [n for n in zf.namelist() if n.lower().endswith(".json")]
+                for name in json_names:
+                    try:
+                        data = json.loads(zf.read(name).decode("utf-8"))
+                        _, created = importer_recette_depuis_json(data, request.user)
+                        if created:
+                            imported += 1
+                        else:
+                            skipped += 1
+                    except Exception as exc:
+                        errors.append(f"{name} : {exc}")
+        except Exception as exc:
+            errors.append(str(exc))
+    else:
+        messages.warning(request, "Aucun fichier sélectionné.")
+        return redirect("menu:backup_page")
+
+    parts = [f"{imported} recette(s) importée(s)"]
+    if skipped:
+        parts.append(f"{skipped} ignorée(s) (titre déjà existant)")
+    if errors:
+        parts.append(f"{len(errors)} erreur(s) : {' | '.join(errors[:3])}")
+
+    if errors and not imported:
+        messages.error(request, " — ".join(parts))
+    elif errors:
+        messages.warning(request, " — ".join(parts))
+    else:
+        messages.success(request, " — ".join(parts))
+
+    logger.info("Import recettes par %s : %d créées, %d ignorées, %d erreurs.",
+                request.user.email, imported, skipped, len(errors))
+    return redirect("menu:backup_page")

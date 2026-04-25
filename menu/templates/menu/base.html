@@ -30,6 +30,7 @@
             {% if user.is_authenticated %}
             <a href="{% url 'menu:planning' %}">Planning</a>
             <a href="{% url 'menu:liste_recettes' %}">Recettes</a>
+            {% if user.is_staff %}<a href="{% url 'menu:backup_page' %}">Backup</a>{% endif %}
             <span>{{ user.first_name|default:user.email }}</span>
             <form method="post" action="{% url 'menu:deconnexion' %}">
                 {% csrf_token %}

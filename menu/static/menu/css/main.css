@@ -255,9 +255,30 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 /* Lien Créer recette dans la liste */
 .recettes-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
 
+/* Page header avec label */
+.page-header { margin-bottom: 1.5rem; }
+.page-header__label { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--color-danger); }
+.page-header h1 { margin: .25rem 0 0; }
+
+/* Backup page */
+.backup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+.backup-card { background: #fff; border-radius: var(--radius); box-shadow: 0 1px 6px rgba(0,0,0,.08); padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+.backup-card--danger { border-top: 3px solid var(--color-danger); }
+.backup-card--wide { margin-bottom: 1.5rem; }
+.backup-card__label { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--color-muted); }
+.backup-card__label--sm { font-size: .8rem; font-weight: 600; color: var(--color-muted); display: block; margin-bottom: .35rem; }
+.backup-card p { color: #444; line-height: 1.55; margin: 0; }
+.backup-import-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: .5rem; }
+.backup-import-col { display: flex; flex-direction: column; gap: .75rem; }
+.backup-import-col__title { font-weight: 600; font-size: .9rem; margin: 0; }
+.backup-import-form { display: flex; flex-direction: column; gap: .5rem; }
+.backup-file-input { font-size: .88rem; }
+
 @media (max-width: 600px) {
     .form-row--3 { grid-template-columns: 1fr; }
     .form-row--2 { grid-template-columns: 1fr; }
     .ing-row { grid-template-columns: 1fr 1fr; }
     .ing-qty-note, .ing-category { display: none; }
+    .backup-grid { grid-template-columns: 1fr; }
+    .backup-import-grid { grid-template-columns: 1fr; }
 }

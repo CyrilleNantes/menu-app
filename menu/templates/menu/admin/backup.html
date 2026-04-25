@@ -1,0 +1,118 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Backup & Import — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <span class="page-header__label">DONNÉES</span>
+    <h1>Backup &amp; Import</h1>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for message in messages %}
+    <div class="message message--{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Ligne 1 : Export + Restauration ────────────────────────────── -->
+<div class="backup-grid">
+
+    <div class="backup-card">
+        <div class="backup-card__label">EXPORTER</div>
+        <p>
+            Télécharge un fichier <code>.zip</code> contenant toutes les données
+            (recettes, plannings, familles, comptes utilisateurs).
+            À faire avant toute opération risquée.
+        </p>
+        <a href="{% url 'menu:export_backup' %}" class="btn btn--primary">↓ Télécharger le backup</a>
+    </div>
+
+    <div class="backup-card backup-card--danger">
+        <div class="backup-card__label">RESTAURER</div>
+        <p>
+            Restaure un backup précédemment exporté.
+            <strong>Attention : toutes les données actuelles seront effacées</strong>
+            avant l'import. Vous serez déconnecté automatiquement.
+        </p>
+        <form method="post" action="{% url 'menu:import_backup' %}"
+              id="form-restore" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="form-group">
+                <label class="backup-card__label--sm">Fichier zip</label>
+                <input type="file" name="backup_zip" accept=".zip" required class="backup-file-input">
+            </div>
+            <button type="button" id="btn-restore" class="btn btn--danger">⚠ Restaurer</button>
+        </form>
+    </div>
+
+</div>
+
+<!-- ── Ligne 2 : Import recettes ──────────────────────────────────── -->
+<div class="backup-card backup-card--wide">
+    <div class="backup-card__label">IMPORTER DES RECETTES</div>
+    <p>
+        Importe une ou plusieurs recettes au format JSON.
+        Les recettes dont le titre existe déjà sont ignorées (idempotent).
+    </p>
+
+    <div class="backup-import-grid">
+
+        <div class="backup-import-col">
+            <p class="backup-import-col__title">Recette unique <code>.json</code></p>
+            <form method="post" action="{% url 'menu:import_recettes' %}"
+                  enctype="multipart/form-data" class="backup-import-form">
+                {% csrf_token %}
+                <input type="file" name="recette_json" accept=".json" required class="backup-file-input">
+                <button type="submit" class="btn btn--secondary">↑ Importer</button>
+            </form>
+        </div>
+
+        <div class="backup-import-col">
+            <p class="backup-import-col__title">Import en masse <code>.zip</code> de JSON</p>
+            <form method="post" action="{% url 'menu:import_recettes' %}"
+                  enctype="multipart/form-data" class="backup-import-form">
+                {% csrf_token %}
+                <input type="file" name="recettes_zip" accept=".zip" required class="backup-file-input">
+                <button type="submit" class="btn btn--secondary">↑ Importer tout</button>
+            </form>
+        </div>
+
+    </div>
+</div>
+
+<!-- ── Dialog confirmation restauration ──────────────────────────── -->
+<dialog id="dialog-restore" class="confirm-dialog">
+    <p>
+        ⚠️ <strong>Confirmer la restauration ?</strong><br><br>
+        Toutes les données actuelles (recettes, plannings, utilisateurs) seront
+        définitivement effacées et remplacées par celles du backup.<br><br>
+        Vous serez déconnecté automatiquement après la restauration.
+    </p>
+    <div class="confirm-dialog__actions">
+        <button type="button" id="btn-confirm-restore" class="btn btn--danger">
+            Oui, restaurer
+        </button>
+        <button type="button" id="btn-cancel-restore" class="btn btn--secondary">
+            Annuler
+        </button>
+    </div>
+</dialog>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const btnRestore  = document.getElementById('btn-restore');
+    const dlg         = document.getElementById('dialog-restore');
+    const btnConfirm  = document.getElementById('btn-confirm-restore');
+    const btnCancel   = document.getElementById('btn-cancel-restore');
+
+    btnRestore?.addEventListener('click',  () => dlg.showModal());
+    btnCancel?.addEventListener('click',   () => dlg.close());
+    btnConfirm?.addEventListener('click',  () => {
+        dlg.close();
+        document.getElementById('form-restore').submit();
+    });
+</script>
+{% endblock %}
