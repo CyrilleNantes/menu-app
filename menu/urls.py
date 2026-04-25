@@ -33,6 +33,8 @@ urlpatterns = [
     # Google Calendar
     path("planning/<int:plan_id>/export-calendar/", views.export_calendar, name="export_calendar"),
     path("profil/creneaux-calendar/", views.modifier_creneaux_calendar, name="modifier_creneaux_calendar"),
+    # Google Tasks
+    path("courses/<int:plan_id>/export-tasks/", views.export_tasks, name="export_tasks"),
     # OAuth Google
     path("google/connect/", views.google_connect, name="google_connect"),
     path("google/callback/", views.google_callback, name="google_callback"),

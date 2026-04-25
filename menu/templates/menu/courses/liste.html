@@ -20,6 +20,12 @@
         </button>
     </form>
     {% endif %}
+    {% if shopping_list and google_connected %}
+    <form method="post" action="{% url 'menu:export_tasks' plan.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm">✅ Exporter vers Google Tasks</button>
+    </form>
+    {% endif %}
 </div>
 
 {% if not shopping_list %}

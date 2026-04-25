@@ -20,6 +20,7 @@ from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.google_calendar import google_calendar_export_planning
+from .integrations.google_tasks import google_tasks_export_courses
 from .integrations.openfoodfacts import rechercher_ingredient
 from .models import Family, Ingredient, Meal, MealProposal, Recipe, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
@@ -580,6 +581,7 @@ def liste_courses(request, plan_id):
         "year": year,
         "week": week,
         "is_cuisinier": is_cuisinier,
+        "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
     }
     return render(request, "menu/courses/liste.html", ctx)
 
@@ -1094,6 +1096,58 @@ def modifier_creneaux_calendar(request):
     messages.success(request, "Créneaux Google Calendar mis à jour.")
     logger.debug("modifier_creneaux_calendar : créneaux mis à jour pour user %s", request.user.id)
     return redirect("menu:profil")
+
+
+# ─── Export Google Tasks ─────────────────────────────────────────────────────
+
+@require_POST
+@login_required
+def export_tasks(request, plan_id):
+    """
+    Exporte les articles non cochés de la liste de courses vers Google Tasks.
+    """
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        messages.error(request, "Profil ou famille introuvable.")
+        return redirect("menu:planning")
+
+    plan = get_object_or_404(WeekPlan, pk=plan_id, family=profile.family)
+
+    if not TokenOAuth.objects.filter(user=request.user, service="google").exists():
+        messages.warning(request, "Connecte ton compte Google dans ton profil avant d'exporter.")
+        return redirect("menu:liste_courses", plan_id=plan_id)
+
+    shopping_list = ShoppingList.objects.filter(week_plan=plan).first()
+    if not shopping_list:
+        messages.warning(request, "Génère d'abord la liste de courses.")
+        return redirect("menu:liste_courses", plan_id=plan_id)
+
+    nb_unchecked = shopping_list.items.filter(checked=False).count()
+    if nb_unchecked == 0:
+        messages.info(request, "✅ Tous les articles sont déjà cochés — rien à exporter.")
+        return redirect("menu:liste_courses", plan_id=plan_id)
+
+    try:
+        stats = google_tasks_export_courses(request.user, shopping_list)
+    except Exception as exc:
+        logger.error("export_tasks : erreur pour user %s : %s", request.user.id, exc)
+        messages.error(request, "Erreur lors de l'export Google Tasks. Réessaie dans quelques instants.")
+        return redirect("menu:liste_courses", plan_id=plan_id)
+
+    parts = []
+    if stats["created"]:
+        n = stats["created"]
+        parts.append(f"{n} tâche{'s' if n > 1 else ''} créée{'s' if n > 1 else ''}")
+    if stats["skipped"]:
+        n = stats["skipped"]
+        parts.append(f"{n} ignorée{'s' if n > 1 else ''}")
+
+    if stats["created"]:
+        messages.success(request, "✅ Export Google Tasks : " + ", ".join(parts) + ".")
+    else:
+        messages.warning(request, "Aucune tâche créée. " + ", ".join(parts))
+
+    return redirect("menu:liste_courses", plan_id=plan_id)
 
 
 # ─── OAuth Google ─────────────────────────────────────────────────────────────
