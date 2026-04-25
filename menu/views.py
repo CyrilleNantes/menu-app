@@ -532,6 +532,10 @@ def generer_courses(request, plan_id):
     if profile.role not in ("cuisinier", "chef_etoile"):
         messages.error(request, "Réservé au Cuisinier.")
         return redirect("menu:planning")
+    if plan.status != "published":
+        messages.error(request, "Publie d'abord le menu avant de générer la liste de courses.")
+        iso = plan.period_start.isocalendar()
+        return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
 
     try:
         generer_liste_courses(plan)

@@ -613,7 +613,7 @@ Article dans une liste de courses.
 
 **URL** : `POST /courses/generer/<plan_id>/` → `menu:generer_courses`
 **Vue** : `generer_courses(request, plan_id)`
-**Accès** : Cuisinier uniquement
+**Accès** : Cuisinier uniquement — plan `published` uniquement (le bouton n'apparaît pas sur un brouillon)
 
 **Règles de gestion** :
 1. Récupère tous les `Meal` du plan avec `is_leftovers=False` et `recipe` non null
