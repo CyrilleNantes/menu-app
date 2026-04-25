@@ -1,0 +1,11 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Mode Cuisine — {{ recipe.title }}{% endblock %}
+
+{% block content %}
+<div class="form-page">
+    <h1>👨‍🍳 Mode Cuisine</h1>
+    <p class="form-page__subtitle">{{ recipe.title }}<br>Disponible à l'étape 10.</p>
+    <a href="{% url 'menu:detail_recette' recipe.id %}" class="btn btn--secondary">← Retour à la fiche</a>
+</div>
+{% endblock %}

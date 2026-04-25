@@ -1,17 +1,60 @@
 import logging
+from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.db.models import Avg, Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .forms import InscriptionForm
-from .models import Family, UserProfile
+from .models import Family, Ingredient, Recipe, UserProfile
 
 logger = logging.getLogger("menu")
 
+# Mots-clés par tag alimentaire pour les alertes allergies (simple, non bloquant)
+ALLERGEN_KEYWORDS = {
+    "gluten": ["farine", "blé", "seigle", "orge", "avoine", "pain", "pâte", "semoule", "couscous"],
+    "lactose": ["lait", "beurre", "crème", "fromage", "yaourt", "mozzarella", "cheddar", "parmesan", "gruyère"],
+    "fruits_a_coque": ["noix", "noisette", "amande", "cajou", "pistache", "noix de coco", "pécan"],
+    "arachides": ["cacahuète", "arachide", "beurre de cacahuète"],
+    "oeufs": ["œuf", "oeuf", "jaune d'œuf", "blanc d'œuf"],
+    "poisson": ["saumon", "thon", "cabillaud", "sardine", "anchois", "truite"],
+    "fruits_de_mer": ["crevette", "moule", "homard", "crabe", "calamar", "poulpe"],
+    "soja": ["soja", "tofu", "edamame", "miso"],
+    "vegetarien": [],
+    "vegan": [],
+}
+
+
+def _saison_courante():
+    mois = date.today().month
+    if mois in (3, 4, 5):
+        return "printemps"
+    if mois in (6, 7, 8):
+        return "ete"
+    if mois in (9, 10, 11):
+        return "automne"
+    return "hiver"
+
+
+def _alertes_allergies(recipe, dietary_tags):
+    if not dietary_tags:
+        return []
+    alertes = []
+    noms = [ing.name.lower() for ing in recipe.ingredients.all()]
+    for tag in dietary_tags:
+        mots = ALLERGEN_KEYWORDS.get(tag, [])
+        for mot in mots:
+            if any(mot in nom for nom in noms):
+                alertes.append(tag)
+                break
+    return alertes
+
+
+# ─── Auth ────────────────────────────────────────────────────────────────────
 
 def home(request):
     if request.user.is_authenticated:
@@ -38,7 +81,6 @@ def inscription(request):
             family = Family.objects.create(name=cd["nom_famille"], created_by=user)
 
         UserProfile.objects.create(user=user, family=family, role=cd["role"])
-
         login(request, user, backend="django.contrib.auth.backends.ModelBackend")
         messages.success(request, "Bienvenue !")
         logger.info("Nouvel utilisateur inscrit : %s (rôle : %s)", user.email, cd["role"])
@@ -110,3 +152,90 @@ def planning(request):
         return redirect("menu:rejoindre_famille_page")
 
     return render(request, "menu/planning/index.html")
+
+
+# ─── Catalogue recettes ───────────────────────────────────────────────────────
+
+@login_required
+def mode_cuisine(request, id):
+    # Placeholder — implémenté à l'étape 10
+    recipe = get_object_or_404(Recipe, id=id, actif=True)
+    return render(request, "menu/recettes/cuisine.html", {"recipe": recipe})
+
+
+@login_required
+def liste_recettes(request):
+    qs = Recipe.objects.filter(actif=True).select_related("created_by").annotate(
+        note_moyenne=Avg("reviews__stars"),
+        nb_avis=Count("reviews"),
+    )
+
+    # Filtres
+    q = request.GET.get("q", "").strip()
+    categorie = request.GET.get("categorie", "")
+    saison = request.GET.get("saison", "")
+    complexite = request.GET.get("complexite", "")
+    tri = request.GET.get("tri", "recentes")
+
+    if q:
+        qs = qs.filter(title__icontains=q)
+    if categorie:
+        qs = qs.filter(category=categorie)
+    if saison:
+        qs = qs.filter(seasons__contains=[saison])
+    if complexite:
+        qs = qs.filter(complexity=complexite)
+
+    if tri == "mieux_notees":
+        qs = qs.order_by("-note_moyenne", "-created_at")
+    elif tri == "plus_simples":
+        ordre_complexite = {"simple": 0, "intermediaire": 1, "elabore": 2}
+        qs = sorted(qs, key=lambda r: ordre_complexite.get(r.complexity, 1))
+    else:
+        qs = qs.order_by("-created_at")
+
+    ctx = {
+        "recettes": qs,
+        "q": q,
+        "categorie": categorie,
+        "saison": saison,
+        "complexite": complexite,
+        "tri": tri,
+        "saison_courante": _saison_courante(),
+        "categories": Recipe.CATEGORY_CHOICES,
+        "saisons": [("printemps", "Printemps"), ("ete", "Été"), ("automne", "Automne"), ("hiver", "Hiver")],
+        "complexites": Recipe.COMPLEXITY_CHOICES,
+    }
+    return render(request, "menu/recettes/liste.html", ctx)
+
+
+@login_required
+def detail_recette(request, id):
+    recipe = get_object_or_404(
+        Recipe.objects.select_related("created_by").prefetch_related(
+            "ingredient_groups__ingredients",
+            "steps",
+            "sections",
+            "reviews__user",
+        ),
+        id=id,
+        actif=True,
+    )
+
+    stats = recipe.reviews.aggregate(note_moyenne=Avg("stars"), nb_avis=Count("id"))
+
+    dietary_tags = []
+    try:
+        dietary_tags = request.user.profile.dietary_tags or []
+    except UserProfile.DoesNotExist:
+        pass
+
+    alertes = _alertes_allergies(recipe, dietary_tags)
+
+    ctx = {
+        "recipe": recipe,
+        "note_moyenne": stats["note_moyenne"],
+        "nb_avis": stats["nb_avis"],
+        "alertes": alertes,
+    }
+    return render(request, "menu/recettes/detail.html", ctx)

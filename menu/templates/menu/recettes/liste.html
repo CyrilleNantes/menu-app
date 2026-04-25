@@ -1,0 +1,84 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Recettes — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Catalogue des recettes</h1>
+</div>
+
+<form method="get" class="filters-bar">
+    <input type="search" name="q" value="{{ q }}" placeholder="Rechercher une recette…" class="filters-bar__search">
+
+    <select name="categorie">
+        <option value="">Toutes catégories</option>
+        {% for val, label in categories %}
+        <option value="{{ val }}" {% if categorie == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="saison">
+        <option value="">Toutes saisons</option>
+        {% for val, label in saisons %}
+        <option value="{{ val }}" {% if saison == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="complexite">
+        <option value="">Toute complexité</option>
+        {% for val, label in complexites %}
+        <option value="{{ val }}" {% if complexite == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="tri">
+        <option value="recentes" {% if tri == "recentes" %}selected{% endif %}>Plus récentes</option>
+        <option value="mieux_notees" {% if tri == "mieux_notees" %}selected{% endif %}>Mieux notées</option>
+        <option value="plus_simples" {% if tri == "plus_simples" %}selected{% endif %}>Plus simples</option>
+    </select>
+
+    <button type="submit" class="btn btn--primary">Filtrer</button>
+    {% if q or categorie or saison or complexite %}
+    <a href="{% url 'menu:liste_recettes' %}" class="btn btn--secondary">Réinitialiser</a>
+    {% endif %}
+</form>
+
+{% if recettes %}
+<div class="recettes-grid">
+    {% for recette in recettes %}
+    <a href="{% url 'menu:detail_recette' recette.id %}" class="recette-card">
+        {% if recette.photo_url %}
+        <div class="recette-card__photo" style="background-image:url('{{ recette.photo_url }}')"></div>
+        {% else %}
+        <div class="recette-card__photo recette-card__photo--placeholder">🍽️</div>
+        {% endif %}
+        <div class="recette-card__body">
+            <span class="recette-card__categorie">{{ recette.get_category_display }}</span>
+            <h2 class="recette-card__title">{{ recette.title }}</h2>
+            {% if recette.description %}
+            <p class="recette-card__desc">{{ recette.description|truncatechars:80 }}</p>
+            {% endif %}
+            <div class="recette-card__meta">
+                <span class="badge badge--{{ recette.complexity }}">{{ recette.get_complexity_display }}</span>
+                {% if recette.prep_time or recette.cook_time %}
+                <span class="recette-card__time">
+                    ⏱ {% if recette.prep_time and recette.cook_time %}{{ recette.prep_time|add:recette.cook_time }} min{% elif recette.cook_time %}{{ recette.cook_time }} min{% else %}{{ recette.prep_time }} min{% endif %}
+                </span>
+                {% endif %}
+                {% if recette.note_moyenne %}
+                <span class="recette-card__note">★ {{ recette.note_moyenne|floatformat:1 }} ({{ recette.nb_avis }})</span>
+                {% endif %}
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>Aucune recette trouvée{% if q %} pour « {{ q }} »{% endif %}.</p>
+    {% if q or categorie or saison or complexite %}
+    <a href="{% url 'menu:liste_recettes' %}">Voir toutes les recettes</a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

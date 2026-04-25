@@ -29,6 +29,7 @@
         <div class="nav__links">
             {% if user.is_authenticated %}
             <a href="{% url 'menu:planning' %}">Planning</a>
+            <a href="{% url 'menu:liste_recettes' %}">Recettes</a>
             <span>{{ user.first_name|default:user.email }}</span>
             <form method="post" action="{% url 'menu:deconnexion' %}">
                 {% csrf_token %}

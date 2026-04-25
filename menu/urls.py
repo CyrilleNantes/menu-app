@@ -11,4 +11,7 @@ urlpatterns = [
     path("famille/inviter/<uuid:token>/", views.rejoindre_famille, name="rejoindre_famille"),
     path("famille/rejoindre/", views.rejoindre_famille_page, name="rejoindre_famille_page"),
     path("planning/", views.planning, name="planning"),
+    path("recettes/", views.liste_recettes, name="liste_recettes"),
+    path("recettes/<int:id>/", views.detail_recette, name="detail_recette"),
+    path("recettes/<int:id>/cuisine/", views.mode_cuisine, name="mode_cuisine"),
 ]
