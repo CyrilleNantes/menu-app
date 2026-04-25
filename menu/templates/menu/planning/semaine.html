@@ -118,24 +118,88 @@
 </div>
 
 <!-- ── Propositions (Cuisinier) ─────────────────────────────── -->
-{% if is_cuisinier and proposals %}
-<section class="planning-proposals">
-    <h2 class="planning-proposals__title">💡 Propositions ({{ proposals|length }})</h2>
-    <ul class="proposals-list">
+{% if is_cuisinier %}
+<section class="planning-proposals" id="proposals-section">
+    <h2 class="planning-proposals__title">
+        💡 Propositions
+        <span class="proposals-count" id="proposals-count">{% if proposals %}({{ proposals|length }}){% endif %}</span>
+    </h2>
+    {% if proposals %}
+    <ul class="proposals-list" id="proposals-list">
         {% for p in proposals %}
-        <li class="proposals-list__item">
-            <a href="{% url 'menu:detail_recette' p.recipe.id %}" class="proposals-list__recipe">
-                {{ p.recipe.title }}
-            </a>
-            <span class="proposals-list__by text-muted">
-                — {{ p.proposed_by.first_name|default:p.proposed_by.email }}
-            </span>
+        <li class="proposals-list__item" id="proposal-{{ p.id }}">
+            <div class="proposals-list__header">
+                <a href="{% url 'menu:detail_recette' p.recipe.id %}" class="proposals-list__recipe">
+                    {{ p.recipe.title }}
+                </a>
+                <span class="proposals-list__by text-muted">
+                    par {{ p.proposed_by.first_name|default:p.proposed_by.email }}
+                </span>
+                <span class="proposals-list__date text-muted">{{ p.created_at|date:"d/m" }}</span>
+            </div>
             {% if p.message %}
             <p class="proposals-list__msg">{{ p.message }}</p>
             {% endif %}
+            <div class="proposals-list__actions">
+                <div class="proposal-place">
+                    <select class="proposal-slot-select" aria-label="Choisir un créneau">
+                        <option value="">— Placer dans… —</option>
+                        {% for day in grid %}
+                        <option value="{{ day.date|date:'Y-m-d' }}__lunch">{{ day.day_name }} midi</option>
+                        <option value="{{ day.date|date:'Y-m-d' }}__dinner">{{ day.day_name }} soir</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button"
+                            class="btn-place-proposal btn btn--primary btn--sm"
+                            data-proposal-id="{{ p.id }}"
+                            data-recipe-id="{{ p.recipe.id }}"
+                            data-recipe-title="{{ p.recipe.title }}">
+                        ✓ Placer
+                    </button>
+                </div>
+                <button type="button"
+                        class="btn-ignore-proposal btn btn--secondary btn--sm"
+                        data-proposal-id="{{ p.id }}">
+                    ✕ Ignorer
+                </button>
+            </div>
         </li>
         {% endfor %}
     </ul>
+    {% else %}
+    <p class="text-muted" id="proposals-empty">Aucune proposition pour cette semaine.</p>
+    {% endif %}
+</section>
+{% endif %}
+
+<!-- ── Mes propositions (Convive) ───────────────────────────── -->
+{% if not is_cuisinier %}
+<section class="planning-proposals" id="user-proposals-section">
+    <h2 class="planning-proposals__title">💡 Mes propositions</h2>
+    {% if user_proposals %}
+    <ul class="proposals-list" id="user-proposals-list">
+        {% for p in user_proposals %}
+        <li class="proposals-list__item" id="user-proposal-{{ p.id }}">
+            <div class="proposals-list__header">
+                <span class="proposals-list__recipe">{{ p.recipe.title }}</span>
+                <span class="proposals-list__date text-muted">{{ p.created_at|date:"d/m" }}</span>
+            </div>
+            {% if p.message %}
+            <p class="proposals-list__msg">{{ p.message }}</p>
+            {% endif %}
+            <div class="proposals-list__actions">
+                <button type="button"
+                        class="btn-cancel-my-proposal btn btn--secondary btn--sm"
+                        data-proposal-id="{{ p.id }}">
+                    ✕ Annuler ma proposition
+                </button>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted" id="user-proposals-empty">Tu n'as pas encore proposé de recette cette semaine.</p>
+    {% endif %}
 </section>
 {% endif %}
 

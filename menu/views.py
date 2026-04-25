@@ -242,13 +242,23 @@ def planning_semaine(request, year, week):
             total_calories += (m.recipe.calories_per_serving or 0) * n
             total_proteins += (m.recipe.proteins_per_serving or 0) * n
 
-    # Propositions (visibles par le Cuisinier)
-    proposals = []
     is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
+
+    # Propositions visibles par le Cuisinier
+    proposals = []
     if is_cuisinier:
         proposals = list(
             MealProposal.objects.filter(week_plan=plan)
             .select_related("recipe", "proposed_by")
+            .order_by("-created_at")
+        )
+
+    # Propositions du Convive connecté pour cette semaine
+    user_proposals = []
+    if not is_cuisinier:
+        user_proposals = list(
+            MealProposal.objects.filter(week_plan=plan, proposed_by=request.user)
+            .select_related("recipe")
             .order_by("-created_at")
         )
 
@@ -272,6 +282,7 @@ def planning_semaine(request, year, week):
         "total_calories": round(total_calories) if total_calories else None,
         "total_proteins": round(total_proteins, 1) if total_proteins else None,
         "proposals": proposals,
+        "user_proposals": user_proposals,
         "is_cuisinier": is_cuisinier,
         # Pour le dialog "restes" : tous les repas avec recette de cette semaine
         "meals_avec_recette": [
@@ -415,6 +426,26 @@ def proposer_repas(request, plan_id):
         "recipe_title": recipe.title,
         "proposed_by": request.user.first_name or request.user.email,
     })
+
+
+@require_POST
+@login_required
+def supprimer_proposition(request, proposal_id):
+    """Supprime une proposition — accessible au Cuisinier (ignorer) et au Convive proposant (annuler)."""
+    proposal = get_object_or_404(MealProposal, pk=proposal_id)
+    profile  = _get_profile(request)
+
+    if not profile or profile.family != proposal.family:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
+    is_proposer  = proposal.proposed_by == request.user
+
+    if not is_cuisinier and not is_proposer:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    proposal.delete()
+    return JsonResponse({"ok": True})
 
 
 @login_required

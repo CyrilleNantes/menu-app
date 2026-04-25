@@ -275,7 +275,10 @@
                 const data = await resp.json();
                 if (data.ok) {
                     dlg.close();
-                    alert(`Proposition envoyée : "${data.recipe_title}"`);
+                    // Confirmation dans l'UI plutôt qu'une alerte
+                    showFlash(`✅ Proposition envoyée : "${data.recipe_title}"`, 'success');
+                    // Ajouter à "Mes propositions" sans rechargement
+                    appendUserProposal(data.proposal_id, data.recipe_title, body.message);
                 } else {
                     alert(`Erreur : ${data.error}`);
                 }
@@ -285,6 +288,162 @@
         });
 
         document.getElementById('btn-cancel-propose')?.addEventListener('click', () => dlg.close());
+
+        // ── Annuler ma proposition (Convive) ─────────────────────────────
+        document.addEventListener('click', async e => {
+            const btn = e.target.closest('.btn-cancel-my-proposal');
+            if (!btn) return;
+            const pid = btn.dataset.proposalId;
+            if (!confirm('Annuler cette proposition ?')) return;
+            await deleteProposal(pid, `user-proposal-${pid}`, 'user-proposals-empty',
+                'user-proposals-list', 'Tu n\'as pas encore proposé de recette cette semaine.');
+        });
+    }
+
+    // ── Cuisinier : Placer / Ignorer des propositions ─────────────────────
+
+    if (IS_COOK) {
+
+        // Placer une proposition dans un créneau
+        document.addEventListener('click', async e => {
+            const btn = e.target.closest('.btn-place-proposal');
+            if (!btn) return;
+
+            const li     = btn.closest('.proposals-list__item');
+            const select = li?.querySelector('.proposal-slot-select');
+            if (!select?.value) {
+                alert('Choisissez un créneau dans la liste déroulante.');
+                return;
+            }
+
+            const [dateStr, mealTime] = select.value.split('__');
+            const recipeId    = parseInt(btn.dataset.recipeId, 10);
+            const recipeTitle = btn.dataset.recipeTitle;
+            const proposalId  = btn.dataset.proposalId;
+
+            const body = {
+                date:           dateStr,
+                meal_time:      mealTime,
+                recipe_id:      recipeId,
+                servings_count: null,
+                is_leftovers:   false,
+                source_meal_id: null,
+            };
+
+            btn.disabled = true;
+            try {
+                const resp = await fetch(`/planning/${PLAN_ID}/meal/`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                    body:    JSON.stringify(body),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    updateSlotDOM(dateStr, mealTime, data);
+                    // Supprimer la proposition placée
+                    await deleteProposal(proposalId, `proposal-${proposalId}`, 'proposals-empty',
+                        'proposals-list', 'Aucune proposition pour cette semaine.');
+                    updateProposalCount(-1);
+                    showFlash(`✅ "${recipeTitle}" placé dans le planning.`, 'success');
+                } else {
+                    btn.disabled = false;
+                    alert(`Erreur : ${data.error}`);
+                }
+            } catch {
+                btn.disabled = false;
+                alert('Erreur de connexion.');
+            }
+        });
+
+        // Ignorer une proposition
+        document.addEventListener('click', async e => {
+            const btn = e.target.closest('.btn-ignore-proposal');
+            if (!btn) return;
+            const pid = btn.dataset.proposalId;
+            if (!confirm('Ignorer cette proposition ?')) return;
+            const ok = await deleteProposal(pid, `proposal-${pid}`, 'proposals-empty',
+                'proposals-list', 'Aucune proposition pour cette semaine.');
+            if (ok) updateProposalCount(-1);
+        });
+    }
+
+    // ── Helpers propositions ──────────────────────────────────────────────
+
+    async function deleteProposal(proposalId, liId, emptyId, listId, emptyText) {
+        try {
+            const resp = await fetch(`/planning/proposition/${proposalId}/supprimer/`, {
+                method: 'POST', headers: { 'X-CSRFToken': CSRF },
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                const li   = document.getElementById(liId);
+                const list = document.getElementById(listId);
+                if (li) li.remove();
+                if (list && list.children.length === 0) {
+                    const empty = document.createElement('p');
+                    empty.id        = emptyId;
+                    empty.className = 'text-muted';
+                    empty.textContent = emptyText;
+                    list.parentNode.insertBefore(empty, list);
+                    list.remove();
+                }
+                return true;
+            }
+        } catch { /* silencieux */ }
+        return false;
+    }
+
+    function updateProposalCount(delta) {
+        const el = document.getElementById('proposals-count');
+        if (!el) return;
+        const m = el.textContent.match(/\d+/);
+        const n = m ? parseInt(m[0], 10) + delta : 0;
+        el.textContent = n > 0 ? `(${n})` : '';
+    }
+
+    function appendUserProposal(proposalId, recipeTitle, message) {
+        const list     = document.getElementById('user-proposals-list');
+        const emptyEl  = document.getElementById('user-proposals-empty');
+        const section  = document.getElementById('user-proposals-section');
+        if (!section) return;
+
+        // Créer la liste si elle n'existe pas encore
+        let ul = list;
+        if (!ul) {
+            ul = document.createElement('ul');
+            ul.className = 'proposals-list';
+            ul.id        = 'user-proposals-list';
+            if (emptyEl) { emptyEl.replaceWith(ul); } else { section.appendChild(ul); }
+        }
+
+        const li = document.createElement('li');
+        li.className = 'proposals-list__item';
+        li.id        = `user-proposal-${proposalId}`;
+        li.innerHTML = `
+            <div class="proposals-list__header">
+                <span class="proposals-list__recipe">${escHtml(recipeTitle)}</span>
+                <span class="proposals-list__date text-muted">Aujourd'hui</span>
+            </div>
+            ${message ? `<p class="proposals-list__msg">${escHtml(message)}</p>` : ''}
+            <div class="proposals-list__actions">
+                <button type="button" class="btn-cancel-my-proposal btn btn--secondary btn--sm"
+                        data-proposal-id="${proposalId}">
+                    ✕ Annuler ma proposition
+                </button>
+            </div>`;
+        ul.insertBefore(li, ul.firstChild);
+    }
+
+    function showFlash(message, type) {
+        const existing = document.getElementById('planning-flash');
+        if (existing) existing.remove();
+        const div = document.createElement('div');
+        div.id        = 'planning-flash';
+        div.className = `message message--${type === 'success' ? 'success' : 'error'}`;
+        div.textContent = message;
+        div.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:9999;max-width:90vw;';
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 3500);
     }
 
 })();

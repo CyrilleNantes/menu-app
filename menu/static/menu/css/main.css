@@ -324,10 +324,16 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .planning-proposals__title { font-size: 1rem; font-weight: 700; margin-bottom: .75rem; }
 .proposals-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
 .proposals-list__item { background: #fff; border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: .75rem 1rem; }
+.proposals-list__header { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .proposals-list__recipe { font-weight: 600; color: var(--color-primary); text-decoration: none; }
 .proposals-list__recipe:hover { text-decoration: underline; }
 .proposals-list__by { font-size: .85rem; }
+.proposals-list__date { font-size: .78rem; margin-left: auto; }
 .proposals-list__msg { font-size: .85rem; color: #444; margin-top: .35rem; font-style: italic; }
+.proposals-list__actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .6rem; }
+.proposal-place { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.proposal-slot-select { padding: .35rem .5rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .82rem; }
+.proposals-count { color: var(--color-muted); font-size: .85rem; font-weight: 400; }
 
 /* Dialog planning */
 .planning-dialog { border: none; border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.2); padding: 1.75rem; max-width: 420px; width: 94%; }
