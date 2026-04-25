@@ -5,7 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#2d6a4f">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Menu">
     <title>{% block title %}Menu Familial{% endblock %}</title>
+    <link rel="manifest" href="{% static 'menu/manifest.json' %}">
+    <link rel="apple-touch-icon" href="{% static 'menu/icons/icon-192.png' %}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{% static 'menu/icons/icon-192.png' %}">
     <link rel="stylesheet" href="{% static 'menu/css/main.css' %}">
     {% block extra_head %}{% endblock %}
 </head>
@@ -31,7 +38,10 @@
             <a href="{% url 'menu:planning' %}">Planning</a>
             <a href="{% url 'menu:liste_recettes' %}">Recettes</a>
             {% if user.is_staff %}<a href="{% url 'menu:backup_page' %}">Backup</a>{% endif %}
-            <span>{{ user.first_name|default:user.email }}</span>
+            <a href="{% url 'menu:profil' %}" class="nav__profil">
+                {{ user.first_name|default:user.email }}
+                {% if user_rank and user_rank.0 > 0 %}<span class="rank-badge rank-badge--nav">{{ user_rank.1 }}</span>{% endif %}
+            </a>
             <form method="post" action="{% url 'menu:deconnexion' %}">
                 {% csrf_token %}
                 <button type="submit">Déconnexion</button>
@@ -48,9 +58,21 @@
     </main>
 
     <footer class="footer">
-        <span>Menu Familial — v1.1</span>
+        <span>Menu Familial — v2.0</span>
     </footer>
 
     {% block extra_js %}{% endblock %}
+
+    <!-- Enregistrement du Service Worker (PWA) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                    .catch(function (err) {
+                        console.warn('SW registration failed:', err);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

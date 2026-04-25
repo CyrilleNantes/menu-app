@@ -1,0 +1,39 @@
+{
+  "name": "Menu Familial",
+  "short_name": "Menu",
+  "description": "Planifiez vos menus, gérez vos recettes et générez vos listes de courses en famille.",
+  "start_url": "/planning/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8f9fa",
+  "theme_color": "#2d6a4f",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/static/menu/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/menu/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Planning",
+      "url": "/planning/",
+      "description": "Voir le menu de la semaine"
+    },
+    {
+      "name": "Recettes",
+      "url": "/recettes/",
+      "description": "Parcourir le catalogue"
+    }
+  ],
+  "categories": ["food", "lifestyle"]
+}

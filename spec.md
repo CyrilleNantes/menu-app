@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v1.1** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-04-25
+> Version courante : **v2.0** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-04-26
 
 ---
 
@@ -125,7 +125,7 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 **URL de callback** : `/google/callback/` → `menu:google_callback`
 
 **Scopes requis** :
-- `https://www.googleapis.com/auth/calendar.events` (écriture événements)
+- `https://www.googleapis.com/auth/calendar.events` (écriture événements uniquement — moindre privilège)
 - `https://www.googleapis.com/auth/tasks` (écriture tâches)
 
 ### 3.3 Open Food Facts
@@ -186,8 +186,14 @@ Extension du modèle User Django. Un profil par utilisateur.
 | `dietary_tags` | `JSONField` | non | `[]` | Ex. `["gluten", "lactose"]` — liste fixe |
 | `google_calendar_id` | `CharField(200)` | oui | `null` | ID du calendrier Google cible |
 | `google_tasklist_id` | `CharField(200)` | oui | `null` | ID de la liste Google Tasks cible |
+| `lunch_start` | `TimeField` | non | `12:00` | Début déjeuner pour export Google Calendar |
+| `lunch_end` | `TimeField` | non | `13:00` | Fin déjeuner pour export Google Calendar |
+| `dinner_start` | `TimeField` | non | `20:30` | Début dîner pour export Google Calendar |
+| `dinner_end` | `TimeField` | non | `21:30` | Fin dîner pour export Google Calendar |
 
-**Propriété calculée `rank`** : calculée à partir du rôle et des contributions (non stockée en base).
+**Propriété calculée `rank`** : retourne `(level, name)` — calculée à partir du rôle et des contributions (non stockée en base).
+
+**Propriété calculée `rank_info`** : retourne un dict complet `{level, name, emoji, progress, next_name, next_threshold, metric, metric_label, current_threshold}` — utilisé dans les templates profil et detail recette.
 
 ---
 
@@ -339,6 +345,7 @@ Repas planifié dans un WeekPlan.
 | `servings_count` | `PositiveIntegerField` | oui | — | Nombre de parts à préparer |
 | `is_leftovers` | `BooleanField` | non | `False` | Ce repas = restes d'un autre |
 | `source_meal` | `ForeignKey('self')` | oui | `null` | Repas source des restes |
+| `google_event_id` | `CharField(200)` | non | `""` | ID de l'événement Google Calendar créé (vide si non exporté) |
 
 **Contrainte DB** : `(week_plan, date, meal_time)` unique.
 **Règle** : si `is_leftovers=True`, ce repas n'est pas pris en compte dans la génération de la liste de courses.
@@ -456,7 +463,8 @@ Article dans une liste de courses.
 
 **Vue** : `creer_recette(request)` / `modifier_recette(request, id)`
 **Template** : `menu/recettes/formulaire.html`
-**Accès** : Cuisinier uniquement
+**Accès création** : Cuisinier uniquement
+**Accès modification / suppression** : le Cuisinier créateur OU tout autre Cuisinier (catalogue global partagé entre familles)
 
 **Champs du formulaire** :
 - `title` : texte, obligatoire
@@ -580,7 +588,7 @@ Article dans une liste de courses.
 
 **Règles de gestion** :
 1. Passe `WeekPlan.status` de `draft` à `published`
-2. Déclenche la (re)génération automatique de la liste de courses (appel `services.py`)
+2. La liste de courses n'est **pas** générée automatiquement — le Cuisinier la génère manuellement depuis le toolbar du planning via `POST /courses/generer/<plan_id>/`
 
 **Réponse** :
 - Succès : redirection vers `/planning/<year>/<week>/` + message flash "Menu publié"
@@ -605,7 +613,7 @@ Article dans une liste de courses.
 
 **URL** : `POST /courses/generer/<plan_id>/` → `menu:generer_courses`
 **Vue** : `generer_courses(request, plan_id)`
-**Accès** : Cuisinier uniquement
+**Accès** : Cuisinier uniquement — plan `published` uniquement (le bouton n'apparaît pas sur un brouillon)
 
 **Règles de gestion** :
 1. Récupère tous les `Meal` du plan avec `is_leftovers=False` et `recipe` non null
@@ -665,11 +673,11 @@ Vue dédiée mobile avec :
 4. Titre de l'événement : titre de la recette
 
 **Gestion des erreurs** :
-- Google non connecté → redirection vers le flux OAuth
+- Google non connecté → message warning + redirection vers la page planning de la semaine
 - Erreur API Google → message flash + log
 
 **Réponse** :
-- Succès : message flash "Menu exporté vers Google Agenda"
+- Succès : message flash avec bilan (N créés / N mis à jour)
 
 ---
 
@@ -685,7 +693,7 @@ Vue dédiée mobile avec :
 3. Chaque article = une tâche avec titre `"{quantite} {unite} {nom}"`
 
 **Gestion des erreurs** :
-- Google non connecté → redirection vers le flux OAuth
+- Google non connecté → message warning + redirection vers la liste de courses
 - Erreur API Google → message flash + log
 
 ---
@@ -760,31 +768,12 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 
 ---
 
-> [LOG 2026-04-25] Étape 1 complétée — Structure Django initialisée : Procfile Railway, requirements.txt complet (httpx, django-allauth, cloudinary ajoutés), .env corrigé (ENVIRONMENT=dev), structure app menu/ créée (urls.py, views.py, forms.py, services.py, integrations/, templatetags/, templates/menu/, static/menu/). Template base.html mobile-first avec bannière IS_DEV et footer v1.1. Django system check : 0 issues. Migrations Django core appliquées. collectstatic : 131 fichiers.
-
----
-
-> [LOG 2026-04-25] Backup/Restore/Import recettes — Fix 404 : allauth.urls retiré de config/urls.py (sera réactivé étape 14 — c'est cette ligne qui bloquait le chargement de menu.urls). Backup complet : exporter_backup() sérialise User + 15 modèles en JSON zippé ; restaurer_backup() supprime dans l'ordre inverse (respecte PROTECT sur Family/Recipe/WeekPlan → User), restaure dans l'ordre, reset séquences PostgreSQL via pg_get_serial_sequence, puis logout automatique. Import recettes : importer_recette_depuis_json() supporte format {recipe:{...}} ou dict direct, idempotent (même titre = skip), gère groupes/ingrédients/étapes/sections. Vue import_recettes() accepte fichier JSON unique OU zip multi-JSON. URL : /backup/. Template menu/admin/backup.html : 2 cartes (Export + Restaurer) + section import recettes single/bulk. Nav : lien Backup visible aux is_staff. CSS : .backup-grid, .backup-card, .backup-import-grid.
-
-> [LOG 2026-04-25] Étape 6 complétée — API nutritionnelle Open Food Facts. integrations/openfoodfacts.py : rechercher_ingredient() via httpx sync (timeout 4s, MAX_RESULTS=5, fallback [] sur erreur), retourne {id, name, calories, proteins, carbs, fats} pour 100g. Vue recherche_nutrition (GET /api/ingredients/nutrition/) + URL. recette_form.js : debounce 400ms sur .ing-name → fetch OFF API → dropdown .nutrition-dropdown avec kcal/100g ; sélection remplit data attrs cal100/prot100/carbs100/fats100 + calcule contribution réelle (qty/100 × valeur100g) dans hidden inputs ; recalcul auto sur changement de qty. formulaire.html : champs hidden ing_calories/proteins/carbs/fats/off_id dans chaque ing-row (edit + création). services.py : sauvegarder_recette_depuis_post enrichi des 5 champs nutrition. CSS : .ing-name-wrap (position relative) + .nutrition-dropdown (position absolute z-index 100).
-
-> [LOG 2026-04-25] Étape 5 complétée — Création/édition/suppression recettes. integrations/cloudinary.py (upload avec fallback si CLOUDINARY_URL absent). services.py : sauvegarder_recette_depuis_post (parse POST groups/ings/steps/sections + re-création atomique) + calculer_macros_recette. RecipeForm ajouté à forms.py. Vues creer_recette, modifier_recette, supprimer_recette (soft delete + dialog <dialog>). recette_form.js : ajout/suppression dynamique groupes+ingrédients+étapes+sections avec re-indexation complète. allauth + django.contrib.sites ajoutés à INSTALLED_APPS, migrations appliquées.
-
-> [LOG 2026-04-25] Étape 4 complétée — Catalogue recettes (lecture) : vues liste_recettes (filtres catégorie/saison/complexité/recherche, tri) et detail_recette (prefetch groupes+ingrédients+étapes+sections+avis, note moyenne, alertes allergies par keywords). Templatetag format_timer. Stub mode_cuisine (étape 10). Templates liste.html (grid cards) + detail.html (ingrédients groupés, étapes numérotées avec timer, sections libres, avis). CSS catalogue complet. Nav mise à jour avec lien Recettes.
-
-> [LOG 2026-04-25] Étape 3 complétée — Authentification custom (sans allauth) : InscriptionForm (rôle Cuisinier/Convive, création famille automatique), vues inscription/connexion/déconnexion/rejoindre_famille. LOGIN_URL, AUTHENTICATION_BACKENDS configurés. Templates mobile-first : inscription.html (JS toggle champ famille), connexion.html, rejoindre.html, planning/index.html (placeholder). Nav mise à jour avec liens auth contextuels. CSS formulaires ajouté. Allauth configuré en amont (ACCOUNT_SIGNUP_FIELDS) pour étape 14.
-
-> [LOG 2026-04-25] Étape 2 complétée — 15 modèles créés dans models.py (Family, UserProfile, TokenOAuth, Recipe, IngredientGroup, Ingredient, RecipeStep, RecipeSection, Review, WeekPlan, Meal, MealProposal, ShoppingList, ShoppingItem, NotificationPreference). Tous enregistrés dans admin.py avec inlines et filtres. Migration 0001_initial appliquée sur Railway PostgreSQL. Commande `load_hachis_fixture` créée et testée : 3 groupes, 21 ingrédients, 6 étapes, 2 sections insérés sans erreur. Cas couverts validés : quantity_note champignons ('150–200g'), is_optional=True, timers 900s et 2100s.
-
----
-
 ## 9. Historique des migrations
 
 | Migration | Date | Description |
 |-----------|------|-------------|
 | `0001_initial` | 2026-04-25 | Schéma initial — tous les modèles |
-
-> [REVIEW 2026-04-25] `Ingredient` : ajout du champ `quantity_note (CharField 50, nullable)` — détecté lors du mapping de la recette Hachis Parmentier (cas des quantités en fourchette). La migration `0001_initial` intègre ce champ dès le départ.
+| `0002_calendar_fields` | 2026-04-26 | `UserProfile` : créneaux Google Calendar (4 TimeField) — `Meal` : `google_event_id` |
 
 ---
 
@@ -794,3 +783,34 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 |---------|------|-------------|
 | v1.0 | 2026-04-25 | Initialisation du projet — spec complète |
 | v1.1 | 2026-04-25 | Ajout `Ingredient.quantity_note` + fixture Hachis Parmentier |
+| v2.0 | 2026-04-26 | Application complète — Phases 1, 2 et 3 livrées (16 étapes) |
+
+### Détail v2.0
+
+**Phase 1 — MVP Core (étapes 1–9)**
+- Structure Django : Procfile, requirements, settings dev/prod, context processor `IS_DEV`
+- 15 modèles, migration initiale, fixture Hachis Parmentier
+- Authentification email (inscription avec rôle, connexion, invitation famille par token)
+- Catalogue recettes : liste avec filtres/tri/recherche, fiche complète avec infos nutritionnelles et alertes allergies
+- Création/édition/suppression de recettes (Cloudinary, macros calculées, soft delete)
+- API nutritionnelle Open Food Facts (suggestions ingrédients en temps réel)
+- Planning hebdomadaire : grille 7j×2, AJAX, restes, publication, indicateurs nutritionnels
+- Liste de courses : génération automatique agrégée, cochage AJAX avec optimistic UI
+- PWA installable : manifest, service worker (cache-first/network-first), icônes, offline recettes
+- Backup/Restore/Import recettes (ZIP + JSON) réservé aux is_staff
+
+**Phase 2 — Mode Cuisine & Social (étapes 10–13)**
+- Mode Cuisine mobile : étapes cochables, timers (Web Audio API), thème sombre, défilement auto
+- Notation étoiles 1–5 (AJAX, historique multi-avis, avis famille)
+- Propositions enrichies : placer dans un créneau, ignorer (Cuisinier), annuler (Convive)
+- Gamification : rangs Cuisinier (Commis→Chef Exécutif) et Convive (Convive→Guide Michelin), page profil avec progression
+
+**Phase 3 — Intégrations Google (étapes 14–16)**
+- OAuth 2.0 Google custom (httpx, state CSRF, TokenOAuth, auto-refresh)
+- Export Google Calendar : un événement par repas, créneaux configurables, create/update idempotent
+- Export Google Tasks : une tâche par article non coché, format `{qty} {unité} {nom}`
+
+**Revue de cohérence (2026-04-26)**
+- Scope OAuth aligné sur `calendar.events` (moindre privilège)
+- Spec 4.3/4.11 complétée (champs ajoutés en migration 0002)
+- Règles publication planning et comportement Google non connecté corrigés dans la spec

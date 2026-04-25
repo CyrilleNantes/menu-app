@@ -1,10 +1,10 @@
 {% extends "menu/base.html" %}
-{% load menu_extras %}
+{% load static menu_extras %}
 
 {% block title %}{{ recipe.title }} — Menu Familial{% endblock %}
 
 {% block content %}
-<div class="recette-detail">
+<div class="recette-detail" id="recette-detail" data-recipe-id="{{ recipe.id }}">
 
     {% if alertes %}
     <div class="alerte-allergies">
@@ -35,14 +35,15 @@
                 <span>👥 {{ recipe.base_servings }} personnes</span>
                 {% if recipe.cuisine_type %}<span>🌍 {{ recipe.cuisine_type }}</span>{% endif %}
             </div>
-            {% if note_moyenne %}
-            <div class="recette-detail__note">
-                <span class="stars">{% for i in "12345" %}{% if forloop.counter <= note_moyenne|floatformat:"0"|add:"0" %}★{% else %}☆{% endif %}{% endfor %}</span>
-                <span>{{ note_moyenne|floatformat:1 }}/5 — {{ nb_avis }} avis</span>
+            <div class="recette-detail__note" id="note-display">
+                {% if note_moyenne %}
+                <span class="stars" id="note-stars">{% for i in "12345" %}{% if forloop.counter <= note_moyenne|floatformat:"0"|add:"0" %}★{% else %}☆{% endif %}{% endfor %}</span>
+                <span id="note-text">{{ note_moyenne|floatformat:1 }}/5 — <span id="nb-avis">{{ nb_avis }}</span> avis</span>
+                {% else %}
+                <span class="stars" id="note-stars">☆☆☆☆☆</span>
+                <span id="note-text">Pas encore d'avis — <span id="nb-avis">0</span></span>
+                {% endif %}
             </div>
-            {% else %}
-            <p class="text-muted">Pas encore d'avis</p>
-            {% endif %}
             <a href="{% url 'menu:mode_cuisine' recipe.id %}" class="btn btn--primary" style="margin-top:.75rem">
                 👨‍🍳 Mode Cuisine
             </a>
@@ -117,24 +118,73 @@
     </section>
     {% endfor %}
 
-    <!-- Avis -->
+    <!-- ── Donner mon avis ───────────────────────────────────── -->
+    <section class="recette-section" id="section-noter">
+        <h2>Donner mon avis</h2>
+
+        {% if user_last_review %}
+        <div class="avis-mon-avis">
+            <span class="avis-mon-avis__label">Mon dernier avis :</span>
+            <span class="stars avis-mon-avis__stars">{% for i in "12345" %}{% if forloop.counter <= user_last_review.stars %}★{% else %}☆{% endif %}{% endfor %}</span>
+            <span class="text-muted avis-mon-avis__date">{{ user_last_review.created_at|date:"d/m/Y" }}</span>
+            {% if user_last_review.comment %}<p class="avis-mon-avis__comment">{{ user_last_review.comment }}</p>{% endif %}
+        </div>
+        {% endif %}
+
+        <div id="noter-form-wrap">
+            <div class="star-selector" id="star-selector" role="group" aria-label="Choisir une note">
+                {% for i in "12345" %}
+                <button type="button" class="star-btn" data-value="{{ forloop.counter }}" aria-label="{{ forloop.counter }} étoile{{ forloop.counter|pluralize }}">★</button>
+                {% endfor %}
+            </div>
+            <input type="hidden" id="stars-value" value="0">
+            <textarea id="noter-comment" rows="2" placeholder="Commentaire (optionnel)…" class="input-sm" style="margin-top:.5rem"></textarea>
+            <button type="button" id="btn-noter" class="btn btn--primary" style="margin-top:.5rem" disabled>
+                Envoyer mon avis
+            </button>
+        </div>
+        <div id="noter-confirm" class="avis-confirm" style="display:none">
+            ✅ Merci pour ton avis !
+        </div>
+    </section>
+
+    <!-- ── Avis de ma famille ────────────────────────────────── -->
+    {% if family_reviews %}
     <section class="recette-section">
-        <h2>Avis ({{ nb_avis }})</h2>
-        {% if recipe.reviews.all %}
-        <ul class="avis-list">
-            {% for avis in recipe.reviews.all %}
+        <h2>👨‍👩‍👧 Avis de ma famille</h2>
+        <ul class="avis-list" id="avis-famille-list">
+            {% for avis in family_reviews %}
             <li class="avis-item">
                 <div class="avis-item__header">
                     <span class="avis-item__user">{{ avis.user.first_name|default:avis.user.email }}</span>
-                    <span class="avis-item__stars">{% for i in "12345" %}{% if forloop.counter <= avis.stars %}★{% else %}☆{% endif %}{% endfor %}</span>
+                    <span class="avis-item__stars stars">{% for i in "12345" %}{% if forloop.counter <= avis.stars %}★{% else %}☆{% endif %}{% endfor %}</span>
                     <span class="avis-item__date text-muted">{{ avis.created_at|date:"d/m/Y" }}</span>
                 </div>
                 {% if avis.comment %}<p class="avis-item__comment">{{ avis.comment }}</p>{% endif %}
             </li>
             {% endfor %}
         </ul>
-        {% else %}
-        <p class="text-muted">Aucun avis pour le moment.</p>
+    </section>
+    {% endif %}
+
+    <!-- ── Tous les avis ─────────────────────────────────────── -->
+    <section class="recette-section">
+        <h2>Tous les avis <span class="text-muted" style="font-size:.85rem">(<span id="nb-avis-titre">{{ nb_avis }}</span>)</span></h2>
+        <ul class="avis-list" id="avis-list">
+            {% for avis, avis_rank in all_reviews %}
+            <li class="avis-item">
+                <div class="avis-item__header">
+                    <span class="avis-item__user">{{ avis.user.first_name|default:avis.user.email }}</span>
+                    {% if avis_rank.0 > 0 %}<span class="rank-badge rank-badge--sm">{{ avis_rank.1 }}</span>{% endif %}
+                    <span class="avis-item__stars stars">{% for i in "12345" %}{% if forloop.counter <= avis.stars %}★{% else %}☆{% endif %}{% endfor %}</span>
+                    <span class="avis-item__date text-muted">{{ avis.created_at|date:"d/m/Y" }}</span>
+                </div>
+                {% if avis.comment %}<p class="avis-item__comment">{{ avis.comment }}</p>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% if not all_reviews %}
+        <p class="text-muted" id="avis-empty">Aucun avis pour le moment. Sois le premier !</p>
         {% endif %}
     </section>
 
@@ -146,4 +196,10 @@
     </div>
 
 </div>
+
+<input type="hidden" id="csrf-token" value="{{ csrf_token }}">
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'menu/js/notation.js' %}" defer></script>
 {% endblock %}

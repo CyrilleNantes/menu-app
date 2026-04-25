@@ -1,0 +1,100 @@
+{% extends "menu/base.html" %}
+{% load static %}
+
+{% block title %}Liste de courses — {{ plan.period_start|date:"d/m" }} au {{ plan.period_end|date:"d/m/Y" }}{% endblock %}
+
+{% block content %}
+
+<!-- ── En-tête ────────────────────────────────────────────────── -->
+<div class="courses-header">
+    <a href="{% url 'menu:planning_semaine' year week %}" class="btn btn--secondary btn--sm">← Retour au planning</a>
+    <div class="courses-header__info">
+        <h1 class="courses-header__title">🛒 Liste de courses</h1>
+        <span class="courses-header__week text-muted">Semaine {{ week }} — {{ plan.period_start|date:"d/m" }} au {{ plan.period_end|date:"d/m/Y" }}</span>
+    </div>
+    {% if is_cuisinier %}
+    <form method="post" action="{% url 'menu:generer_courses' plan.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--primary btn--sm">
+            {% if shopping_list %}🔄 Régénérer{% else %}⚡ Générer{% endif %}
+        </button>
+    </form>
+    {% endif %}
+    {% if shopping_list and google_connected %}
+    <form method="post" action="{% url 'menu:export_tasks' plan.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm">✅ Exporter vers Google Tasks</button>
+    </form>
+    {% endif %}
+</div>
+
+{% if not shopping_list %}
+
+<!-- ── Pas encore de liste ───────────────────────────────────── -->
+<div class="courses-empty">
+    <p class="courses-empty__text">Aucune liste générée pour cette semaine.</p>
+    {% if is_cuisinier %}
+    <p class="text-muted" style="font-size:.9rem">Ajoutez des repas au planning puis cliquez sur <strong>Générer</strong>.</p>
+    {% endif %}
+</div>
+
+{% else %}
+
+<!-- ── Barre de progression ─────────────────────────────────── -->
+{% if nb_total > 0 %}
+<div class="courses-progress">
+    <div class="courses-progress__bar">
+        <div class="courses-progress__fill"
+             style="width: {% widthratio nb_checked nb_total 100 %}%"></div>
+    </div>
+    <span class="courses-progress__label">{{ nb_checked }} / {{ nb_total }} articles cochés</span>
+</div>
+{% endif %}
+
+<!-- ── Groupes par catégorie ─────────────────────────────────── -->
+{% if groups %}
+{% for category, items in groups.items %}
+<section class="courses-group">
+    <h2 class="courses-group__title">{{ category }}</h2>
+    <ul class="courses-list">
+        {% for item in items %}
+        <li class="shopping-item{% if item.checked %} shopping-item--checked{% endif %}"
+            data-id="{{ item.id }}"
+            role="button"
+            tabindex="0"
+            aria-pressed="{{ item.checked|yesno:'true,false' }}">
+            <span class="shopping-item__check">{% if item.checked %}✓{% endif %}</span>
+            <span class="shopping-item__name">{{ item.name }}</span>
+            {% if item.quantity or item.unit %}
+            <span class="shopping-item__qty text-muted">
+                {% if item.quantity %}{{ item.quantity|floatformat:"-2" }}{% endif %}
+                {% if item.unit %}{{ item.unit }}{% endif %}
+            </span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endfor %}
+{% else %}
+<p class="text-muted" style="text-align:center;margin-top:2rem">
+    Aucun ingrédient trouvé — vérifiez que vos recettes ont bien des ingrédients.
+</p>
+{% endif %}
+
+<!-- Date de génération -->
+<p class="courses-generated text-muted">
+    Générée le {{ shopping_list.generated_at|date:"d/m/Y à H\hi" }}
+    — {{ nb_total }} article{{ nb_total|pluralize }}
+</p>
+
+{% endif %}
+
+<!-- Token CSRF pour les requêtes AJAX -->
+<input type="hidden" id="csrf-token" value="{{ csrf_token }}">
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'menu/js/courses.js' %}" defer></script>
+{% endblock %}
