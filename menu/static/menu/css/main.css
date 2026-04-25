@@ -274,6 +274,85 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .backup-import-form { display: flex; flex-direction: column; gap: .5rem; }
 .backup-file-input { font-size: .88rem; }
 
+/* ── Planning hebdomadaire ──────────────────────────────────────────────── */
+
+/* Navigation semaine */
+.planning-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+.planning-nav__arrow { font-size: 1.5rem; color: var(--color-primary); text-decoration: none; padding: .25rem .5rem; border-radius: var(--radius); transition: background .15s; }
+.planning-nav__arrow:hover { background: rgba(45,106,79,.1); }
+.planning-nav__center { text-align: center; }
+.planning-nav__title { font-size: 1.3rem; font-weight: 700; color: var(--color-primary); margin: 0; }
+.planning-nav__dates { font-size: .85rem; color: var(--color-muted); }
+
+/* Toolbar */
+.planning-toolbar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.inline-form { display: inline; }
+
+/* Bilan nutritionnel */
+.planning-nutri { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: .75rem 1rem; display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; font-size: .9rem; }
+.planning-nutri__item { display: flex; align-items: center; gap: .35rem; }
+
+/* Grille des jours */
+.planning-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: .75rem; }
+
+/* Carte jour */
+.day-card { background: #fff; border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,.07); overflow: hidden; display: flex; flex-direction: column; }
+.day-card__header { background: var(--color-primary); color: #fff; padding: .5rem .75rem; }
+.day-card__name { display: block; font-weight: 700; font-size: .9rem; }
+.day-card__date { font-size: .75rem; opacity: .8; }
+
+/* Créneau repas */
+.meal-slot { padding: .6rem .75rem; border-top: 1px solid #f0f0f0; cursor: default; transition: background .15s; flex: 1; }
+.meal-slot[data-editable] { cursor: pointer; }
+.meal-slot[data-editable]:hover { background: #f0faf5; }
+.meal-slot__time { display: block; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted); margin-bottom: .3rem; }
+.meal-slot__body { font-size: .82rem; }
+.meal-slot__recipe { display: block; font-weight: 600; color: var(--color-text); line-height: 1.3; }
+.meal-slot__meta { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .25rem; color: var(--color-muted); font-size: .75rem; }
+.meal-slot__empty { color: var(--color-muted); font-style: italic; font-size: .8rem; }
+.meal-slot--filled { background: #f0faf5; }
+.meal-slot--leftovers { border-left: 3px solid var(--color-accent); }
+
+/* Badges */
+.badge { display: inline-block; padding: .15rem .5rem; border-radius: 99px; font-size: .72rem; font-weight: 700; }
+.badge--draft { background: #fff3cd; color: #664d03; }
+.badge--published { background: #d1e7dd; color: #0a3622; }
+.badge--leftovers { background: #ffe8cc; color: #7c4700; }
+
+/* Propositions */
+.planning-proposals { margin-top: 2rem; }
+.planning-proposals__title { font-size: 1rem; font-weight: 700; margin-bottom: .75rem; }
+.proposals-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
+.proposals-list__item { background: #fff; border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: .75rem 1rem; }
+.proposals-list__recipe { font-weight: 600; color: var(--color-primary); text-decoration: none; }
+.proposals-list__recipe:hover { text-decoration: underline; }
+.proposals-list__by { font-size: .85rem; }
+.proposals-list__msg { font-size: .85rem; color: #444; margin-top: .35rem; font-style: italic; }
+
+/* Dialog planning */
+.planning-dialog { border: none; border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.2); padding: 1.75rem; max-width: 420px; width: 94%; }
+.planning-dialog::backdrop { background: rgba(0,0,0,.45); }
+.planning-dialog__title { font-size: 1.1rem; font-weight: 700; margin-bottom: .35rem; }
+.planning-dialog__slot { font-size: .88rem; color: var(--color-muted); margin-bottom: 1.1rem; }
+.planning-dialog__actions { display: flex; gap: .75rem; margin-top: 1.25rem; }
+
+/* Recherche de recette dans dialog */
+.recipe-search-wrap { position: relative; }
+.recipe-search-input { width: 100%; padding: .5rem .7rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .9rem; }
+.recipe-search-results { position: absolute; z-index: 200; background: #fff; border: 1.5px solid #ced4da; border-radius: var(--radius); width: 100%; max-height: 220px; overflow-y: auto; list-style: none; box-shadow: var(--shadow); top: calc(100% + 3px); left: 0; padding: .25rem 0; }
+.recipe-search-item { padding: .5rem .75rem; cursor: pointer; font-size: .88rem; }
+.recipe-search-item:hover { background: #f0faf5; color: var(--color-primary); }
+
+/* Info recette sélectionnée */
+.meal-selected-info { display: flex; align-items: center; gap: .5rem; margin-top: .4rem; }
+.meal-selected-info__name { font-size: .88rem; font-weight: 600; }
+
+/* Input court */
+.input-short { width: 90px; padding: .45rem .6rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .9rem; }
+
+/* Textarea compact */
+.input-sm { width: 100%; padding: .5rem .7rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .9rem; resize: vertical; font-family: inherit; }
+
 @media (max-width: 600px) {
     .form-row--3 { grid-template-columns: 1fr; }
     .form-row--2 { grid-template-columns: 1fr; }
@@ -281,4 +360,7 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
     .ing-qty-note, .ing-category { display: none; }
     .backup-grid { grid-template-columns: 1fr; }
     .backup-import-grid { grid-template-columns: 1fr; }
+    /* Planning : 2 colonnes sur mobile */
+    .planning-grid { grid-template-columns: repeat(2, 1fr); }
+    .planning-nav__title { font-size: 1.1rem; }
 }

@@ -1,12 +1,13 @@
 import json
 import logging
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.db.models import Avg, Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,7 +16,7 @@ from django.views.decorators.http import require_POST
 from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
 from .integrations.openfoodfacts import rechercher_ingredient
-from .models import Family, Ingredient, Recipe, UserProfile
+from .models import Family, Ingredient, Meal, MealProposal, Recipe, UserProfile, WeekPlan
 from .services import (
     exporter_backup,
     importer_recette_depuis_json,
@@ -151,18 +152,275 @@ def rejoindre_famille_page(request):
     return render(request, "menu/auth/rejoindre.html")
 
 
+def _get_profile(request):
+    """Retourne le profil utilisateur ou None."""
+    try:
+        return request.user.profile
+    except UserProfile.DoesNotExist:
+        return None
+
+
+# ─── Planning hebdomadaire ────────────────────────────────────────────────────
+
 @login_required
 def planning(request):
-    # Placeholder — implémenté à l'étape 7
-    try:
-        profile = request.user.profile
-    except UserProfile.DoesNotExist:
+    """Redirige vers le planning de la semaine courante."""
+    profile = _get_profile(request)
+    if not profile:
         return redirect("menu:rejoindre_famille_page")
+    if not profile.family:
+        return redirect("menu:rejoindre_famille_page")
+    iso = date.today().isocalendar()
+    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
 
+
+@login_required
+def planning_semaine(request, year, week):
+    profile = _get_profile(request)
+    if not profile:
+        return redirect("menu:rejoindre_famille_page")
     if not profile.family:
         return redirect("menu:rejoindre_famille_page")
 
-    return render(request, "menu/planning/index.html")
+    try:
+        week_start = date.fromisocalendar(year, week, 1)   # lundi
+    except ValueError:
+        return redirect("menu:planning")
+    week_end = week_start + timedelta(days=6)              # dimanche
+
+    # Créer le WeekPlan s'il n'existe pas encore
+    with transaction.atomic():
+        plan, _ = WeekPlan.objects.get_or_create(
+            family=profile.family,
+            period_start=week_start,
+            defaults={
+                "period_end": week_end,
+                "created_by": request.user,
+                "status": "draft",
+            },
+        )
+
+    # Repas de la semaine
+    meals_qs = (
+        Meal.objects.filter(week_plan=plan)
+        .select_related("recipe", "source_meal__recipe")
+    )
+    meal_by_slot = {(m.date, m.meal_time): m for m in meals_qs}
+
+    # Construction de la grille
+    JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+    grid = []
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        grid.append({
+            "date": d,
+            "day_name": JOURS_FR[i],
+            "lunch": meal_by_slot.get((d, "lunch")),
+            "dinner": meal_by_slot.get((d, "dinner")),
+        })
+
+    # Indicateurs nutritionnels de la semaine
+    total_calories = total_proteins = 0.0
+    for m in meals_qs:
+        if not m.is_leftovers and m.recipe:
+            n = m.servings_count or m.recipe.base_servings or 1
+            total_calories += (m.recipe.calories_per_serving or 0) * n
+            total_proteins += (m.recipe.proteins_per_serving or 0) * n
+
+    # Propositions (visibles par le Cuisinier)
+    proposals = []
+    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
+    if is_cuisinier:
+        proposals = list(
+            MealProposal.objects.filter(week_plan=plan)
+            .select_related("recipe", "proposed_by")
+            .order_by("-created_at")
+        )
+
+    # Navigation prev/next
+    prev_monday = week_start - timedelta(days=7)
+    next_monday = week_start + timedelta(days=7)
+    prev_iso = prev_monday.isocalendar()
+    next_iso = next_monday.isocalendar()
+
+    ctx = {
+        "plan": plan,
+        "grid": grid,
+        "week_start": week_start,
+        "week_end": week_end,
+        "year": year,
+        "week": week,
+        "prev_year": prev_iso[0],
+        "prev_week": prev_iso[1],
+        "next_year": next_iso[0],
+        "next_week": next_iso[1],
+        "total_calories": round(total_calories) if total_calories else None,
+        "total_proteins": round(total_proteins, 1) if total_proteins else None,
+        "proposals": proposals,
+        "is_cuisinier": is_cuisinier,
+        # Pour le dialog "restes" : tous les repas avec recette de cette semaine
+        "meals_avec_recette": [
+            {"id": m.id, "label": f"{m.date} {'Midi' if m.meal_time == 'lunch' else 'Soir'} — {m.recipe.title}"}
+            for m in meals_qs if m.recipe and not m.is_leftovers
+        ],
+    }
+    return render(request, "menu/planning/semaine.html", ctx)
+
+
+@require_POST
+@login_required
+def modifier_meal(request, plan_id):
+    """AJAX : crée ou met à jour un Meal (créneau du planning)."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return JsonResponse({"ok": False, "error": "Famille requise", "code": "NO_FAMILY"}, status=403)
+    if not _verifier_cuisinier(request):
+        return JsonResponse({"ok": False, "error": "Réservé aux Cuisiniers", "code": "FORBIDDEN"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({"ok": False, "error": "JSON invalide", "code": "BAD_JSON"}, status=400)
+
+    # Validation date
+    try:
+        meal_date = date.fromisoformat(body.get("date", ""))
+    except (ValueError, TypeError):
+        return JsonResponse({"ok": False, "error": "Date invalide", "code": "INVALID_DATE"}, status=400)
+
+    meal_time = body.get("meal_time", "")
+    if meal_time not in ("lunch", "dinner"):
+        return JsonResponse({"ok": False, "error": "Créneau invalide", "code": "INVALID_TIME"}, status=400)
+
+    # Recette (optionnelle)
+    recipe = None
+    recipe_id = body.get("recipe_id")
+    if recipe_id:
+        recipe = Recipe.objects.filter(id=recipe_id, actif=True).first()
+        if not recipe:
+            return JsonResponse({"ok": False, "error": "Recette introuvable", "code": "NO_RECIPE"}, status=404)
+
+    is_leftovers = bool(body.get("is_leftovers", False))
+    source_meal = None
+    if is_leftovers:
+        src_id = body.get("source_meal_id")
+        if src_id:
+            source_meal = Meal.objects.filter(id=src_id, week_plan=plan).first()
+
+    try:
+        servings = int(body.get("servings_count") or 0) or (recipe.base_servings if recipe else None)
+    except (ValueError, TypeError):
+        servings = recipe.base_servings if recipe else None
+
+    meal, _ = Meal.objects.update_or_create(
+        week_plan=plan,
+        date=meal_date,
+        meal_time=meal_time,
+        defaults={
+            "recipe": recipe,
+            "servings_count": servings,
+            "is_leftovers": is_leftovers,
+            "source_meal": source_meal,
+        },
+    )
+
+    return JsonResponse({
+        "ok": True,
+        "meal_id": meal.id,
+        "recipe_id": recipe.id if recipe else None,
+        "recipe_title": recipe.title if recipe else None,
+        "servings_count": meal.servings_count,
+        "is_leftovers": meal.is_leftovers,
+        "calories_per_serving": recipe.calories_per_serving if recipe else None,
+    })
+
+
+@require_POST
+@login_required
+def publier_planning(request, plan_id):
+    """Publie un WeekPlan (brouillon → publié)."""
+    profile = _get_profile(request)
+    if not profile or not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:planning")
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    if plan.status == "published":
+        messages.warning(request, "Ce planning est déjà publié.")
+    elif not plan.meals.filter(recipe__isnull=False).exists():
+        messages.error(request, "Impossible de publier un planning vide (aucune recette planifiée).")
+    else:
+        plan.status = "published"
+        plan.save(update_fields=["status"])
+        messages.success(request, "Menu publié ! Vous pouvez maintenant générer la liste de courses.")
+        logger.info("Planning %d publié par %s.", plan.id, request.user.email)
+
+    iso = plan.period_start.isocalendar()
+    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+
+
+@require_POST
+@login_required
+def proposer_repas(request, plan_id):
+    """AJAX : un Convive propose une recette pour ce planning."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return JsonResponse({"ok": False, "error": "Famille requise", "code": "NO_FAMILY"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({"ok": False, "error": "JSON invalide", "code": "BAD_JSON"}, status=400)
+
+    recipe_id = body.get("recipe_id")
+    if not recipe_id:
+        return JsonResponse({"ok": False, "error": "Recette requise", "code": "NO_RECIPE"}, status=400)
+
+    recipe = get_object_or_404(Recipe, id=recipe_id, actif=True)
+    message = (body.get("message") or "").strip() or None
+
+    proposal = MealProposal.objects.create(
+        family=profile.family,
+        recipe=recipe,
+        proposed_by=request.user,
+        message=message,
+        week_plan=plan,
+    )
+
+    return JsonResponse({
+        "ok": True,
+        "proposal_id": proposal.id,
+        "recipe_title": recipe.title,
+        "proposed_by": request.user.first_name or request.user.email,
+    })
+
+
+@login_required
+def api_recettes(request):
+    """API JSON : liste de recettes filtrées par titre (pour le planning)."""
+    q = request.GET.get("q", "").strip()
+    qs = Recipe.objects.filter(actif=True).only(
+        "id", "title", "category", "complexity", "base_servings", "calories_per_serving"
+    )
+    if q:
+        qs = qs.filter(title__icontains=q)
+    qs = qs.order_by("title")[:20]
+    results = [
+        {
+            "id": r.id,
+            "title": r.title,
+            "category": r.category,
+            "base_servings": r.base_servings,
+            "calories_per_serving": r.calories_per_serving,
+        }
+        for r in qs
+    ]
+    return JsonResponse({"ok": True, "results": results})
 
 
 # ─── Catalogue recettes ───────────────────────────────────────────────────────
