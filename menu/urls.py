@@ -30,6 +30,10 @@ urlpatterns = [
     path("recettes/creer/", views.creer_recette, name="creer_recette"),
     path("recettes/<int:id>/modifier/", views.modifier_recette, name="modifier_recette"),
     path("recettes/<int:id>/supprimer/", views.supprimer_recette, name="supprimer_recette"),
+    # OAuth Google
+    path("google/connect/", views.google_connect, name="google_connect"),
+    path("google/callback/", views.google_callback, name="google_callback"),
+    path("google/disconnect/", views.google_disconnect, name="google_disconnect"),
     # Backup / Restore / Import recettes
     path("backup/", views.backup_page, name="backup_page"),
     path("backup/export/", views.export_backup, name="export_backup"),

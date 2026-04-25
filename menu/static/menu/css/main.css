@@ -583,6 +583,46 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 /* Date de génération */
 .courses-generated { font-size: .78rem; margin-top: 2rem; text-align: center; }
 
+/* =============================================
+   Intégrations Google (profil)
+   ============================================= */
+
+.btn--google {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    background: #fff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    padding: .55rem 1.1rem;
+    font-size: .9rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background .15s, box-shadow .15s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+.btn--google:hover { background: #f8f9fa; box-shadow: 0 2px 6px rgba(0,0,0,.13); }
+.btn-google__icon { flex-shrink: 0; }
+
+.google-status { display: flex; flex-direction: column; gap: .75rem; }
+.google-status__desc { font-size: .9rem; line-height: 1.5; margin-bottom: .25rem; }
+
+.google-status--connected {
+    background: #f0faf5;
+    border: 1px solid #b7dfcc;
+    border-radius: var(--radius);
+    padding: .85rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.google-status__info { display: flex; align-items: center; gap: .75rem; }
+.google-status__icon { font-size: 1.4rem; }
+.google-status__label { font-weight: 600; font-size: .92rem; }
+
 @media (max-width: 600px) {
     .form-row--3 { grid-template-columns: 1fr; }
     .form-row--2 { grid-template-columns: 1fr; }
@@ -595,4 +635,6 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
     .planning-nav__title { font-size: 1.1rem; }
     /* Courses */
     .courses-header { flex-direction: column; align-items: flex-start; }
+    /* Google */
+    .google-status--connected { flex-direction: column; align-items: flex-start; }
 }

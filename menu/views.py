@@ -1,5 +1,6 @@
 import json
 import logging
+import secrets
 import zipfile
 from datetime import date, timedelta
 
@@ -11,12 +12,15 @@ from django.db import transaction
 from django.db.models import Avg, Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
+from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.openfoodfacts import rechercher_ingredient
-from .models import Family, Ingredient, Meal, MealProposal, Recipe, Review, ShoppingItem, ShoppingList, UserProfile, WeekPlan
+from .models import Family, Ingredient, Meal, MealProposal, Recipe, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
     exporter_backup,
     generer_liste_courses,
@@ -193,13 +197,16 @@ def profil(request):
             .order_by("user__first_name")
         )
 
+    google_connected = TokenOAuth.objects.filter(user=request.user, service="google").exists()
+
     ctx = {
-        "profile":         profile,
-        "rank_info":       rank_info,
-        "nb_recettes":     nb_recettes,
-        "nb_avis":         nb_avis,
-        "nb_proposals":    nb_proposals,
-        "famille_members": famille_members,
+        "profile":          profile,
+        "rank_info":        rank_info,
+        "nb_recettes":      nb_recettes,
+        "nb_avis":          nb_avis,
+        "nb_proposals":     nb_proposals,
+        "famille_members":  famille_members,
+        "google_connected": google_connected,
     }
     return render(request, "menu/profil.html", ctx)
 
@@ -1010,3 +1017,94 @@ def import_recettes(request):
     logger.info("Import recettes par %s : %d créées, %d ignorées, %d erreurs.",
                 request.user.email, imported, skipped, len(errors))
     return redirect("menu:backup_page")
+
+
+# ─── OAuth Google ─────────────────────────────────────────────────────────────
+
+@login_required
+def google_connect(request):
+    """
+    Démarre le flux OAuth Google.
+    Génère un state aléatoire (protection CSRF), le stocke en session,
+    puis redirige l'utilisateur vers Google.
+    """
+    state = secrets.token_urlsafe(32)
+    request.session["google_oauth_state"] = state
+
+    redirect_uri = request.build_absolute_uri(reverse("menu:google_callback"))
+    auth_url = google_build_auth_url(redirect_uri, state)
+    return redirect(auth_url)
+
+
+@login_required
+def google_callback(request):
+    """
+    Callback OAuth Google.
+    Valide le state, échange le code contre des tokens, stocke dans TokenOAuth.
+    """
+    # Erreur renvoyée par Google (ex. accès refusé par l'utilisateur)
+    error = request.GET.get("error")
+    if error:
+        messages.warning(request, f"Connexion Google annulée ({error}).")
+        return redirect("menu:profil")
+
+    # Validation du state anti-CSRF
+    state = request.GET.get("state", "")
+    expected_state = request.session.pop("google_oauth_state", None)
+    if not expected_state or state != expected_state:
+        messages.error(request, "Erreur de sécurité OAuth. Réessaie la connexion Google.")
+        logger.warning("google_callback : state invalide pour user %s", request.user.id)
+        return redirect("menu:profil")
+
+    code = request.GET.get("code", "")
+    if not code:
+        messages.error(request, "Code d'autorisation manquant. Réessaie.")
+        return redirect("menu:profil")
+
+    redirect_uri = request.build_absolute_uri(reverse("menu:google_callback"))
+
+    try:
+        data = google_exchange_code(code, redirect_uri)
+    except Exception:
+        messages.error(request, "Erreur lors de l'échange avec Google. Réessaie dans quelques instants.")
+        return redirect("menu:profil")
+
+    # Calcul de la date d'expiration
+    expires_at = None
+    if "expires_in" in data:
+        expires_at = timezone.now() + timedelta(seconds=int(data["expires_in"]))
+
+    refresh_token = data.get("refresh_token", "")
+    if not refresh_token:
+        # Google ne renvoie le refresh_token qu'au premier consentement.
+        # Si absent, conserver l'ancien s'il existe.
+        existing = TokenOAuth.objects.filter(user=request.user, service="google").first()
+        if existing:
+            refresh_token = existing.refresh_token
+
+    TokenOAuth.objects.update_or_create(
+        user=request.user,
+        service="google",
+        defaults={
+            "access_token":  data["access_token"],
+            "refresh_token": refresh_token,
+            "expires_at":    expires_at,
+        },
+    )
+
+    logger.info("google_callback : tokens Google stockés pour user %s", request.user.id)
+    messages.success(request, "✅ Compte Google connecté avec succès !")
+    return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def google_disconnect(request):
+    """Supprime les tokens Google de l'utilisateur."""
+    deleted, _ = TokenOAuth.objects.filter(user=request.user, service="google").delete()
+    if deleted:
+        logger.info("google_disconnect : tokens supprimés pour user %s", request.user.id)
+        messages.success(request, "Compte Google déconnecté.")
+    else:
+        messages.info(request, "Aucune connexion Google active.")
+    return redirect("menu:profil")
