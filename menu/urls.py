@@ -23,6 +23,7 @@ urlpatterns = [
     path("recettes/", views.liste_recettes, name="liste_recettes"),
     path("recettes/<int:id>/", views.detail_recette, name="detail_recette"),
     path("recettes/<int:id>/cuisine/", views.mode_cuisine, name="mode_cuisine"),
+    path("recettes/<int:id>/noter/", views.noter_recette, name="noter_recette"),
     path("api/ingredients/nutrition/", views.recherche_nutrition, name="recherche_nutrition"),
     path("recettes/creer/", views.creer_recette, name="creer_recette"),
     path("recettes/<int:id>/modifier/", views.modifier_recette, name="modifier_recette"),

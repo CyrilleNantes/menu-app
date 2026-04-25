@@ -16,7 +16,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
 from .integrations.openfoodfacts import rechercher_ingredient
-from .models import Family, Ingredient, Meal, MealProposal, Recipe, ShoppingItem, ShoppingList, UserProfile, WeekPlan
+from .models import Family, Ingredient, Meal, MealProposal, Recipe, Review, ShoppingItem, ShoppingList, UserProfile, WeekPlan
 from .services import (
     exporter_backup,
     generer_liste_courses,
@@ -614,13 +614,70 @@ def detail_recette(request, id):
 
     alertes = _alertes_allergies(recipe, dietary_tags)
 
+    # Dernier avis de l'utilisateur courant
+    user_last_review = recipe.reviews.filter(user=request.user).order_by("-created_at").first()
+
+    # Avis des membres de la famille (hors l'utilisateur courant, pour la section dédiée)
+    family_reviews = []
+    try:
+        profile = request.user.profile
+        if profile.family:
+            family_ids = list(
+                UserProfile.objects.filter(family=profile.family)
+                .exclude(user=request.user)
+                .values_list("user_id", flat=True)
+            )
+            family_reviews = list(
+                recipe.reviews.filter(user_id__in=family_ids)
+                .select_related("user")
+                .order_by("-created_at")[:20]
+            )
+    except UserProfile.DoesNotExist:
+        pass
+
     ctx = {
         "recipe": recipe,
         "note_moyenne": stats["note_moyenne"],
         "nb_avis": stats["nb_avis"],
         "alertes": alertes,
+        "user_last_review": user_last_review,
+        "family_reviews": family_reviews,
+        "all_reviews": list(recipe.reviews.select_related("user").order_by("-created_at")[:30]),
     }
     return render(request, "menu/recettes/detail.html", ctx)
+
+
+@require_POST
+@login_required
+def noter_recette(request, id):
+    """Crée un avis (étoiles + commentaire). Répond en JSON."""
+    recipe = get_object_or_404(Recipe, pk=id, actif=True)
+
+    try:
+        data  = json.loads(request.body)
+        stars = int(data.get("stars", 0))
+        comment = (data.get("comment") or "").strip() or None
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return JsonResponse({"ok": False, "error": "Données invalides", "code": "INVALID_DATA"}, status=400)
+
+    if not (1 <= stars <= 5):
+        return JsonResponse({"ok": False, "error": "La note doit être entre 1 et 5", "code": "INVALID_STARS"}, status=400)
+
+    Review.objects.create(recipe=recipe, user=request.user, stars=stars, comment=comment)
+
+    stats = recipe.reviews.aggregate(note_moyenne=Avg("stars"), nb_avis=Count("id"))
+
+    return JsonResponse({
+        "ok": True,
+        "new_average": round(stats["note_moyenne"], 1),
+        "review_count": stats["nb_avis"],
+        "review": {
+            "user":    request.user.first_name or request.user.email,
+            "stars":   stars,
+            "comment": comment or "",
+            "date":    date.today().strftime("%d/%m/%Y"),
+        },
+    })
 
 
 # ─── API nutritionnelle ──────────────────────────────────────────────────────

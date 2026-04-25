@@ -353,6 +353,39 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 /* Textarea compact */
 .input-sm { width: 100%; padding: .5rem .7rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .9rem; resize: vertical; font-family: inherit; }
 
+/* ── Notation ───────────────────────────────────────────────────────────── */
+
+/* Étoiles génériques (lecture) */
+.stars { color: var(--color-accent); letter-spacing: .05em; font-size: 1.05rem; }
+
+/* Sélecteur d'étoiles interactif */
+.star-selector { display: flex; gap: .25rem; margin-bottom: .5rem; }
+.star-btn { background: none; border: none; font-size: 1.9rem; cursor: pointer; color: #ced4da; line-height: 1; padding: .1rem; transition: color .1s, transform .1s; }
+.star-btn:hover, .star-btn--on { color: var(--color-accent); }
+.star-btn:hover { transform: scale(1.15); }
+.star-btn:focus-visible { outline: 2px solid var(--color-primary); border-radius: 4px; }
+
+/* Mon dernier avis */
+.avis-mon-avis { background: #fffbeb; border: 1.5px solid #fde68a; border-radius: var(--radius); padding: .65rem .85rem; margin-bottom: .85rem; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: .88rem; }
+.avis-mon-avis__label { font-weight: 600; }
+.avis-mon-avis__stars { font-size: 1rem; }
+.avis-mon-avis__comment { width: 100%; margin: .25rem 0 0; color: #444; font-style: italic; }
+
+/* Confirmation envoi */
+.avis-confirm { background: #d1e7dd; color: #0a3622; padding: .75rem 1rem; border-radius: var(--radius); font-weight: 600; font-size: .95rem; }
+
+/* Liste d'avis */
+.avis-list { list-style: none; display: flex; flex-direction: column; gap: .6rem; }
+.avis-item { background: #fff; border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: .75rem 1rem; }
+.avis-item--new { border-left: 3px solid var(--color-primary); animation: slide-in .3s ease; }
+.avis-item__header { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .2rem; }
+.avis-item__user { font-weight: 600; font-size: .9rem; }
+.avis-item__stars { font-size: .95rem; }
+.avis-item__date { font-size: .78rem; margin-left: auto; }
+.avis-item__comment { font-size: .88rem; color: #444; margin: 0; line-height: 1.5; }
+
+@keyframes slide-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
 /* ── Mode Cuisine ───────────────────────────────────────────────────────── */
 
 /* Page wrapper */
