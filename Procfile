@@ -1,2 +1,1 @@
-release: python manage.py migrate --no-input
-web: gunicorn config.wsgi --log-file -
+web: python manage.py migrate --no-input && gunicorn config.wsgi --log-file -
