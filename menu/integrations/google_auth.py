@@ -22,7 +22,7 @@ GOOGLE_SCOPES = [
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.events",  # écriture événements uniquement (moindre privilège)
     "https://www.googleapis.com/auth/tasks",
 ]
 

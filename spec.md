@@ -125,7 +125,7 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 **URL de callback** : `/google/callback/` → `menu:google_callback`
 
 **Scopes requis** :
-- `https://www.googleapis.com/auth/calendar.events` (écriture événements)
+- `https://www.googleapis.com/auth/calendar.events` (écriture événements uniquement — moindre privilège)
 - `https://www.googleapis.com/auth/tasks` (écriture tâches)
 
 ### 3.3 Open Food Facts
@@ -186,8 +186,14 @@ Extension du modèle User Django. Un profil par utilisateur.
 | `dietary_tags` | `JSONField` | non | `[]` | Ex. `["gluten", "lactose"]` — liste fixe |
 | `google_calendar_id` | `CharField(200)` | oui | `null` | ID du calendrier Google cible |
 | `google_tasklist_id` | `CharField(200)` | oui | `null` | ID de la liste Google Tasks cible |
+| `lunch_start` | `TimeField` | non | `12:00` | Début déjeuner pour export Google Calendar |
+| `lunch_end` | `TimeField` | non | `13:00` | Fin déjeuner pour export Google Calendar |
+| `dinner_start` | `TimeField` | non | `20:30` | Début dîner pour export Google Calendar |
+| `dinner_end` | `TimeField` | non | `21:30` | Fin dîner pour export Google Calendar |
 
-**Propriété calculée `rank`** : calculée à partir du rôle et des contributions (non stockée en base).
+**Propriété calculée `rank`** : retourne `(level, name)` — calculée à partir du rôle et des contributions (non stockée en base).
+
+**Propriété calculée `rank_info`** : retourne un dict complet `{level, name, emoji, progress, next_name, next_threshold, metric, metric_label, current_threshold}` — utilisé dans les templates profil et detail recette.
 
 ---
 
@@ -339,6 +345,7 @@ Repas planifié dans un WeekPlan.
 | `servings_count` | `PositiveIntegerField` | oui | — | Nombre de parts à préparer |
 | `is_leftovers` | `BooleanField` | non | `False` | Ce repas = restes d'un autre |
 | `source_meal` | `ForeignKey('self')` | oui | `null` | Repas source des restes |
+| `google_event_id` | `CharField(200)` | non | `""` | ID de l'événement Google Calendar créé (vide si non exporté) |
 
 **Contrainte DB** : `(week_plan, date, meal_time)` unique.
 **Règle** : si `is_leftovers=True`, ce repas n'est pas pris en compte dans la génération de la liste de courses.
@@ -456,7 +463,8 @@ Article dans une liste de courses.
 
 **Vue** : `creer_recette(request)` / `modifier_recette(request, id)`
 **Template** : `menu/recettes/formulaire.html`
-**Accès** : Cuisinier uniquement
+**Accès création** : Cuisinier uniquement
+**Accès modification / suppression** : le Cuisinier créateur OU tout autre Cuisinier (catalogue global partagé entre familles)
 
 **Champs du formulaire** :
 - `title` : texte, obligatoire
@@ -580,7 +588,7 @@ Article dans une liste de courses.
 
 **Règles de gestion** :
 1. Passe `WeekPlan.status` de `draft` à `published`
-2. Déclenche la (re)génération automatique de la liste de courses (appel `services.py`)
+2. La liste de courses n'est **pas** générée automatiquement — le Cuisinier la génère manuellement depuis le toolbar du planning via `POST /courses/generer/<plan_id>/`
 
 **Réponse** :
 - Succès : redirection vers `/planning/<year>/<week>/` + message flash "Menu publié"
@@ -665,11 +673,11 @@ Vue dédiée mobile avec :
 4. Titre de l'événement : titre de la recette
 
 **Gestion des erreurs** :
-- Google non connecté → redirection vers le flux OAuth
+- Google non connecté → message warning + redirection vers la page planning de la semaine
 - Erreur API Google → message flash + log
 
 **Réponse** :
-- Succès : message flash "Menu exporté vers Google Agenda"
+- Succès : message flash avec bilan (N créés / N mis à jour)
 
 ---
 
@@ -685,7 +693,7 @@ Vue dédiée mobile avec :
 3. Chaque article = une tâche avec titre `"{quantite} {unite} {nom}"`
 
 **Gestion des erreurs** :
-- Google non connecté → redirection vers le flux OAuth
+- Google non connecté → message warning + redirection vers la liste de courses
 - Erreur API Google → message flash + log
 
 ---
@@ -797,6 +805,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | Migration | Date | Description |
 |-----------|------|-------------|
 | `0001_initial` | 2026-04-25 | Schéma initial — tous les modèles |
+| `0002_calendar_fields` | 2026-04-26 | `UserProfile` : créneaux Google Calendar (4 TimeField) — `Meal` : `google_event_id` |
 
 > [REVIEW 2026-04-25] `Ingredient` : ajout du champ `quantity_note (CharField 50, nullable)` — détecté lors du mapping de la recette Hachis Parmentier (cas des quantités en fourchette). La migration `0001_initial` intègre ce champ dès le départ.
 
