@@ -1,0 +1,48 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2d6a4f">
+    <title>{% block title %}Menu Familial{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'menu/css/main.css' %}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% if IS_DEV %}
+    <div class="dev-banner">
+        ⚠️ Environnement de développement
+    </div>
+    {% endif %}
+
+    {% if messages %}
+    <div class="messages">
+        {% for message in messages %}
+        <div class="message message--{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <nav class="nav">
+        <a href="{% url 'menu:home' %}" class="nav__brand">🍽️ Menu Familial</a>
+        <div class="nav__links">
+            {% if user.is_authenticated %}
+            <a href="{% url 'menu:home' %}">Accueil</a>
+            {% else %}
+            <a href="{% url 'menu:home' %}">Accueil</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <span>Menu Familial — v1.1</span>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -24,6 +24,8 @@ RAILWAY_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
+    "menu-app-dev.up.railway.app",
+    "menu-app-production-0c67.up.railway.app",
 ]
 
 if RAILWAY_DOMAIN:
@@ -81,6 +83,8 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # =========================================================
 # 🗄️ DATABASE (Railway PostgreSQL)

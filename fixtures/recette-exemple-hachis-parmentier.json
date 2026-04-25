@@ -1,0 +1,114 @@
+{
+  "recipe": {
+    "title": "Hachis Parmentier version évoluée",
+    "description": "Un hachis parmentier généreux et goûteux, avec une base viande longuement mijotée et une purée mousseline enrichie. La recette du dimanche qui se transforme en repas du lundi.",
+    "base_servings": 8,
+    "prep_time": 35,
+    "cook_time": 40,
+    "category": "plat",
+    "cuisine_type": "française",
+    "seasons": ["automne", "hiver"],
+    "health_tags": ["equilibre"],
+    "complexity": "intermediaire",
+    "calories_per_serving": null,
+    "proteins_per_serving": null,
+    "carbs_per_serving": null,
+    "fats_per_serving": null,
+
+    "ingredient_groups": [
+      {
+        "name": "Base viande — le cœur du goût",
+        "order": 1,
+        "ingredients": [
+          { "order": 1,  "name": "steak haché",               "quantity": 1200, "unit": "g",         "is_optional": false, "category": "viandes",  "openfoodfacts_id": null },
+          { "order": 2,  "name": "oignons",                   "quantity": 2,    "unit": null,        "is_optional": false, "category": "légumes",  "openfoodfacts_id": null },
+          { "order": 3,  "name": "carottes",                  "quantity": 3,    "unit": null,        "is_optional": false, "category": "légumes",  "openfoodfacts_id": null },
+          { "order": 4,  "name": "gousses d'ail",             "quantity": 2,    "unit": null,        "is_optional": false, "category": "légumes",  "openfoodfacts_id": null },
+          { "order": 5,  "name": "concentré de tomate",       "quantity": 3,    "unit": "c. à soupe","is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 6,  "name": "vin rouge",                 "quantity": 10,   "unit": "cl",        "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 7,  "name": "bouillon de bœuf",          "quantity": 20,   "unit": "cl",        "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 8,  "name": "sauce soja",                "quantity": 1,    "unit": "c. à soupe","is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 9,  "name": "sucre",                     "quantity": 1,    "unit": "c. à café", "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 10, "name": "huile d'olive",             "quantity": null,  "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 11, "name": "sel",                       "quantity": null,  "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 12, "name": "poivre",                    "quantity": null,  "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 13, "name": "thym ou herbes de Provence","quantity": null,  "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 14, "name": "champignons de Paris (hachés très fins)", "quantity": 175, "unit": "g", "is_optional": true, "category": "légumes", "openfoodfacts_id": null }
+        ]
+      },
+      {
+        "name": "Purée mousseline améliorée",
+        "order": 2,
+        "ingredients": [
+          { "order": 1, "name": "sachets de purée mousseline", "quantity": 2,   "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
+          { "order": 2, "name": "lait",                        "quantity": null, "unit": null,       "is_optional": false, "category": "crémerie", "openfoodfacts_id": null },
+          { "order": 3, "name": "beurre",                      "quantity": 40,   "unit": "g",        "is_optional": false, "category": "crémerie", "openfoodfacts_id": null },
+          { "order": 4, "name": "jaune d'œuf",                 "quantity": 1,    "unit": null,       "is_optional": false, "category": "crémerie", "openfoodfacts_id": null },
+          { "order": 5, "name": "muscade",                     "quantity": null, "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null }
+        ]
+      },
+      {
+        "name": "Fromage & finition",
+        "order": 3,
+        "ingredients": [
+          { "order": 1, "name": "cheddar râpé (ou fromage à burger)", "quantity": null, "unit": null, "is_optional": true,  "category": "crémerie", "openfoodfacts_id": null },
+          { "order": 2, "name": "beurre (noisettes pour la finition)", "quantity": null, "unit": null, "is_optional": false, "category": "crémerie", "openfoodfacts_id": null }
+        ]
+      }
+    ],
+
+    "steps": [
+      {
+        "order": 1,
+        "instruction": "Émince les oignons. Coupe les carottes en petits dés. Hache finement les champignons si tu les utilises. Dans une grande poêle, fais revenir les oignons à feu moyen avec de l'huile d'olive pendant 8 à 10 min — ils doivent être fondants et légèrement dorés. Ajoute les carottes (5 min), puis l'ail et les champignons (3 à 5 min).",
+        "chef_note": "Ici tu construis le goût. Si tu bâcles cette étape, ça se sentira.",
+        "timer_seconds": 900
+      },
+      {
+        "order": 2,
+        "instruction": "Ajoute la viande en plusieurs fois en montant un peu le feu. Sale et poivre.",
+        "chef_note": "Objectif : légère coloration (réaction de Maillard). Éviter l'effet viande bouillie.",
+        "timer_seconds": null
+      },
+      {
+        "order": 3,
+        "instruction": "Ajoute le concentré de tomate et laisse cuire 2 min. Verse le vin rouge et laisse réduire 2 à 3 min. Ajoute ensuite le bouillon, la sauce soja, le sucre et les herbes. Laisse mijoter 15 min à feu doux.",
+        "chef_note": "Résultat attendu : texture liée, légèrement nappante. Pas liquide, pas sec.",
+        "timer_seconds": 900
+      },
+      {
+        "order": 4,
+        "instruction": "Prépare la purée mousseline avec moitié lait, moitié eau. Incorpore le beurre, le jaune d'œuf et la muscade. Goûte et rectifie l'assaisonnement.",
+        "chef_note": "La purée doit être épaisse (sinon le hachis s'effondre) et légèrement relevée — elle doit être bonne seule.",
+        "timer_seconds": null
+      },
+      {
+        "order": 5,
+        "instruction": "Dans un grand plat : étale la viande et tasse légèrement. Ajoute une fine couche de cheddar. Recouvre de purée. Fais des stries à la fourchette, ajoute un peu de fromage sur le dessus et quelques noisettes de beurre.",
+        "chef_note": null,
+        "timer_seconds": null
+      },
+      {
+        "order": 6,
+        "instruction": "Enfourne à 200°C pendant 30 à 35 min, puis passe 3 à 5 min en mode grill.",
+        "chef_note": "Tu veux : une croûte dorée, une légère croustillance, des bords qui frémissent.",
+        "timer_seconds": 2100
+      }
+    ],
+
+    "sections": [
+      {
+        "section_type": "critique",
+        "title": "Les vrais points critiques",
+        "content": "- Viande trop humide → ton plat sera « flotteux »\n- Purée trop liquide → pas de tenue\n- Pas assez de sel → tout devient fade\n- Pas de coloration de la viande → goût plat",
+        "order": 1
+      },
+      {
+        "section_type": "difference",
+        "title": "Ce qui fait vraiment la différence",
+        "content": "Ce n'est pas une question d'ingrédients magiques, mais d'exécution :\n- Caramélisation des oignons\n- Légère grillade de la viande\n- Réduction du vin\n- Purée enrichie et structurée\n- Finition au four bien maîtrisée",
+        "order": 2
+      }
+    ]
+  }
+}
