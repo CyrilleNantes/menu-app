@@ -1,0 +1,22 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Rejoindre une famille — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="form-page">
+    <h1 class="form-page__title">Rejoindre une famille</h1>
+    <p class="form-page__subtitle">
+        Demandez à votre Cuisinier de vous envoyer le lien d'invitation.<br>
+        Le lien vous rattachera automatiquement à la famille.
+    </p>
+    <a href="{% url 'menu:deconnexion' %}" class="btn btn--secondary" onclick="this.closest('form')?.submit(); return false;">
+        Se déconnecter
+    </a>
+    <form method="post" action="{% url 'menu:deconnexion' %}" style="display:none" id="logout-form">
+        {% csrf_token %}
+    </form>
+    <p class="form-page__alt" style="margin-top:1rem">
+        <a href="#" onclick="document.getElementById('logout-form').submit(); return false;">Se déconnecter</a>
+    </p>
+</div>
+{% endblock %}

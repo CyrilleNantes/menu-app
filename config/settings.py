@@ -42,7 +42,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "menu",  # 🔥 ton app principale
+    # allauth
+    "allauth",
+    "allauth.account",
+    # app principale
+    "menu",
 ]
 
 # =========================================================
@@ -58,6 +62,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -85,6 +90,17 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+LOGIN_URL = "menu:connexion"
+LOGIN_REDIRECT_URL = "menu:home"
+LOGOUT_REDIRECT_URL = "menu:connexion"
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+]
+
+# django-allauth (activé à l'étape 14 — Google OAuth)
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 
 # =========================================================
 # 🗄️ DATABASE (Railway PostgreSQL)
@@ -155,6 +171,29 @@ SESSION_COOKIE_HTTPONLY = True
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# =========================================================
+# 📋 LOGGING
+# =========================================================
+
+# =========================================================
+# 🔑 AUTHENTIFICATION (django-allauth)
+# =========================================================
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
+ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_USERNAME_REQUIRED = False
+
+LOGIN_REDIRECT_URL = "/"
+ACCOUNT_LOGOUT_REDIRECT_URL = "/connexion/"
+LOGIN_URL = "/connexion/"
 
 # =========================================================
 # 📋 LOGGING

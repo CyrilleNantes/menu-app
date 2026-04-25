@@ -764,6 +764,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 
 ---
 
+> [LOG 2026-04-25] Étape 3 complétée — Authentification custom (sans allauth) : InscriptionForm (rôle Cuisinier/Convive, création famille automatique), vues inscription/connexion/déconnexion/rejoindre_famille. LOGIN_URL, AUTHENTICATION_BACKENDS configurés. Templates mobile-first : inscription.html (JS toggle champ famille), connexion.html, rejoindre.html, planning/index.html (placeholder). Nav mise à jour avec liens auth contextuels. CSS formulaires ajouté. Allauth configuré en amont (ACCOUNT_SIGNUP_FIELDS) pour étape 14.
+
 > [LOG 2026-04-25] Étape 2 complétée — 15 modèles créés dans models.py (Family, UserProfile, TokenOAuth, Recipe, IngredientGroup, Ingredient, RecipeStep, RecipeSection, Review, WeekPlan, Meal, MealProposal, ShoppingList, ShoppingItem, NotificationPreference). Tous enregistrés dans admin.py avec inlines et filtres. Migration 0001_initial appliquée sur Railway PostgreSQL. Commande `load_hachis_fixture` créée et testée : 3 groupes, 21 ingrédients, 6 étapes, 2 sections insérés sans erreur. Cas couverts validés : quantity_note champignons ('150–200g'), is_optional=True, timers 900s et 2100s.
 
 ---

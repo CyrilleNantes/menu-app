@@ -1,5 +1,4 @@
 {% extends "menu/base.html" %}
-{% load static %}
 
 {% block title %}Accueil — Menu Familial{% endblock %}
 
@@ -8,9 +7,10 @@
     <h1>🍽️ Menu Familial</h1>
     <p class="hero__subtitle">Planifiez vos menus, gérez vos recettes et générez vos listes de courses.</p>
     {% if user.is_authenticated %}
-    <a href="#" class="btn btn--primary">Voir le planning</a>
+    <a href="{% url 'menu:planning' %}" class="btn btn--primary">Voir le planning</a>
     {% else %}
-    <a href="#" class="btn btn--primary">Se connecter</a>
+    <a href="{% url 'menu:connexion' %}" class="btn btn--primary">Se connecter</a>
+    <a href="{% url 'menu:inscription' %}" class="btn btn--secondary" style="margin-left:.75rem">Créer un compte</a>
     {% endif %}
 </div>
 {% endblock %}

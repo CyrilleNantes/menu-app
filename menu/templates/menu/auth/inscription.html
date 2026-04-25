@@ -1,0 +1,87 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Inscription — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="form-page">
+    <h1 class="form-page__title">Créer un compte</h1>
+
+    {% if form.non_field_errors %}
+    <div class="message message--error">
+        {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" class="form-card">
+        {% csrf_token %}
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="{{ form.prenom.id_for_label }}">{{ form.prenom.label }}</label>
+                {{ form.prenom }}
+                {% if form.prenom.errors %}<span class="form-error">{{ form.prenom.errors.0 }}</span>{% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.nom.id_for_label }}">{{ form.nom.label }}</label>
+                {{ form.nom }}
+                {% if form.nom.errors %}<span class="form-error">{{ form.nom.errors.0 }}</span>{% endif %}
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+            {{ form.email }}
+            {% if form.email.errors %}<span class="form-error">{{ form.email.errors.0 }}</span>{% endif %}
+        </div>
+
+        <div class="form-group">
+            <label for="{{ form.password1.id_for_label }}">{{ form.password1.label }}</label>
+            {{ form.password1 }}
+            {% if form.password1.errors %}<span class="form-error">{{ form.password1.errors.0 }}</span>{% endif %}
+        </div>
+
+        <div class="form-group">
+            <label for="{{ form.password2.id_for_label }}">{{ form.password2.label }}</label>
+            {{ form.password2 }}
+            {% if form.password2.errors %}<span class="form-error">{{ form.password2.errors.0 }}</span>{% endif %}
+        </div>
+
+        <div class="form-group">
+            <label>{{ form.role.label }}</label>
+            <div class="radio-group">
+                {% for choice in form.role %}
+                <label class="radio-label">
+                    {{ choice.tag }}
+                    <span>{{ choice.choice_label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            {% if form.role.errors %}<span class="form-error">{{ form.role.errors.0 }}</span>{% endif %}
+        </div>
+
+        <div class="form-group" id="famille-field">
+            <label for="{{ form.nom_famille.id_for_label }}">{{ form.nom_famille.label }}</label>
+            {{ form.nom_famille }}
+            <span class="form-help">{{ form.nom_famille.help_text }}</span>
+            {% if form.nom_famille.errors %}<span class="form-error">{{ form.nom_famille.errors.0 }}</span>{% endif %}
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--full">Créer mon compte</button>
+    </form>
+
+    <p class="form-page__alt">Déjà inscrit ? <a href="{% url 'menu:connexion' %}">Se connecter</a></p>
+</div>
+
+<script>
+(function () {
+    const radios = document.querySelectorAll('input[name="role"]');
+    const familleField = document.getElementById('famille-field');
+    function toggle() {
+        const val = document.querySelector('input[name="role"]:checked')?.value;
+        familleField.style.display = val === 'cuisinier' ? '' : 'none';
+    }
+    radios.forEach(r => r.addEventListener('change', toggle));
+    toggle();
+})();
+</script>
+{% endblock %}
