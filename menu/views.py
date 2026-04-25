@@ -19,6 +19,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
+from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.openfoodfacts import rechercher_ingredient
 from .models import Family, Ingredient, Meal, MealProposal, Recipe, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
@@ -335,6 +336,7 @@ def planning_semaine(request, year, week):
         ],
         # Lien courses
         "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
+        "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
     }
     return render(request, "menu/planning/semaine.html", ctx)
 
@@ -1017,6 +1019,81 @@ def import_recettes(request):
     logger.info("Import recettes par %s : %d créées, %d ignorées, %d erreurs.",
                 request.user.email, imported, skipped, len(errors))
     return redirect("menu:backup_page")
+
+
+# ─── Export Google Calendar ──────────────────────────────────────────────────
+
+@require_POST
+@login_required
+def export_calendar(request, plan_id):
+    """
+    Exporte le planning vers Google Calendar.
+    Crée ou met à jour un événement par repas planifié.
+    """
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        messages.error(request, "Profil ou famille introuvable.")
+        return redirect("menu:planning")
+
+    plan = get_object_or_404(WeekPlan, pk=plan_id, family=profile.family)
+
+    if not TokenOAuth.objects.filter(user=request.user, service="google").exists():
+        messages.warning(request, "Connecte ton compte Google dans ton profil avant d'exporter.")
+        return redirect("menu:planning_semaine", year=plan.period_start.isocalendar()[0], week=plan.period_start.isocalendar()[1])
+
+    try:
+        stats = google_calendar_export_planning(request.user, plan)
+    except Exception as exc:
+        logger.error("export_calendar : erreur pour user %s : %s", request.user.id, exc)
+        messages.error(request, "Erreur lors de l'export Google Calendar. Réessaie dans quelques instants.")
+        return redirect("menu:planning_semaine", year=plan.period_start.isocalendar()[0], week=plan.period_start.isocalendar()[1])
+
+    total = stats["created"] + stats["updated"]
+    parts = []
+    if stats["created"]:
+        parts.append(f"{stats['created']} événement{'s' if stats['created'] > 1 else ''} créé{'s' if stats['created'] > 1 else ''}")
+    if stats["updated"]:
+        parts.append(f"{stats['updated']} mis à jour")
+    if stats["skipped"]:
+        parts.append(f"{stats['skipped']} ignoré{'s' if stats['skipped'] > 1 else ''} (sans recette)")
+
+    if total > 0:
+        messages.success(request, "📅 Export Google Calendar : " + ", ".join(parts) + ".")
+    else:
+        messages.info(request, "📅 Aucun repas avec recette à exporter cette semaine.")
+
+    iso = plan.period_start.isocalendar()
+    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+
+
+@require_POST
+@login_required
+def modifier_creneaux_calendar(request):
+    """Enregistre les créneaux horaires configurés par l'utilisateur pour Google Calendar."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    from datetime import time as parse_time
+
+    def _parse_time(value: str, fallback):
+        """Parse HH:MM en datetime.time, retourne fallback si invalide."""
+        try:
+            h, m = value.strip().split(":")
+            return parse_time(int(h), int(m))
+        except Exception:
+            return fallback
+
+    profile.lunch_start  = _parse_time(request.POST.get("lunch_start",  ""), profile.lunch_start)
+    profile.lunch_end    = _parse_time(request.POST.get("lunch_end",    ""), profile.lunch_end)
+    profile.dinner_start = _parse_time(request.POST.get("dinner_start", ""), profile.dinner_start)
+    profile.dinner_end   = _parse_time(request.POST.get("dinner_end",   ""), profile.dinner_end)
+
+    profile.save(update_fields=["lunch_start", "lunch_end", "dinner_start", "dinner_end"])
+    messages.success(request, "Créneaux Google Calendar mis à jour.")
+    logger.debug("modifier_creneaux_calendar : créneaux mis à jour pour user %s", request.user.id)
+    return redirect("menu:profil")
 
 
 # ─── OAuth Google ─────────────────────────────────────────────────────────────

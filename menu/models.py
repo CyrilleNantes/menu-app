@@ -1,4 +1,6 @@
 import uuid
+from datetime import time as datetime_time
+
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
@@ -31,6 +33,11 @@ class UserProfile(models.Model):
     dietary_tags = models.JSONField(default=list, blank=True)
     google_calendar_id = models.CharField(max_length=200, null=True, blank=True)
     google_tasklist_id = models.CharField(max_length=200, null=True, blank=True)
+    # Créneaux horaires pour l'export Google Calendar
+    lunch_start  = models.TimeField(default=datetime_time(12, 0),  verbose_name="Début déjeuner")
+    lunch_end    = models.TimeField(default=datetime_time(13, 0),  verbose_name="Fin déjeuner")
+    dinner_start = models.TimeField(default=datetime_time(20, 30), verbose_name="Début dîner")
+    dinner_end   = models.TimeField(default=datetime_time(21, 30), verbose_name="Fin dîner")
 
     class Meta:
         verbose_name = "Profil utilisateur"
@@ -315,6 +322,7 @@ class Meal(models.Model):
     servings_count = models.PositiveIntegerField(blank=True, null=True)
     is_leftovers = models.BooleanField(default=False)
     source_meal = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="leftover_meals")
+    google_event_id = models.CharField(max_length=200, blank=True, default="", verbose_name="ID événement Google Calendar")
 
     class Meta:
         verbose_name = "Repas"

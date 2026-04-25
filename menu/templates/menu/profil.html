@@ -138,6 +138,27 @@
                 <button type="submit" class="btn btn--danger btn--sm">Déconnecter</button>
             </form>
         </div>
+
+        <!-- Créneaux horaires -->
+        <form method="post" action="{% url 'menu:modifier_creneaux_calendar' %}" class="creneaux-form">
+            {% csrf_token %}
+            <p class="creneaux-form__title">Créneaux dans Google Agenda :</p>
+            <div class="creneaux-grid">
+                <div class="creneaux-row">
+                    <span class="creneaux-label">🍽️ Déjeuner</span>
+                    <input type="time" name="lunch_start"  value="{{ profile.lunch_start|time:'H:i' }}"  class="input-sm creneaux-input" required>
+                    <span class="creneaux-sep">→</span>
+                    <input type="time" name="lunch_end"    value="{{ profile.lunch_end|time:'H:i' }}"    class="input-sm creneaux-input" required>
+                </div>
+                <div class="creneaux-row">
+                    <span class="creneaux-label">🌙 Dîner</span>
+                    <input type="time" name="dinner_start" value="{{ profile.dinner_start|time:'H:i' }}" class="input-sm creneaux-input" required>
+                    <span class="creneaux-sep">→</span>
+                    <input type="time" name="dinner_end"   value="{{ profile.dinner_end|time:'H:i' }}"   class="input-sm creneaux-input" required>
+                </div>
+            </div>
+            <button type="submit" class="btn btn--secondary btn--sm" style="margin-top:.5rem">Enregistrer les créneaux</button>
+        </form>
         {% else %}
         <div class="google-status">
             <p class="text-muted google-status__desc">
