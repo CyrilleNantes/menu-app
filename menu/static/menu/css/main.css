@@ -353,6 +353,42 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 /* Textarea compact */
 .input-sm { width: 100%; padding: .5rem .7rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .9rem; resize: vertical; font-family: inherit; }
 
+/* ── Liste de courses ───────────────────────────────────────────────────── */
+
+.courses-header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.courses-header__info { flex: 1; }
+.courses-header__title { font-size: 1.3rem; font-weight: 700; margin: 0 0 .15rem; }
+.courses-header__week { font-size: .85rem; }
+
+/* Barre de progression */
+.courses-progress { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.25rem; }
+.courses-progress__bar { flex: 1; height: 10px; background: #e9ecef; border-radius: 99px; overflow: hidden; }
+.courses-progress__fill { height: 100%; background: var(--color-primary); border-radius: 99px; transition: width .3s ease; }
+.courses-progress__label { font-size: .82rem; color: var(--color-muted); white-space: nowrap; }
+
+/* Groupe de catégorie */
+.courses-group { margin-bottom: 1.5rem; }
+.courses-group__title { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--color-muted); margin-bottom: .5rem; padding-bottom: .3rem; border-bottom: 1px solid #dee2e6; }
+
+/* Liste articles */
+.courses-list { list-style: none; display: flex; flex-direction: column; gap: .25rem; }
+.shopping-item { display: flex; align-items: center; gap: .75rem; padding: .65rem .85rem; background: #fff; border-radius: var(--radius); box-shadow: 0 1px 3px rgba(0,0,0,.06); cursor: pointer; user-select: none; transition: background .15s, opacity .2s; }
+.shopping-item:hover { background: #f0faf5; }
+.shopping-item:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.shopping-item--checked { opacity: .55; }
+.shopping-item--checked .shopping-item__name { text-decoration: line-through; color: var(--color-muted); }
+.shopping-item__check { width: 1.2rem; height: 1.2rem; border: 2px solid #ced4da; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: .75rem; font-weight: 700; color: var(--color-primary); transition: border-color .15s, background .15s; }
+.shopping-item--checked .shopping-item__check { border-color: var(--color-primary); background: #d1e7dd; }
+.shopping-item__name { flex: 1; font-size: .92rem; font-weight: 500; }
+.shopping-item__qty { font-size: .82rem; }
+
+/* État vide */
+.courses-empty { text-align: center; padding: 3rem 1rem; }
+.courses-empty__text { font-size: 1.05rem; color: var(--color-muted); margin-bottom: .5rem; }
+
+/* Date de génération */
+.courses-generated { font-size: .78rem; margin-top: 2rem; text-align: center; }
+
 @media (max-width: 600px) {
     .form-row--3 { grid-template-columns: 1fr; }
     .form-row--2 { grid-template-columns: 1fr; }
@@ -363,4 +399,6 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
     /* Planning : 2 colonnes sur mobile */
     .planning-grid { grid-template-columns: repeat(2, 1fr); }
     .planning-nav__title { font-size: 1.1rem; }
+    /* Courses */
+    .courses-header { flex-direction: column; align-items: flex-start; }
 }

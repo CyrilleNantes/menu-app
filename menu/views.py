@@ -16,9 +16,10 @@ from django.views.decorators.http import require_POST
 from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
 from .integrations.openfoodfacts import rechercher_ingredient
-from .models import Family, Ingredient, Meal, MealProposal, Recipe, UserProfile, WeekPlan
+from .models import Family, Ingredient, Meal, MealProposal, Recipe, ShoppingItem, ShoppingList, UserProfile, WeekPlan
 from .services import (
     exporter_backup,
+    generer_liste_courses,
     importer_recette_depuis_json,
     restaurer_backup,
     sauvegarder_recette_depuis_post,
@@ -263,6 +264,8 @@ def planning_semaine(request, year, week):
             {"id": m.id, "label": f"{m.date} {'Midi' if m.meal_time == 'lunch' else 'Soir'} — {m.recipe.title}"}
             for m in meals_qs if m.recipe and not m.is_leftovers
         ],
+        # Lien courses
+        "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
     }
     return render(request, "menu/planning/semaine.html", ctx)
 
@@ -421,6 +424,87 @@ def api_recettes(request):
         for r in qs
     ]
     return JsonResponse({"ok": True, "results": results})
+
+
+# ─── Liste de courses ────────────────────────────────────────────────────────
+
+@require_POST
+@login_required
+def generer_courses(request, plan_id):
+    """Génère (ou recrée) la liste de courses d'un planning. Cuisinier uniquement."""
+    plan = get_object_or_404(WeekPlan, pk=plan_id)
+    profile = _get_profile(request)
+    if not profile or profile.family != plan.family:
+        messages.error(request, "Accès refusé.")
+        return redirect("menu:planning")
+    if profile.role not in ("cuisinier", "chef_etoile"):
+        messages.error(request, "Réservé au Cuisinier.")
+        return redirect("menu:planning")
+
+    try:
+        generer_liste_courses(plan)
+        messages.success(request, "Liste de courses générée !")
+    except Exception as exc:
+        logger.error("generer_courses error plan=%s : %s", plan_id, exc)
+        messages.error(request, "Erreur lors de la génération de la liste.")
+
+    return redirect("menu:liste_courses", plan_id=plan_id)
+
+
+@login_required
+def liste_courses(request, plan_id):
+    """Affiche la liste de courses d'un planning. Visible par tous les membres de la famille."""
+    plan = get_object_or_404(WeekPlan, pk=plan_id)
+    profile = _get_profile(request)
+    if not profile or profile.family != plan.family:
+        messages.error(request, "Accès refusé.")
+        return redirect("menu:planning")
+
+    # Récupère la liste si elle existe
+    shopping_list = ShoppingList.objects.filter(week_plan=plan).first()
+
+    # Grouper les articles par catégorie
+    groups: dict[str, list] = {}
+    nb_checked = 0
+    if shopping_list:
+        for item in shopping_list.items.all().order_by("category", "name"):
+            cat = item.category or "Divers"
+            groups.setdefault(cat, []).append(item)
+            if item.checked:
+                nb_checked += 1
+
+    nb_total = sum(len(v) for v in groups.values())
+
+    # Navigation semaine pour les liens retour
+    year, week, _ = plan.period_start.isocalendar()
+
+    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
+
+    ctx = {
+        "plan": plan,
+        "shopping_list": shopping_list,
+        "groups": groups,
+        "nb_total": nb_total,
+        "nb_checked": nb_checked,
+        "year": year,
+        "week": week,
+        "is_cuisinier": is_cuisinier,
+    }
+    return render(request, "menu/courses/liste.html", ctx)
+
+
+@require_POST
+@login_required
+def cocher_item(request, id):
+    """Bascule le statut coché/décoché d'un article. Réponse JSON."""
+    item = get_object_or_404(ShoppingItem, pk=id)
+    profile = _get_profile(request)
+    if not profile or profile.family != item.shopping_list.family:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    item.checked = not item.checked
+    item.save(update_fields=["checked"])
+    return JsonResponse({"ok": True, "checked": item.checked})
 
 
 # ─── Catalogue recettes ───────────────────────────────────────────────────────

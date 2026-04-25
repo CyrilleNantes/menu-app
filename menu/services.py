@@ -6,9 +6,87 @@ import zipfile as zf_lib
 from django.contrib.auth.models import User as DjangoUser
 from django.db import connection, transaction
 
-from .models import Ingredient, IngredientGroup, Recipe, RecipeSection, RecipeStep
+from .models import (
+    Ingredient, IngredientGroup, Meal, Recipe, RecipeSection, RecipeStep,
+    ShoppingItem, ShoppingList, WeekPlan,
+)
 
 logger = logging.getLogger("menu")
+
+
+@transaction.atomic
+def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
+    """
+    Génère (ou recrée) la liste de courses d'un WeekPlan.
+
+    Règles :
+    - Seuls les repas avec recette et is_leftovers=False sont pris en compte.
+    - Les quantités sont proratisées : quantité × (servings_count / base_servings).
+    - Les ingrédients identiques (même nom, même unité, insensible à la casse) sont agrégés.
+    - Les articles sont triés par catégorie puis par nom.
+    """
+    # Supprimer l'ancienne liste si elle existe
+    ShoppingList.objects.filter(week_plan=plan).delete()
+
+    meals = (
+        Meal.objects
+        .filter(week_plan=plan, is_leftovers=False, recipe__isnull=False)
+        .select_related("recipe")
+        .prefetch_related("recipe__ingredients")
+    )
+
+    # Clé d'agrégation : (nom_normalisé, unité_normalisée)
+    aggregated: dict[tuple, dict] = {}
+
+    for meal in meals:
+        recipe = meal.recipe
+        base = max(recipe.base_servings or 1, 1)
+        ratio = (meal.servings_count or base) / base
+
+        for ing in recipe.ingredients.all():
+            norm_name = ing.name.strip()
+            norm_unit = (ing.unit or "").strip()
+            key = (norm_name.lower(), norm_unit.lower())
+
+            if key not in aggregated:
+                aggregated[key] = {
+                    "name": norm_name,
+                    "unit": norm_unit or None,
+                    "category": ing.category or None,
+                    "quantity": None,
+                }
+
+            entry = aggregated[key]
+            if ing.quantity is not None:
+                adj = ing.quantity * ratio
+                entry["quantity"] = (entry["quantity"] or 0.0) + adj
+
+    # Créer la nouvelle liste
+    shopping_list = ShoppingList.objects.create(
+        family=plan.family,
+        week_plan=plan,
+    )
+
+    # Trier : catégorie (vide en dernier) puis nom
+    sorted_items = sorted(
+        aggregated.values(),
+        key=lambda x: (x["category"] or "zzz", x["name"].lower()),
+    )
+
+    ShoppingItem.objects.bulk_create([
+        ShoppingItem(
+            shopping_list=shopping_list,
+            name=item["name"],
+            quantity=round(item["quantity"], 2) if item["quantity"] is not None else None,
+            unit=item["unit"],
+            category=item["category"],
+            checked=False,
+        )
+        for item in sorted_items
+    ])
+
+    logger.info("Liste de courses générée : %d articles pour plan %s", len(sorted_items), plan.pk)
+    return shopping_list
 
 
 def calculer_macros_recette(recipe: Recipe) -> None:
