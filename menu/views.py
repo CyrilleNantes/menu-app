@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Avg, Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
@@ -26,6 +26,20 @@ from .services import (
 )
 
 logger = logging.getLogger("menu")
+
+
+# ─── PWA ─────────────────────────────────────────────────────────────────────
+
+@require_GET
+def service_worker(request):
+    """Sert sw.js depuis la racine pour que son scope couvre toute l'application."""
+    return render(
+        request,
+        "sw.js",
+        content_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/"},
+    )
+
 
 # Mots-clés par tag alimentaire pour les alertes allergies (simple, non bloquant)
 ALLERGEN_KEYWORDS = {
