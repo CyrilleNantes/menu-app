@@ -353,6 +353,93 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 /* Textarea compact */
 .input-sm { width: 100%; padding: .5rem .7rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .9rem; resize: vertical; font-family: inherit; }
 
+/* ── Mode Cuisine ───────────────────────────────────────────────────────── */
+
+/* Page wrapper */
+.cuisine-page { display: flex; flex-direction: column; gap: 0; }
+
+/* Topbar sticky */
+.cuisine-topbar { position: sticky; top: 0; z-index: 100; background: var(--color-primary); color: #fff; display: flex; align-items: center; gap: .75rem; padding: .6rem .75rem; border-radius: var(--radius); margin-bottom: 1rem; }
+.cuisine-topbar__back { color: #fff; text-decoration: none; font-size: 1.3rem; padding: .1rem .4rem; opacity: .8; }
+.cuisine-topbar__back:hover { opacity: 1; }
+.cuisine-topbar__title { flex: 1; font-weight: 700; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cuisine-topbar__right { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
+.cuisine-progress { font-size: .82rem; opacity: .85; }
+.cuisine-theme-btn { background: none; border: 1px solid rgba(255,255,255,.4); border-radius: var(--radius); color: #fff; cursor: pointer; padding: .2rem .45rem; font-size: .9rem; }
+
+/* Section (ingrédients + étapes) */
+.cuisine-section { margin-bottom: 1.25rem; }
+.cuisine-section__toggle { width: 100%; background: #fff; border: 1.5px solid #dee2e6; border-radius: var(--radius); padding: .75rem 1rem; text-align: left; font-weight: 700; font-size: .95rem; cursor: pointer; display: flex; align-items: center; gap: .4rem; }
+.cuisine-section__toggle:hover { background: #f0faf5; }
+.cuisine-section__count { color: var(--color-muted); font-weight: 400; }
+.cuisine-section__arrow { margin-left: auto; color: var(--color-muted); }
+
+/* Ingrédients */
+.cuisine-ings { padding: .5rem 0; display: flex; flex-direction: column; gap: .2rem; }
+.cuisine-ings__group { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--color-muted); padding: .5rem 0 .2rem; }
+.cuisine-ing { display: flex; align-items: flex-start; gap: .75rem; padding: .7rem .85rem; background: #fff; border-radius: var(--radius); cursor: pointer; user-select: none; border: 1.5px solid transparent; transition: background .15s, opacity .2s; }
+.cuisine-ing:hover { background: #f0faf5; border-color: #d1e7dd; }
+.cuisine-ing:focus-visible { outline: 2px solid var(--color-primary); }
+.cuisine-ing--checked { opacity: .5; }
+.cuisine-ing--checked .cuisine-ing__label { text-decoration: line-through; }
+.cuisine-ing__icon { font-size: 1rem; color: var(--color-primary); flex-shrink: 0; margin-top: .1rem; }
+.cuisine-ing__label { font-size: .95rem; line-height: 1.4; }
+.cuisine-ing__qty { color: var(--color-muted); margin-right: .3rem; }
+
+/* Étapes */
+.cuisine-step { background: #fff; border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: 1.1rem 1rem; margin-bottom: .75rem; border-left: 4px solid transparent; transition: border-color .2s, box-shadow .2s; }
+.cuisine-step--active { border-left-color: var(--color-primary); box-shadow: 0 3px 16px rgba(45,106,79,.15); }
+.cuisine-step--done { opacity: .55; }
+.cuisine-step--future { opacity: .45; }
+
+.cuisine-step__header { display: flex; align-items: center; gap: .5rem; margin-bottom: .75rem; }
+.cuisine-step__badge { background: var(--color-primary); color: #fff; border-radius: 50%; width: 2rem; height: 2rem; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .9rem; flex-shrink: 0; }
+.cuisine-step--done .cuisine-step__badge { background: #adb5bd; }
+.cuisine-step__total { color: var(--color-muted); font-size: .82rem; }
+.cuisine-step__check-icon { margin-left: auto; font-size: 1.2rem; color: var(--color-success); display: none; }
+.cuisine-step--done .cuisine-step__check-icon { display: block; }
+
+.cuisine-step__body { margin-bottom: 1rem; }
+.cuisine-step__text { font-size: 1.05rem; line-height: 1.6; color: var(--color-text); }
+.cuisine-step--active .cuisine-step__text { font-size: 1.1rem; }
+.cuisine-step__note { background: #fffbeb; border-left: 3px solid var(--color-accent); padding: .5rem .75rem; border-radius: 0 var(--radius) var(--radius) 0; font-size: .88rem; color: #5a4000; margin-top: .6rem; }
+
+/* Timer */
+.cuisine-timer { display: flex; align-items: center; gap: .75rem; margin: .75rem 0; padding: .6rem .85rem; background: #e9ecef; border-radius: var(--radius); }
+.cuisine-timer__display { font-family: monospace; font-size: 1.4rem; font-weight: 700; color: var(--color-primary); min-width: 5ch; }
+.cuisine-timer--warning { color: var(--color-danger) !important; animation: cuisine-pulse 0.7s ease-in-out infinite; }
+.cuisine-timer--done { color: var(--color-success) !important; }
+
+@keyframes cuisine-pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+.cuisine-step__actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.cuisine-btn--pulse { animation: cuisine-pulse 1s ease-in-out 3; }
+
+/* Boutons en mode cuisine : plus grands sur mobile */
+.cuisine-step--active .btn--lg { font-size: 1rem; padding: .8rem 1.25rem; }
+
+/* Fin de recette */
+.cuisine-done { text-align: center; padding: 2.5rem 1rem; background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); margin-top: 1rem; }
+.cuisine-done__emoji { font-size: 3rem; margin-bottom: .5rem; }
+.cuisine-done__title { font-size: 1.4rem; font-weight: 700; color: var(--color-primary); margin-bottom: .25rem; }
+.cuisine-done__recipe { color: var(--color-muted); margin-bottom: 1.25rem; }
+.cuisine-done__actions { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; }
+
+/* ── Thème sombre ─────────────────────────────────────────────────────── */
+.cuisine-dark { background: #1a1f1d; color: #e8f5e9; }
+.cuisine-dark .nav { background: #111; }
+.cuisine-dark .cuisine-topbar { background: #1a3d2e; }
+.cuisine-dark .cuisine-section__toggle { background: #1e2d27; border-color: #2e4a3a; color: #e8f5e9; }
+.cuisine-dark .cuisine-section__toggle:hover { background: #233523; }
+.cuisine-dark .cuisine-ing { background: #1e2d27; border-color: transparent; color: #e8f5e9; }
+.cuisine-dark .cuisine-ing:hover { background: #233523; }
+.cuisine-dark .cuisine-step { background: #1e2d27; color: #e8f5e9; }
+.cuisine-dark .cuisine-step__text { color: #e8f5e9; }
+.cuisine-dark .cuisine-timer { background: #243025; }
+.cuisine-dark .cuisine-done { background: #1e2d27; }
+.cuisine-dark .main { background: #1a1f1d; }
+.cuisine-dark .footer { background: #111; }
+
 /* ── Liste de courses ───────────────────────────────────────────────────── */
 
 .courses-header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }

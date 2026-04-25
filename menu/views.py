@@ -525,9 +525,24 @@ def cocher_item(request, id):
 
 @login_required
 def mode_cuisine(request, id):
-    # Placeholder — implémenté à l'étape 10
-    recipe = get_object_or_404(Recipe, id=id, actif=True)
-    return render(request, "menu/recettes/cuisine.html", {"recipe": recipe})
+    """Vue mode cuisine : ingrédients cochables, étapes avec timer."""
+    recipe = get_object_or_404(
+        Recipe.objects.prefetch_related(
+            "ingredient_groups__ingredients",
+            "steps",
+        ),
+        id=id,
+        actif=True,
+    )
+    groups = list(recipe.ingredient_groups.prefetch_related("ingredients").all())
+    steps  = list(recipe.steps.all())
+    ctx = {
+        "recipe": recipe,
+        "groups": groups,
+        "steps": steps,
+        "step_count": len(steps),
+    }
+    return render(request, "menu/recettes/cuisine.html", ctx)
 
 
 @login_required
