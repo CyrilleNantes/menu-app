@@ -76,6 +76,11 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
                 unit=post_data.get(f"ing_unit_{g}_{i}", "").strip() or None,
                 is_optional=post_data.get(f"ing_optional_{g}_{i}") == "on",
                 category=post_data.get(f"ing_category_{g}_{i}", "").strip() or None,
+                calories=_parse_float(post_data.get(f"ing_calories_{g}_{i}")),
+                proteins=_parse_float(post_data.get(f"ing_proteins_{g}_{i}")),
+                carbs=_parse_float(post_data.get(f"ing_carbs_{g}_{i}")),
+                fats=_parse_float(post_data.get(f"ing_fats_{g}_{i}")),
+                openfoodfacts_id=post_data.get(f"ing_off_id_{g}_{i}", "").strip() or None,
                 order=i,
             )
 

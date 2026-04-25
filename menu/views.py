@@ -9,8 +9,11 @@ from django.db.models import Avg, Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from django.http import JsonResponse
+
 from .forms import InscriptionForm, RecipeForm
 from .integrations.cloudinary import upload_photo
+from .integrations.openfoodfacts import rechercher_ingredient
 from .models import Family, Ingredient, Recipe, UserProfile
 from .services import sauvegarder_recette_depuis_post
 
@@ -241,6 +244,17 @@ def detail_recette(request, id):
         "alertes": alertes,
     }
     return render(request, "menu/recettes/detail.html", ctx)
+
+
+# ─── API nutritionnelle ──────────────────────────────────────────────────────
+
+@login_required
+def recherche_nutrition(request):
+    q = request.GET.get("q", "").strip()
+    if not q:
+        return JsonResponse({"ok": True, "results": []})
+    results = rechercher_ingredient(q)
+    return JsonResponse({"ok": True, "results": results})
 
 
 # ─── Création / édition / suppression ────────────────────────────────────────
