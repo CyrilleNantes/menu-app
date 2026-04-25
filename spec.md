@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v1.1** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-04-25
+> Version courante : **v2.0** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-04-26
 
 ---
 
@@ -768,46 +768,12 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 
 ---
 
-> [LOG 2026-04-25] Étape 1 complétée — Structure Django initialisée : Procfile Railway, requirements.txt complet (httpx, django-allauth, cloudinary ajoutés), .env corrigé (ENVIRONMENT=dev), structure app menu/ créée (urls.py, views.py, forms.py, services.py, integrations/, templatetags/, templates/menu/, static/menu/). Template base.html mobile-first avec bannière IS_DEV et footer v1.1. Django system check : 0 issues. Migrations Django core appliquées. collectstatic : 131 fichiers.
-
----
-
-> [LOG 2026-04-25] Backup/Restore/Import recettes — Fix 404 : allauth.urls retiré de config/urls.py (sera réactivé étape 14 — c'est cette ligne qui bloquait le chargement de menu.urls). Backup complet : exporter_backup() sérialise User + 15 modèles en JSON zippé ; restaurer_backup() supprime dans l'ordre inverse (respecte PROTECT sur Family/Recipe/WeekPlan → User), restaure dans l'ordre, reset séquences PostgreSQL via pg_get_serial_sequence, puis logout automatique. Import recettes : importer_recette_depuis_json() supporte format {recipe:{...}} ou dict direct, idempotent (même titre = skip), gère groupes/ingrédients/étapes/sections. Vue import_recettes() accepte fichier JSON unique OU zip multi-JSON. URL : /backup/. Template menu/admin/backup.html : 2 cartes (Export + Restaurer) + section import recettes single/bulk. Nav : lien Backup visible aux is_staff. CSS : .backup-grid, .backup-card, .backup-import-grid.
-
-> [LOG 2026-04-26] Étape 13 complétée — Gamification. models.py : rank property refactorisée via _RANK_CUISINIER/_RANK_CONVIVE (seuils 0/3/8/15/30 et 0/2/5/10/20), Chef de Partie ajouté (manquait), rank_info property retourne level/name/emoji/progress/next_name/next_threshold/metric. Convive : metric = reviews + proposals. context_processors.py : user_rank injecté globalement. Vue profil() : rank_info, stats nb_recettes/nb_avis/nb_proposals, famille_members avec leurs rangs. URL /profil/. profil.html : avatar initiales, badge rôle, carte rang avec barre de progression (%), stats 3 colonnes, échelle complète 5 rangs (reached vs grisé), membres famille avec leur rang, lien d'invitation. detail.html : all_reviews devient list de tuples (avis, rank_tuple), rank pré-calculé dans la vue (cache par user_id, select_related user__profile) → rank-badge--sm à côté du nom. base.html : lien profil + rank-badge--nav dans la nav. CSS : .rank-badge variants, .profil-page complet, .rank-ladder, .profil-membres.
-
-> [LOG 2026-04-26] Étape 12 complétée — Propositions enrichies. Vue supprimer_proposition() : POST AJAX, accessible au Cuisinier (ignorer) OU au Convive proposant (annuler) — vérifie famille. planning_semaine() enrichi : user_proposals (propositions du Convive connecté pour la semaine). semaine.html — Cuisinier : chaque proposition a un select 14 créneaux + "✓ Placer" (POST modifier_meal → updateSlotDOM + suppression proposition) + "✕ Ignorer" (POST supprimer). Convive : section "Mes propositions" avec liste + "✕ Annuler". planning.js : deleteProposal() helper AJAX + retire le li + affiche texte vide si liste vide ; updateProposalCount(delta) ; appendUserProposal() construit le li dynamiquement ; showFlash() toast fixe 3.5s remplace les alert(). CSS : .proposals-list__actions, .proposal-place, .proposal-slot-select.
-
-> [LOG 2026-04-26] Étape 11 complétée — Notation et historique. Vue noter_recette() : POST AJAX, crée Review sans contrainte d'unicité (historique préservé), retourne {ok, new_average, review_count, review{user,stars,comment,date}}. detail_recette() enrichi : user_last_review (dernier avis de l'utilisateur), family_reviews (membres de la famille hors soi-même, 20 max), all_reviews (30 max). detail.html : note moyenne avec IDs pour mise à jour JS, formulaire étoiles interactif (5 boutons ★), textarea commentaire, bouton désactivé jusqu'à sélection. Sections : "Mon dernier avis", "Avis de ma famille" (si famille), "Tous les avis". notation.js : hover/clic sélecteur étoiles, POST AJAX, updateNoteDisplay() (moyenne + compteur), prependReview() (li animé en tête de liste), escHtml XSS. CSS : .star-btn/--on (accent hover+scale), .avis-item/--new (slide-in), .avis-mon-avis, .avis-confirm. URL : /recettes/<id>/noter/.
-
-> [LOG 2026-04-25] Étape 10 complétée — Mode Cuisine. Vue mode_cuisine() enrichie (prefetch ingredient_groups__ingredients + steps). Template cuisine.html : topbar sticky (titre+progress+toggle thème), section ingrédients collapsible (cochage local JS, strike-through), étapes numérotées (active/done/future via classes CSS). Pour chaque étape avec timer : bouton "▶ Démarrer X min" → countdown MM:SS → alarme 3 bips Web Audio API → "→ Étape suivante". Bouton "⏭ Passer" pendant le timer. Thème sombre toggle (body.cuisine-dark) mémorisé via localStorage. Écran de fin (🎉) quand toutes les étapes validées. mode_cuisine.js : pur client-side, aucun AJAX. CSS : .cuisine-topbar, .cuisine-ing/--checked, .cuisine-step/--active/--done/--future, .cuisine-timer/--warning(pulse)/--done, .cuisine-done, .cuisine-dark (thème sombre complet).
-
-> [LOG 2026-04-25] Étape 9 complétée — PWA. manifest.json : name/short_name/display:standalone/theme_color:#2d6a4f/start_url:/planning//, shortcuts Planning+Recettes, icônes 192+512. sw.js servi via vue service_worker() depuis /sw.js (header Service-Worker-Allowed:/, scope racine). Stratégies : cache-first assets statiques (/static/*), network-first avec fallback cache pour /recettes/* (lecture hors-ligne), network-only pour reste (planning, courses, API). Purge automatique anciens caches à l'activation. Icônes PNG 192×192 et 512×512 générées en Python pur (struct+zlib, sans PIL) — fond #2d6a4f, assiette blanche + fourchette/couteau. base.html : link manifest, apple-touch-icon, meta apple-mobile-web-app-*, enregistrement SW au load. URL : /sw.js → menu:service_worker.
-
-> [LOG 2026-04-25] Étape 8 complétée — Liste de courses. services.py : generer_liste_courses() — récupère les Meal is_leftovers=False avec recette, proratise les quantités (servings_count/base_servings), agrège par (nom_lower, unité_lower), bulk_create ShoppingItem triés par catégorie+nom, supprime+recrée ShoppingList. 3 vues : generer_courses (POST cuisinier, redirect), liste_courses (GET tout membre famille, groupes par catégorie, nb cochés), cocher_item (POST AJAX toggle checked). 3 URLs : /courses/<plan_id>/, /courses/generer/<plan_id>/, /courses/item/<id>/cocher/. Template courses/liste.html : barre de progression %, groupes catégorie, items cochables avec accessibilité (role=button, aria-pressed, tabindex). courses.js : optimistic UI (toggle immédiat + rollback si erreur). Planning/semaine.html : boutons "Générer/Régénérer les courses" + "Voir les courses" dans toolbar. CSS : .courses-header, .courses-progress, .courses-group, .shopping-item/--checked, .courses-empty.
-
-> [LOG 2026-04-25] Étape 7 complétée — Planning hebdomadaire. Modèles WeekPlan + Meal + MealProposal déjà présents. 6 nouvelles vues : planning() (redirect vers semaine courante ISO), planning_semaine() (grille 7j, create WeekPlan if needed, totaux nutritionnels, propositions), modifier_meal() (AJAX update_or_create Meal, JSON response), publier_planning() (POST draft→published), proposer_repas() (AJAX MealProposal), api_recettes() (GET JSON recherche titre). Template semaine.html : navigation ←semaine→, toolbar statut+publier/proposer, bilan kcal+prot, grille 7×2 créneaux avec data-* attrs, dialog cuisinier (recherche recette+portions+restes), dialog convive (proposer+message). planning.js : makeSearchDropdown réutilisable (debounce 300ms, fetch /api/recettes/), updateSlotDOM sans rechargement, escHtml XSS. CSS : .planning-grid (7 col), .day-card, .meal-slot/--filled/--leftovers, .planning-nav, .planning-toolbar, .planning-nutri, .planning-proposals, .planning-dialog, .recipe-search-results, badges, responsive 2 col mobile.
-
-> [LOG 2026-04-25] Étape 6 complétée — API nutritionnelle Open Food Facts. integrations/openfoodfacts.py : rechercher_ingredient() via httpx sync (timeout 4s, MAX_RESULTS=5, fallback [] sur erreur), retourne {id, name, calories, proteins, carbs, fats} pour 100g. Vue recherche_nutrition (GET /api/ingredients/nutrition/) + URL. recette_form.js : debounce 400ms sur .ing-name → fetch OFF API → dropdown .nutrition-dropdown avec kcal/100g ; sélection remplit data attrs cal100/prot100/carbs100/fats100 + calcule contribution réelle (qty/100 × valeur100g) dans hidden inputs ; recalcul auto sur changement de qty. formulaire.html : champs hidden ing_calories/proteins/carbs/fats/off_id dans chaque ing-row (edit + création). services.py : sauvegarder_recette_depuis_post enrichi des 5 champs nutrition. CSS : .ing-name-wrap (position relative) + .nutrition-dropdown (position absolute z-index 100).
-
-> [LOG 2026-04-25] Étape 5 complétée — Création/édition/suppression recettes. integrations/cloudinary.py (upload avec fallback si CLOUDINARY_URL absent). services.py : sauvegarder_recette_depuis_post (parse POST groups/ings/steps/sections + re-création atomique) + calculer_macros_recette. RecipeForm ajouté à forms.py. Vues creer_recette, modifier_recette, supprimer_recette (soft delete + dialog <dialog>). recette_form.js : ajout/suppression dynamique groupes+ingrédients+étapes+sections avec re-indexation complète. allauth + django.contrib.sites ajoutés à INSTALLED_APPS, migrations appliquées.
-
-> [LOG 2026-04-25] Étape 4 complétée — Catalogue recettes (lecture) : vues liste_recettes (filtres catégorie/saison/complexité/recherche, tri) et detail_recette (prefetch groupes+ingrédients+étapes+sections+avis, note moyenne, alertes allergies par keywords). Templatetag format_timer. Stub mode_cuisine (étape 10). Templates liste.html (grid cards) + detail.html (ingrédients groupés, étapes numérotées avec timer, sections libres, avis). CSS catalogue complet. Nav mise à jour avec lien Recettes.
-
-> [LOG 2026-04-25] Étape 3 complétée — Authentification custom (sans allauth) : InscriptionForm (rôle Cuisinier/Convive, création famille automatique), vues inscription/connexion/déconnexion/rejoindre_famille. LOGIN_URL, AUTHENTICATION_BACKENDS configurés. Templates mobile-first : inscription.html (JS toggle champ famille), connexion.html, rejoindre.html, planning/index.html (placeholder). Nav mise à jour avec liens auth contextuels. CSS formulaires ajouté. Allauth configuré en amont (ACCOUNT_SIGNUP_FIELDS) pour étape 14.
-
-> [LOG 2026-04-25] Étape 2 complétée — 15 modèles créés dans models.py (Family, UserProfile, TokenOAuth, Recipe, IngredientGroup, Ingredient, RecipeStep, RecipeSection, Review, WeekPlan, Meal, MealProposal, ShoppingList, ShoppingItem, NotificationPreference). Tous enregistrés dans admin.py avec inlines et filtres. Migration 0001_initial appliquée sur Railway PostgreSQL. Commande `load_hachis_fixture` créée et testée : 3 groupes, 21 ingrédients, 6 étapes, 2 sections insérés sans erreur. Cas couverts validés : quantity_note champignons ('150–200g'), is_optional=True, timers 900s et 2100s.
-
----
-
 ## 9. Historique des migrations
 
 | Migration | Date | Description |
 |-----------|------|-------------|
 | `0001_initial` | 2026-04-25 | Schéma initial — tous les modèles |
 | `0002_calendar_fields` | 2026-04-26 | `UserProfile` : créneaux Google Calendar (4 TimeField) — `Meal` : `google_event_id` |
-
-> [REVIEW 2026-04-25] `Ingredient` : ajout du champ `quantity_note (CharField 50, nullable)` — détecté lors du mapping de la recette Hachis Parmentier (cas des quantités en fourchette). La migration `0001_initial` intègre ce champ dès le départ.
 
 ---
 
@@ -817,9 +783,34 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 |---------|------|-------------|
 | v1.0 | 2026-04-25 | Initialisation du projet — spec complète |
 | v1.1 | 2026-04-25 | Ajout `Ingredient.quantity_note` + fixture Hachis Parmentier |
+| v2.0 | 2026-04-26 | Application complète — Phases 1, 2 et 3 livrées (16 étapes) |
 
-> [LOG 2026-04-26] Étape 16 complétée — Export Google Tasks. integrations/google_tasks.py : google_tasks_export_courses (POST une tâche par article non coché, format "{qty} {unité} {nom}", note "Menu Familial — Semaine X", cible google_tasklist_id ou @default, continue sur erreur individuelle). Vue export_tasks (POST /courses/<plan_id>/export-tasks/, vérifie TokenOAuth + shopping_list + nb_unchecked > 0, message flash stats). URL /courses/<plan_id>/export-tasks/. Bouton "✅ Exporter vers Google Tasks" dans l'en-tête de la liste de courses (visible si shopping_list + google_connected). google_connected dans contexte liste_courses. Pas de migration (export one-shot, IDs non stockés).
+### Détail v2.0
 
-> [LOG 2026-04-26] Étape 15 complétée — Export Google Calendar. integrations/google_calendar.py : google_calendar_export_planning (create/update événement par Meal avec recette, PATCH si google_event_id existe, recrée si 404/410, stocke event_id dans Meal.google_event_id). Corps événement : summary=emoji+titre, description=titre+personnes+restes, créneaux depuis UserProfile (lunch_start/end, dinner_start/end). Migration 0002 : 4 TimeField sur UserProfile (défauts 12h-13h / 20h30-21h30) + Meal.google_event_id. Vue export_calendar (POST, vérifie TokenOAuth, appelle integration, message flash stats). Vue modifier_creneaux_calendar (POST, enregistre 4 champs TimeField). Bouton "📅 Exporter vers Google Agenda" dans toolbar planning (Cuisinier + google_connected). Formulaire créneaux dans section Google du profil (visible si connecté). google_connected dans contexte planning_semaine.
+**Phase 1 — MVP Core (étapes 1–9)**
+- Structure Django : Procfile, requirements, settings dev/prod, context processor `IS_DEV`
+- 15 modèles, migration initiale, fixture Hachis Parmentier
+- Authentification email (inscription avec rôle, connexion, invitation famille par token)
+- Catalogue recettes : liste avec filtres/tri/recherche, fiche complète avec infos nutritionnelles et alertes allergies
+- Création/édition/suppression de recettes (Cloudinary, macros calculées, soft delete)
+- API nutritionnelle Open Food Facts (suggestions ingrédients en temps réel)
+- Planning hebdomadaire : grille 7j×2, AJAX, restes, publication, indicateurs nutritionnels
+- Liste de courses : génération automatique agrégée, cochage AJAX avec optimistic UI
+- PWA installable : manifest, service worker (cache-first/network-first), icônes, offline recettes
+- Backup/Restore/Import recettes (ZIP + JSON) réservé aux is_staff
 
-> [LOG 2026-04-26] Étape 14 complétée — OAuth Google custom (httpx, sans allauth social provider). integrations/google_auth.py : google_build_auth_url (scopes calendar+tasks, access_type=offline, prompt=consent), google_exchange_code, google_refresh_access_token, google_get_valid_token (auto-refresh avec marge 60s via TokenOAuth). 3 vues : google_connect (state CSRF en session → redirect Google), google_callback (validation state, échange code, update_or_create TokenOAuth, préservation refresh_token si absent de la réponse), google_disconnect (DELETE TokenOAuth). 3 routes : /google/connect/, /google/callback/, /google/disconnect/. Profil : section "Intégrations Google" avec bouton Connect/Disconnect, google_connected dans le contexte. CSS bouton Google officiel (svg 4 couleurs) + carte statut connecté. Variables requises en Railway : GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET. URL callback à déclarer dans Google Cloud Console : /google/callback/.
+**Phase 2 — Mode Cuisine & Social (étapes 10–13)**
+- Mode Cuisine mobile : étapes cochables, timers (Web Audio API), thème sombre, défilement auto
+- Notation étoiles 1–5 (AJAX, historique multi-avis, avis famille)
+- Propositions enrichies : placer dans un créneau, ignorer (Cuisinier), annuler (Convive)
+- Gamification : rangs Cuisinier (Commis→Chef Exécutif) et Convive (Convive→Guide Michelin), page profil avec progression
+
+**Phase 3 — Intégrations Google (étapes 14–16)**
+- OAuth 2.0 Google custom (httpx, state CSRF, TokenOAuth, auto-refresh)
+- Export Google Calendar : un événement par repas, créneaux configurables, create/update idempotent
+- Export Google Tasks : une tâche par article non coché, format `{qty} {unité} {nom}`
+
+**Revue de cohérence (2026-04-26)**
+- Scope OAuth aligné sur `calendar.events` (moindre privilège)
+- Spec 4.3/4.11 complétée (champs ajoutés en migration 0002)
+- Règles publication planning et comportement Google non connecté corrigés dans la spec
