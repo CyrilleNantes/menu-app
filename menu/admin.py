@@ -29,8 +29,8 @@ class RecipeSectionInline(admin.TabularInline):
 
 @admin.register(Recipe)
 class RecipeAdmin(admin.ModelAdmin):
-    list_display = ("title", "category", "complexity", "created_by", "actif", "created_at")
-    list_filter = ("category", "complexity", "actif", "seasons")
+    list_display = ("title", "category", "complexity", "protein_type", "created_by", "actif", "created_at")
+    list_filter = ("category", "complexity", "protein_type", "actif", "seasons")
     search_fields = ("title", "description")
     inlines = [IngredientGroupInline, RecipeStepInline, RecipeSectionInline]
 
@@ -43,7 +43,7 @@ class FamilyAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "role", "family")
+    list_display = ("user", "role", "family", "portions_factor")
     list_filter = ("role",)
     search_fields = ("user__username", "user__email")
 

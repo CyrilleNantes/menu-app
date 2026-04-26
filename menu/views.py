@@ -829,6 +829,7 @@ def creer_recette(request):
             seasons=cd.get("seasons") or [],
             health_tags=cd.get("health_tags") or [],
             complexity=cd["complexity"],
+            protein_type=cd.get("protein_type") or None,
             created_by=request.user,
         )
         sauvegarder_recette_depuis_post(recipe, request.POST)
@@ -866,6 +867,7 @@ def modifier_recette(request, id):
             recipe.seasons = cd.get("seasons") or []
             recipe.health_tags = cd.get("health_tags") or []
             recipe.complexity = cd["complexity"]
+            recipe.protein_type = cd.get("protein_type") or None
             recipe.save()
             sauvegarder_recette_depuis_post(recipe, request.POST)
             messages.success(request, "Recette enregistrée !")
@@ -882,6 +884,7 @@ def modifier_recette(request, id):
             "seasons": recipe.seasons,
             "health_tags": recipe.health_tags,
             "complexity": recipe.complexity,
+            "protein_type": recipe.protein_type or "",
         })
 
     recipe_data = recipe
@@ -1099,6 +1102,30 @@ def modifier_creneaux_calendar(request):
     profile.save(update_fields=["lunch_start", "lunch_end", "dinner_start", "dinner_end"])
     messages.success(request, "Créneaux Google Calendar mis à jour.")
     logger.debug("modifier_creneaux_calendar : créneaux mis à jour pour user %s", request.user.id)
+    return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def modifier_portions_factor(request):
+    """Enregistre le facteur de portion individuel de l'utilisateur."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    try:
+        value = float(request.POST.get("portions_factor", "1.0"))
+        if value <= 0 or value > 5:
+            raise ValueError("Hors plage")
+    except (ValueError, TypeError):
+        messages.error(request, "Valeur invalide pour le facteur de portion (entre 0.1 et 5.0).")
+        return redirect("menu:profil")
+
+    profile.portions_factor = round(value, 2)
+    profile.save(update_fields=["portions_factor"])
+    messages.success(request, "Facteur de portion mis à jour.")
+    logger.debug("modifier_portions_factor : portions_factor=%.2f pour user %s", profile.portions_factor, request.user.id)
     return redirect("menu:profil")
 
 

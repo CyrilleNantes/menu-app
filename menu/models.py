@@ -38,6 +38,11 @@ class UserProfile(models.Model):
     lunch_end    = models.TimeField(default=datetime_time(13, 0),  verbose_name="Fin déjeuner")
     dinner_start = models.TimeField(default=datetime_time(20, 30), verbose_name="Début dîner")
     dinner_end   = models.TimeField(default=datetime_time(21, 30), verbose_name="Fin dîner")
+    portions_factor = models.FloatField(
+        default=1.0,
+        verbose_name="Facteur de portion",
+        help_text="1.0 = adulte référence. Ado garçon 15–16 ans ≈ 1.3, ado fille 13 ans ≈ 0.9.",
+    )
 
     class Meta:
         verbose_name = "Profil utilisateur"
@@ -172,6 +177,23 @@ class Recipe(models.Model):
     carbs_per_serving = models.FloatField(blank=True, null=True)
     fats_per_serving = models.FloatField(blank=True, null=True)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="recipes")
+    PROTEIN_TYPE_CHOICES = [
+        ("boeuf",        "Bœuf"),
+        ("volaille",     "Volaille"),
+        ("porc",         "Porc"),
+        ("poisson",      "Poisson"),
+        ("oeufs",        "Œufs"),
+        ("legumineuses", "Légumineuses"),
+        ("autre",        "Autre"),
+        ("aucune",       "Aucune (végétarien)"),
+    ]
+    protein_type = models.CharField(
+        max_length=20,
+        choices=PROTEIN_TYPE_CHOICES,
+        null=True,
+        blank=True,
+        verbose_name="Protéine principale",
+    )
     actif = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

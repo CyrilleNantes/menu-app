@@ -178,6 +178,27 @@
         {% endif %}
     </section>
 
+    <!-- ── Facteur de portion ─────────────────────────────────── -->
+    <section class="profil-section">
+        <h2 class="profil-section__title">⚖️ Mon facteur de portion</h2>
+        <p class="text-muted" style="margin-bottom:.75rem">
+            Utilisé pour personnaliser les calculs nutritionnels.<br>
+            <strong>1.0</strong> = adulte référence · <strong>1.3</strong> = ado garçon 15–16 ans · <strong>0.9</strong> = ado fille 13 ans
+        </p>
+        <form method="post" action="{% url 'menu:modifier_portions_factor' %}" class="portions-form">
+            {% csrf_token %}
+            <div class="portions-row">
+                <input type="number"
+                       name="portions_factor"
+                       value="{{ profile.portions_factor }}"
+                       min="0.1" max="5.0" step="0.1"
+                       class="input-short"
+                       required>
+                <button type="submit" class="btn btn--secondary btn--sm">Enregistrer</button>
+            </div>
+        </form>
+    </section>
+
     <!-- ── Actions ──────────────────────────────────────────────── -->
     <div class="profil-actions">
         <a href="{% url 'menu:planning' %}" class="btn btn--secondary">← Planning</a>

@@ -29,6 +29,18 @@ class InscriptionForm(forms.Form):
         return cleaned
 
 
+PROTEIN_TYPE_CHOICES = [
+    ("",             "— Non spécifié —"),
+    ("boeuf",        "Bœuf"),
+    ("volaille",     "Volaille"),
+    ("porc",         "Porc"),
+    ("poisson",      "Poisson"),
+    ("oeufs",        "Œufs"),
+    ("legumineuses", "Légumineuses"),
+    ("autre",        "Autre"),
+    ("aucune",       "Aucune (végétarien)"),
+]
+
 SAISON_CHOICES = [
     ("printemps", "Printemps"), ("ete", "Été"), ("automne", "Automne"), ("hiver", "Hiver"),
 ]
@@ -57,4 +69,7 @@ class RecipeForm(forms.Form):
     health_tags = forms.MultipleChoiceField(
         required=False, choices=HEALTH_CHOICES,
         widget=forms.CheckboxSelectMultiple, label="Tags santé",
+    )
+    protein_type = forms.ChoiceField(
+        required=False, choices=PROTEIN_TYPE_CHOICES, label="Protéine principale",
     )
