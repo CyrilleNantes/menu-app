@@ -1,7 +1,7 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v2.9** — affichée dans le footer de l'application.
+> Version courante : **v3.0** — affichée dans le footer de l'application.
 > Dernière mise à jour : 2026-04-26
 
 ---
@@ -406,7 +406,9 @@ Article dans une liste de courses.
 
 ---
 
-### 4.15 `NotificationPreference` *(architecture prévue — non implémentée)*
+### 4.15 `NotificationPreference`
+
+Préférences de notification par utilisateur et par canal. Utilisé par les services email pour respecter l'opt-out.
 
 | Champ | Type Django | Nullable | Défaut | Description |
 |-------|-------------|----------|--------|-------------|
@@ -414,6 +416,8 @@ Article dans une liste de courses.
 | `user` | `ForeignKey(User)` | non | — | Utilisateur |
 | `channel` | `CharField(20)` | non | — | `email` / `push` / `in_app` |
 | `enabled` | `BooleanField` | non | `True` | Activé/désactivé |
+
+**Comportement** : si un utilisateur a un enregistrement `channel="email", enabled=False`, il ne reçoit aucun email transactionnel. Absence d'enregistrement = opt-in par défaut. Configurable uniquement via l'admin Django (pas d'UI utilisateur pour le MVP).
 
 ---
 
@@ -568,6 +572,8 @@ Article dans une liste de courses.
 - Propositions des Convives en attente (visibles par le Cuisinier)
 - Indicateurs nutritionnels de la semaine (calories / protéines cumulés)
 
+**Création automatique du WeekPlan** : si aucun plan n'existe pour la semaine demandée, `planning_semaine` le crée automatiquement en `draft`. `created_by` est toujours un Cuisinier — si l'utilisateur courant est un Convive, le premier Cuisinier de la famille est utilisé comme auteur.
+
 ---
 
 ### 5.9 Composition et modification du planning
@@ -606,10 +612,11 @@ Article dans une liste de courses.
 
 **URL** : `POST /planning/<id>/proposer/` → `menu:proposer_repas`
 **Vue** : `proposer_repas(request, plan_id)`
-**Accès** : Convive uniquement
+**Accès** : Convive uniquement (les Cuisiniers modifient le planning directement)
 
 **Règles de gestion** :
 1. Crée un `MealProposal` lié à la famille et au planning
+2. Un Cuisinier qui tente de proposer reçoit une erreur 403 — il doit utiliser `modifier_meal` directement
 
 **Réponse** :
 - Succès : `{"ok": true}` + mise à jour de l'UI
@@ -791,7 +798,7 @@ Photos supplémentaires d'une recette (galerie). La photo principale reste `Reci
 | `caption` | `CharField(100)` | oui | — | Légende optionnelle |
 | `is_main` | `BooleanField` | non | `False` | Photo mise en avant dans la galerie (≠ `Recipe.photo_url`) |
 | `order` | `PositiveIntegerField` | non | `0` | Ordre d'affichage |
-| `uploaded_by` | `ForeignKey(User)` | non | — | Auteur de l'upload |
+| `uploaded_by` | `ForeignKey(User)` | oui | `null` | Auteur de l'upload — `SET_NULL` si l'utilisateur est supprimé (préserve la photo) |
 | `actif` | `BooleanField` | non | `True` | Soft delete — retrait par le Cuisinier |
 | `created_at` | `DateTimeField` | non | auto | Date d'upload |
 
@@ -962,6 +969,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v2.7 | 2026-04-26 | Étape 22 — galerie photos recette (carousel, upload Cloudinary, gestion Cuisinier) |
 | v2.8 | 2026-04-26 | Étape 23 — notifications email (planning publié → Convives, proposition → Cuisiniers) |
 | v2.9 | 2026-04-26 | Étape 24 — allergies enrichies : 16 tags EU, alertes par ingrédient, formulaire profil, page compatibilité famille |
+| v3.0 | 2026-04-26 | Revue de code — B1 WeekPlan created_by, B2 prefetch photos, B3 profil N+1, S1-S3 spec, Q1-Q2 qualité |
+
+> [LOG 2026-04-26] Revue de code v3.0 — B1 : planning_semaine auto-crée WeekPlan avec created_by=Cuisinier même si visiteur est Convive (premier Cuisinier de la famille utilisé). B2 : detail_recette utilise Prefetch(photos, queryset filtré actif=True) évitant la 2ᵉ requête SQL. B3 : profil chargé une seule fois via _get_profile() en tête de detail_recette (élimine 4 accès DB séparés). S1 : spec 4.15 NotificationPreference mise à jour (implémentée). S2 : spec 4.17 uploaded_by corrigé en nullable (SET_NULL préserve photo). S3 : proposer_repas retourne 403 si Cuisinier (spec 5.11 corrigée). Q1 : _status() défini hors boucle dans dashboard_nutrition. Q2 : lambdas anonymes remplacées par appels à _status().
 
 > [LOG 2026-04-26] Étape 24 — Gestion des allergies enrichie. DIETARY_TAG_CONFIG : 14 allergènes majeurs EU (gluten, lactose, œufs, poisson, crustacés, mollusques, fruits à coque, arachides, soja, céleri, moutarde, sésame, sulfites, lupin) + végétarien + végan. Alertes par ingrédient : _alertes_allergies() retourne {tag, label, emoji, ingredients[]} — précise quel ingrédient déclenche l'alerte. Formulaire dietary_tags dans profil (checkboxes, POST /profil/dietary-tags/). Page compatibilité famille /recettes/<id>/compatibilite/ : liste tous les membres avec statut ✅/⚠️ et détail des conflits. Lien "👨‍👩‍👧 Compatibilité famille" dans la fiche recette. CSS dietary-tags-grid + compat-*.
 

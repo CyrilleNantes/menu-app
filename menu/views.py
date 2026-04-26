@@ -9,7 +9,7 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Prefetch, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -289,6 +289,17 @@ def dashboard_nutrition(request):
             .first()
         )
 
+    # Q1 — _status défini une seule fois, hors boucle
+    def _status(actual, target):
+        if target <= 0 or actual <= 0:
+            return "neutral"
+        pct = actual / target * 100
+        if pct < 60 or pct > 130:
+            return "alert"
+        if pct < 80 or pct > 110:
+            return "warning"
+        return "ok"
+
     if week_plan:
         meals_qs = (
             Meal.objects
@@ -329,16 +340,6 @@ def dashboard_nutrition(request):
             total_cal_week  += day_cal
             total_prot_week += day_prot
 
-            def _status(actual, target):
-                if target <= 0:
-                    return "neutral"
-                pct = actual / target * 100
-                if pct < 60 or pct > 130:
-                    return "alert"
-                if pct < 80 or pct > 110:
-                    return "warning"
-                return "ok"
-
             days_data.append({
                 "date":       d,
                 "day_name":   DAY_NAMES[i],
@@ -346,8 +347,8 @@ def dashboard_nutrition(request):
                 "meals":      meals_out,
                 "total_cal":  round(day_cal, 0),
                 "total_prot": round(day_prot, 1),
-                "cal_status":  _status(day_cal,  cal_day_target)  if day_cal  else "neutral",
-                "prot_status": _status(day_prot, prot_day_target) if day_prot else "neutral",
+                "cal_status":  _status(day_cal,  cal_day_target),
+                "prot_status": _status(day_prot, prot_day_target),
             })
 
     def _pct(actual, target):
@@ -365,8 +366,9 @@ def dashboard_nutrition(request):
         "prot_week_target":  round(prot_week_target, 1),
         "cal_week_pct":      _pct(total_cal_week,  cal_week_target),
         "prot_week_pct":     _pct(total_prot_week, prot_week_target),
-        "cal_week_status":   (lambda a, t: "alert" if a/t*100 < 60 or a/t*100 > 130 else "warning" if a/t*100 < 80 or a/t*100 > 110 else "ok")(total_cal_week, cal_week_target) if cal_week_target > 0 and total_cal_week > 0 else "neutral",
-        "prot_week_status":  (lambda a, t: "alert" if a/t*100 < 60 or a/t*100 > 130 else "warning" if a/t*100 < 80 or a/t*100 > 110 else "ok")(total_prot_week, prot_week_target) if prot_week_target > 0 and total_prot_week > 0 else "neutral",
+        # Q2 — réutilise _status au lieu de lambdas anonymes dupliquées
+        "cal_week_status":   _status(total_cal_week,  cal_week_target),
+        "prot_week_status":  _status(total_prot_week, prot_week_target),
     }
     return render(request, "menu/profil/nutrition.html", ctx)
 
@@ -407,14 +409,30 @@ def planning_semaine(request, year, week):
         return redirect("menu:planning")
     week_end = week_start + timedelta(days=6)              # dimanche
 
-    # Créer le WeekPlan s'il n'existe pas encore
+    # Rôle déterminé tôt — nécessaire pour la création du WeekPlan
+    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
+
+    # Créer le WeekPlan s'il n'existe pas encore.
+    # `created_by` DOIT être un Cuisinier — si l'utilisateur est un Convive,
+    # on utilise le premier Cuisinier de la famille pour respecter la contrainte métier.
+    if is_cuisinier:
+        plan_creator = request.user
+    else:
+        cuisinier_profile = (
+            UserProfile.objects
+            .filter(family=profile.family, role__in=["cuisinier", "chef_etoile"])
+            .select_related("user")
+            .first()
+        )
+        plan_creator = cuisinier_profile.user if cuisinier_profile else request.user
+
     with transaction.atomic():
         plan, _ = WeekPlan.objects.get_or_create(
             family=profile.family,
             period_start=week_start,
             defaults={
                 "period_end": week_end,
-                "created_by": request.user,
+                "created_by": plan_creator,
                 "status": "draft",
             },
         )
@@ -445,8 +463,6 @@ def planning_semaine(request, year, week):
             n = m.servings_count or m.recipe.base_servings or 1
             total_calories += (m.recipe.calories_per_serving or 0) * n
             total_proteins += (m.recipe.proteins_per_serving or 0) * n
-
-    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
 
     # Propositions visibles par le Cuisinier
     proposals = []
@@ -652,10 +668,12 @@ def publier_planning(request, plan_id):
 @require_POST
 @login_required
 def proposer_repas(request, plan_id):
-    """AJAX : un Convive propose une recette pour ce planning."""
+    """AJAX : un Convive propose une recette pour ce planning. Réservé aux Convives."""
     profile = _get_profile(request)
     if not profile or not profile.family:
         return JsonResponse({"ok": False, "error": "Famille requise", "code": "NO_FAMILY"}, status=403)
+    if profile.role in ("cuisinier", "chef_etoile"):
+        return JsonResponse({"ok": False, "error": "Les Cuisiniers peuvent directement modifier le planning", "code": "FORBIDDEN"}, status=403)
 
     plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
 
@@ -889,6 +907,9 @@ def liste_recettes(request):
 
 @login_required
 def detail_recette(request, id):
+    # Profil chargé une seule fois — réutilisé partout dans la vue (B3)
+    profile = _get_profile(request)
+
     recipe = get_object_or_404(
         Recipe.objects.select_related("created_by").prefetch_related(
             "ingredient_groups__ingredients",
@@ -896,7 +917,12 @@ def detail_recette(request, id):
             "steps",
             "sections",
             "reviews__user",
-            "photos",
+            # B2 — prefetch filtré : évite la 2ᵉ requête dans gallery_photos
+            Prefetch(
+                "photos",
+                queryset=RecipePhoto.objects.filter(actif=True).order_by("order", "created_at"),
+                to_attr="active_photos",
+            ),
         ),
         id=id,
         actif=True,
@@ -904,35 +930,27 @@ def detail_recette(request, id):
 
     stats = recipe.reviews.aggregate(note_moyenne=Avg("stars"), nb_avis=Count("id"))
 
-    dietary_tags = []
-    try:
-        dietary_tags = request.user.profile.dietary_tags or []
-    except UserProfile.DoesNotExist:
-        pass
-
+    # Alertes allergies — profil réutilisé (B3)
+    dietary_tags = profile.dietary_tags if profile else []
     recipe_ingredients = list(recipe.ingredients.all())
     alertes = _alertes_allergies(recipe_ingredients, dietary_tags)
 
     # Dernier avis de l'utilisateur courant
     user_last_review = recipe.reviews.filter(user=request.user).order_by("-created_at").first()
 
-    # Avis des membres de la famille (hors l'utilisateur courant, pour la section dédiée)
+    # Avis des membres de la famille — profil réutilisé (B3)
     family_reviews = []
-    try:
-        profile = request.user.profile
-        if profile.family:
-            family_ids = list(
-                UserProfile.objects.filter(family=profile.family)
-                .exclude(user=request.user)
-                .values_list("user_id", flat=True)
-            )
-            family_reviews = list(
-                recipe.reviews.filter(user_id__in=family_ids)
-                .select_related("user")
-                .order_by("-created_at")[:20]
-            )
-    except UserProfile.DoesNotExist:
-        pass
+    if profile and profile.family:
+        family_ids = list(
+            UserProfile.objects.filter(family=profile.family)
+            .exclude(user=request.user)
+            .values_list("user_id", flat=True)
+        )
+        family_reviews = list(
+            recipe.reviews.filter(user_id__in=family_ids)
+            .select_related("user")
+            .order_by("-created_at")[:20]
+        )
 
     # Pré-calcul des rangs par reviewer pour éviter le N+1
     raw_reviews = list(
@@ -951,24 +969,14 @@ def detail_recette(request, id):
                 rank_cache[uid] = (0, "")
         all_reviews_with_rank.append((r, rank_cache[uid]))
 
-    # Bloc "Pour toi" — macros personnalisées via portions_factor
-    portions_factor = 1.0
-    try:
-        portions_factor = request.user.profile.portions_factor
-    except UserProfile.DoesNotExist:
-        pass
-
+    # Bloc "Pour toi" — profil réutilisé (B3)
+    portions_factor = profile.portions_factor if profile else 1.0
     pour_toi_cal  = round(recipe.calories_per_serving  * portions_factor, 0) if recipe.calories_per_serving  else None
     pour_toi_prot = round(recipe.proteins_per_serving * portions_factor, 1) if recipe.proteins_per_serving else None
 
-    # Galerie photos (actives uniquement, triées)
-    gallery_photos = list(recipe.photos.filter(actif=True).order_by("order", "created_at"))
-    is_cuisinier_here = False
-    try:
-        p = request.user.profile
-        is_cuisinier_here = p.role in ("cuisinier", "chef_etoile")
-    except UserProfile.DoesNotExist:
-        pass
+    # Galerie photos — utilise le prefetch filtré (B2)
+    gallery_photos = recipe.active_photos
+    is_cuisinier_here = bool(profile and profile.role in ("cuisinier", "chef_etoile"))
 
     ctx = {
         "recipe": recipe,
