@@ -147,6 +147,39 @@ class TokenOAuth(models.Model):
         return f"{self.user.username} — {self.service}"
 
 
+class NutritionConfig(models.Model):
+    """
+    Singleton — paramètres du cadre nutritionnel de référence PNNS (ANSES France).
+    Toutes les valeurs sont des repères indicatifs, jamais des prescriptions médicales.
+    Un seul enregistrement en base (pk=1). Modifiable uniquement via l'admin Django.
+    """
+    calories_dinner_target    = models.PositiveIntegerField(default=850,  verbose_name="Cible kcal dîner (adulte référence)")
+    proteins_dinner_target    = models.PositiveIntegerField(default=27,   verbose_name="Cible protéines g dîner (adulte référence)")
+    max_red_meat_per_week     = models.PositiveSmallIntegerField(default=3,  verbose_name="Max repas viande rouge / semaine")
+    min_fish_per_week         = models.PositiveSmallIntegerField(default=1,  verbose_name="Min repas poisson / semaine")
+    min_vegetarian_per_week   = models.PositiveSmallIntegerField(default=1,  verbose_name="Min repas végétarien / semaine")
+    min_days_before_repeat    = models.PositiveSmallIntegerField(default=14, verbose_name="Jours min avant de replanifier un même plat")
+    min_days_low_rated_repeat = models.PositiveSmallIntegerField(default=21, verbose_name="Jours min avant de replanifier un plat < 2★")
+
+    class Meta:
+        verbose_name = "Configuration nutritionnelle PNNS"
+        verbose_name_plural = "Configuration nutritionnelle PNNS"
+
+    def __str__(self):
+        return "Configuration PNNS (singleton)"
+
+    def save(self, *args, **kwargs):
+        """Force pk=1 pour garantir l'unicité du singleton."""
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get(cls):
+        """Retourne l'unique instance, la crée si inexistante."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
 class Recipe(models.Model):
     CATEGORY_CHOICES = [
         ("entree", "Entrée"),
