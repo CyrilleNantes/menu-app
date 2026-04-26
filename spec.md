@@ -953,6 +953,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v2.0 | 2026-04-26 | Application complète — Phases 1, 2 et 3 livrées (16 étapes) |
 | v2.1 | 2026-04-26 | Phase 4 spécifiée — cadre PNNS, algo suggestions, dashboard individuel, alertes, galerie photos |
 | v2.2 | 2026-04-26 | Étape 17 — `Recipe.protein_type` + `UserProfile.portions_factor` (migration 0003, formulaire recette, profil) |
+| v2.3 | 2026-04-26 | Étape 18 — modèle `NutritionConfig` singleton PNNS (migration 0004, admin uniquement) |
+
+> [LOG 2026-04-26] Étape 18 — Ajout du modèle NutritionConfig singleton (7 paramètres PNNS avec valeurs par défaut ANSES). Pattern singleton : save() force pk=1, méthode get() via get_or_create. Admin Django avec fieldsets clairs, has_add_permission désactivé si existe, has_delete_permission toujours False. Migration 0004_nutrition_config. Aucun accès UI — admin uniquement.
 
 > [LOG 2026-04-26] Étape 17 — Ajout de `Recipe.protein_type` (CharField nullable, 8 choix) et `UserProfile.portions_factor` (FloatField défaut 1.0). Migration 0003_intelligence_fields. `protein_type` visible dans le formulaire recette (sélect sous health_tags) et dans l'admin (list_display + list_filter). `portions_factor` configurable depuis la page profil via POST /profil/portions-factor/ → `menu:modifier_portions_factor`. Vues creer_recette et modifier_recette mises à jour.
 
