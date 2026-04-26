@@ -24,6 +24,7 @@ from .integrations.google_tasks import google_tasks_export_courses
 from .integrations.openfoodfacts import rechercher_ingredient
 from .models import Family, Ingredient, Meal, MealProposal, Recipe, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
+    calculer_alertes_planning,
     exporter_backup,
     generer_liste_courses,
     importer_recette_depuis_json,
@@ -461,6 +462,8 @@ def planning_semaine(request, year, week):
         # Lien courses
         "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
+        # Alertes équilibre (nudges) — Cuisinier uniquement
+        "alertes_planning": calculer_alertes_planning(plan, profile.family) if is_cuisinier else [],
     }
     return render(request, "menu/planning/semaine.html", ctx)
 

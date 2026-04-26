@@ -175,6 +175,10 @@
                         const label = `${currentSlot.date} ${body.meal_time === 'lunch' ? 'Midi' : 'Soir'} — ${data.recipe_title}`;
                         mealsAvecRecette.push({ id: data.meal_id, label });
                     }
+                    // Réafficher les alertes d'équilibre (le menu a changé)
+                    if (typeof window._resetAlertesDismissed === 'function') {
+                        window._resetAlertesDismissed();
+                    }
                 } else {
                     alert(`Erreur : ${data.error}`);
                 }
@@ -233,6 +237,54 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
     }
+
+    // ── Alertes équilibre — dismiss via sessionStorage ───────────────────────
+
+    (function initAlertes() {
+        const container = document.getElementById('alertes-planning');
+        if (!container) return;
+
+        const planId    = container.dataset.planId;
+        const storageKey = `dismissed_alertes_${planId}`;
+
+        function getDismissed() {
+            try { return JSON.parse(sessionStorage.getItem(storageKey) || '[]'); }
+            catch { return []; }
+        }
+
+        function saveDismissed(arr) {
+            sessionStorage.setItem(storageKey, JSON.stringify(arr));
+        }
+
+        // Masquer les alertes déjà ignorées au chargement de la page
+        const dismissed = getDismissed();
+        container.querySelectorAll('.planning-alerte').forEach(el => {
+            if (dismissed.includes(el.dataset.type)) {
+                el.style.display = 'none';
+            }
+        });
+
+        // Bouton ✕ — dismiss
+        container.addEventListener('click', e => {
+            const btn = e.target.closest('.planning-alerte__dismiss');
+            if (!btn) return;
+            const alerte = btn.closest('.planning-alerte');
+            if (!alerte) return;
+            const type = alerte.dataset.type;
+            const arr  = getDismissed();
+            if (!arr.includes(type)) arr.push(type);
+            saveDismissed(arr);
+            alerte.style.display = 'none';
+        });
+
+        // Exposer une fonction pour réafficher les alertes après modification d'un repas
+        window._resetAlertesDismissed = function () {
+            saveDismissed([]);
+            container.querySelectorAll('.planning-alerte').forEach(el => {
+                el.style.display = '';
+            });
+        };
+    })();
 
     // ── Dialogue : suggestions de recettes (Cuisinier) ──────────────────────
 

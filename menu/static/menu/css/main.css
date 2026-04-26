@@ -648,6 +648,13 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
     .google-status--connected { flex-direction: column; align-items: flex-start; }
 }
 
+/* ── Alertes équilibre planning ───────────────────────────────────────────── */
+#alertes-planning { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .75rem; }
+.planning-alerte { display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem; background: #fff8e1; border: 1px solid #ffe082; border-radius: var(--radius); font-size: .85rem; }
+.planning-alerte__msg { flex: 1; }
+.planning-alerte__dismiss { background: none; border: none; cursor: pointer; font-size: .9rem; color: var(--color-muted); padding: 0 .2rem; line-height: 1; opacity: .7; }
+.planning-alerte__dismiss:hover { opacity: 1; }
+
 /* ── Dashboard nutritionnel ───────────────────────────────────────────────── */
 .nutri-dashboard { max-width: 700px; margin: 0 auto; }
 .nutri-disclaimer { font-size: .8rem; margin-top: .25rem; }

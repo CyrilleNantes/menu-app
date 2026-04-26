@@ -53,6 +53,20 @@
     {% endif %}
 </div>
 
+<!-- ── Alertes équilibre (Cuisinier) ────────────────────────── -->
+{% if is_cuisinier and alertes_planning %}
+<div id="alertes-planning" data-plan-id="{{ plan.id }}">
+    {% for alerte in alertes_planning %}
+    <div class="planning-alerte" data-type="{{ alerte.type }}" role="alert">
+        <span class="planning-alerte__msg">{{ alerte.message }}</span>
+        {% if alerte.dismissable %}
+        <button type="button" class="planning-alerte__dismiss" aria-label="Ignorer">✕</button>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <!-- ── Bilan nutritionnel ────────────────────────────────────── -->
 {% if total_calories %}
 <div class="planning-nutri">

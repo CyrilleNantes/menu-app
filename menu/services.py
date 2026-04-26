@@ -115,6 +115,73 @@ def calculer_macros_recette(recipe: Recipe) -> None:
     recipe.save(update_fields=["calories_per_serving", "proteins_per_serving", "carbs_per_serving", "fats_per_serving"])
 
 
+def calculer_alertes_planning(week_plan, family) -> list[dict]:
+    """
+    Analyse le WeekPlan et retourne les alertes d'équilibre nutritionnel (nudges).
+    Jamais bloquantes — uniquement affichées au Cuisinier dans le planning.
+    Retourne une liste de dicts {type, message, dismissable}.
+    """
+    config = NutritionConfig.get()
+
+    meals = list(
+        Meal.objects
+        .filter(week_plan=week_plan, recipe__isnull=False, is_leftovers=False)
+        .select_related("recipe")
+    )
+
+    protein_types = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
+    red_meat_count = protein_types.count("boeuf") + protein_types.count("porc")
+    fish_count     = protein_types.count("poisson")
+    veg_count      = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
+
+    # Totaux nutritionnels (référence : 1 portion par repas)
+    total_cal  = sum(m.recipe.calories_per_serving  or 0 for m in meals)
+    total_prot = sum(m.recipe.proteins_per_serving or 0 for m in meals)
+
+    cal_week_target  = config.calories_dinner_target  * 14
+    prot_week_target = config.proteins_dinner_target  * 14
+
+    alertes = []
+
+    if fish_count == 0:
+        alertes.append({
+            "type": "poisson",
+            "message": "🐟 Pensez à intégrer un repas poisson cette semaine",
+            "dismissable": True,
+        })
+
+    if red_meat_count >= config.max_red_meat_per_week:
+        alertes.append({
+            "type": "viande_rouge",
+            "message": f"🥩 Vous avez déjà {red_meat_count} repas de viande rouge cette semaine",
+            "dismissable": True,
+        })
+
+    if veg_count == 0:
+        alertes.append({
+            "type": "vegetarien",
+            "message": "🥦 Un repas végétarien serait bienvenu",
+            "dismissable": True,
+        })
+
+    if cal_week_target > 0 and total_cal > cal_week_target * 1.3:
+        alertes.append({
+            "type": "calories_hautes",
+            "message": "⚠️ La semaine semble chargée en calories",
+            "dismissable": True,
+        })
+
+    if prot_week_target > 0 and total_prot > 0 and total_prot < prot_week_target * 0.6:
+        alertes.append({
+            "type": "proteines_basses",
+            "message": "💪 Les protéines sont un peu faibles cette semaine",
+            "dismissable": True,
+        })
+
+    logger.debug("calculer_alertes_planning : plan=%s → %d alerte(s)", week_plan.pk, len(alertes))
+    return alertes
+
+
 def _saison_courante() -> str:
     """Retourne la saison courante : printemps / ete / automne / hiver."""
     mois = date_type.today().month
