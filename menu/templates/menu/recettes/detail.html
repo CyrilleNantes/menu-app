@@ -70,6 +70,65 @@
     </section>
     {% endif %}
 
+    <!-- Galerie photos -->
+    {% if gallery_photos or request.user.is_authenticated %}
+    <section class="recette-section galerie-section">
+        <h2>📸 Galerie</h2>
+
+        {% if gallery_photos %}
+        <div class="galerie-carousel" id="galerie-carousel">
+            <div class="galerie-track" id="galerie-track">
+                {% for photo in gallery_photos %}
+                <div class="galerie-slide" data-index="{{ forloop.counter0 }}">
+                    <img src="{{ photo.photo_url }}" alt="{% if photo.caption %}{{ photo.caption }}{% else %}Photo {{ forloop.counter }}{% endif %}" class="galerie-img" loading="lazy">
+                    {% if photo.caption %}
+                    <p class="galerie-caption">{{ photo.caption }}</p>
+                    {% endif %}
+                    {% if is_cuisinier %}
+                    <div class="galerie-actions">
+                        <form method="post" action="{% url 'menu:promouvoir_photo_recette' recipe.id photo.id %}" class="inline-form">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn--secondary btn--xs" {% if photo.is_main %}disabled title="Déjà en avant"{% endif %}>
+                                {% if photo.is_main %}⭐ En avant{% else %}☆ Mettre en avant{% endif %}
+                            </button>
+                        </form>
+                        <form method="post" action="{% url 'menu:retirer_photo_recette' recipe.id photo.id %}" class="inline-form">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn--danger btn--xs">Retirer</button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% if gallery_photos|length > 1 %}
+            <button type="button" class="galerie-nav galerie-nav--prev" id="galerie-prev" aria-label="Précédent">‹</button>
+            <button type="button" class="galerie-nav galerie-nav--next" id="galerie-next" aria-label="Suivant">›</button>
+            <div class="galerie-dots" id="galerie-dots">
+                {% for photo in gallery_photos %}
+                <span class="galerie-dot {% if forloop.first %}galerie-dot--active{% endif %}" data-index="{{ forloop.counter0 }}"></span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Formulaire d'upload -->
+        <form method="post" action="{% url 'menu:ajouter_photo_recette' recipe.id %}"
+              enctype="multipart/form-data" class="galerie-upload-form">
+            {% csrf_token %}
+            <div class="galerie-upload-row">
+                <label class="btn btn--secondary btn--sm galerie-upload-label">
+                    📷 Ajouter une photo
+                    <input type="file" name="photo" accept="image/*" class="galerie-upload-input" required>
+                </label>
+                <input type="text" name="caption" placeholder="Légende (optionnel)" maxlength="100" class="galerie-upload-caption">
+                <button type="submit" class="btn btn--primary btn--sm">Envoyer</button>
+            </div>
+        </form>
+    </section>
+    {% endif %}
+
     <!-- Ingrédients -->
     <section class="recette-section">
         <h2>Ingrédients</h2>
@@ -209,4 +268,5 @@
 
 {% block extra_js %}
 <script src="{% static 'menu/js/notation.js' %}" defer></script>
+<script src="{% static 'menu/js/galerie.js' %}" defer></script>
 {% endblock %}

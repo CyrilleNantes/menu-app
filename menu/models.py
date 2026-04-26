@@ -147,6 +147,29 @@ class TokenOAuth(models.Model):
         return f"{self.user.username} — {self.service}"
 
 
+class RecipePhoto(models.Model):
+    """
+    Photo supplémentaire d'une recette (galerie).
+    Tout utilisateur connecté peut uploader. Seul le Cuisinier peut promouvoir ou retirer.
+    """
+    recipe      = models.ForeignKey("Recipe", on_delete=models.CASCADE, related_name="photos")
+    photo_url   = models.URLField()
+    caption     = models.CharField(max_length=100, null=True, blank=True)
+    is_main     = models.BooleanField(default=False, verbose_name="Photo principale de la galerie")
+    order       = models.PositiveIntegerField(default=0)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="recipe_photos")
+    actif       = models.BooleanField(default=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Photo de recette"
+        verbose_name_plural = "Photos de recettes"
+        ordering = ["order", "created_at"]
+
+    def __str__(self):
+        return f"Photo de {self.recipe.title} par {self.uploaded_by}"
+
+
 class NutritionConfig(models.Model):
     """
     Singleton — paramètres du cadre nutritionnel de référence PNNS (ANSES France).

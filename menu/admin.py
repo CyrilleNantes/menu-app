@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Family, UserProfile, TokenOAuth,
-    NutritionConfig,
+    NutritionConfig, RecipePhoto,
     Recipe, IngredientGroup, Ingredient, RecipeStep, RecipeSection,
     Review, WeekPlan, Meal, MealProposal,
     ShoppingList, ShoppingItem, NotificationPreference,
@@ -33,6 +33,13 @@ class NutritionConfigAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Empêche la suppression du singleton."""
         return False
+
+
+@admin.register(RecipePhoto)
+class RecipePhotoAdmin(admin.ModelAdmin):
+    list_display = ("recipe", "uploaded_by", "is_main", "actif", "order", "created_at")
+    list_filter  = ("is_main", "actif")
+    search_fields = ("recipe__title",)
 
 
 class IngredientInline(admin.TabularInline):

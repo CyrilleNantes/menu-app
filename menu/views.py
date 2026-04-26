@@ -22,7 +22,7 @@ from .integrations.google_auth import google_build_auth_url, google_exchange_cod
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
 from .integrations.openfoodfacts import rechercher_ingredient
-from .models import Family, Ingredient, Meal, MealProposal, Recipe, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, Meal, MealProposal, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
     calculer_alertes_planning,
     exporter_backup,
@@ -859,6 +859,7 @@ def detail_recette(request, id):
             "steps",
             "sections",
             "reviews__user",
+            "photos",
         ),
         id=id,
         actif=True,
@@ -922,6 +923,15 @@ def detail_recette(request, id):
     pour_toi_cal  = round(recipe.calories_per_serving  * portions_factor, 0) if recipe.calories_per_serving  else None
     pour_toi_prot = round(recipe.proteins_per_serving * portions_factor, 1) if recipe.proteins_per_serving else None
 
+    # Galerie photos (actives uniquement, triées)
+    gallery_photos = list(recipe.photos.filter(actif=True).order_by("order", "created_at"))
+    is_cuisinier_here = False
+    try:
+        p = request.user.profile
+        is_cuisinier_here = p.role in ("cuisinier", "chef_etoile")
+    except UserProfile.DoesNotExist:
+        pass
+
     ctx = {
         "recipe": recipe,
         "note_moyenne": stats["note_moyenne"],
@@ -932,6 +942,8 @@ def detail_recette(request, id):
         "all_reviews": all_reviews_with_rank,
         "pour_toi_cal":  pour_toi_cal,
         "pour_toi_prot": pour_toi_prot,
+        "gallery_photos": gallery_photos,
+        "is_cuisinier": is_cuisinier_here,
     }
     return render(request, "menu/recettes/detail.html", ctx)
 
@@ -1096,6 +1108,73 @@ def supprimer_recette(request, id):
     recipe.save(update_fields=["actif"])
     messages.success(request, f"« {recipe.title} » a été supprimée.")
     return redirect("menu:liste_recettes")
+
+
+# ─── Galerie photos ──────────────────────────────────────────────────────────
+
+@require_POST
+@login_required
+def ajouter_photo_recette(request, id):
+    """Upload d'une photo supplémentaire — accessible à tout utilisateur connecté."""
+    recipe = get_object_or_404(Recipe, id=id, actif=True)
+    photo_file = request.FILES.get("photo")
+
+    if not photo_file:
+        messages.error(request, "Aucun fichier fourni.")
+        return redirect("menu:detail_recette", id=id)
+
+    photo_url = upload_photo(photo_file)
+    if not photo_url:
+        messages.error(request, "L'upload de la photo a échoué. Réessayez.")
+        return redirect("menu:detail_recette", id=id)
+
+    caption = request.POST.get("caption", "").strip() or None
+    order   = recipe.photos.filter(actif=True).count()
+
+    RecipePhoto.objects.create(
+        recipe=recipe,
+        photo_url=photo_url,
+        caption=caption,
+        order=order,
+        uploaded_by=request.user,
+    )
+    messages.success(request, "Photo ajoutée à la galerie !")
+    logger.info("Photo ajoutée à la recette '%s' par %s.", recipe.title, request.user.email)
+    return redirect("menu:detail_recette", id=id)
+
+
+@require_POST
+@login_required
+def retirer_photo_recette(request, id, photo_id):
+    """Soft-delete d'une photo de galerie — Cuisinier uniquement."""
+    if not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:detail_recette", id=id)
+
+    photo = get_object_or_404(RecipePhoto, id=photo_id, recipe_id=id)
+    photo.actif = False
+    photo.save(update_fields=["actif"])
+    messages.success(request, "Photo retirée de la galerie.")
+    return redirect("menu:detail_recette", id=id)
+
+
+@require_POST
+@login_required
+def promouvoir_photo_recette(request, id, photo_id):
+    """Passe une photo en is_main=True, remet toutes les autres à False — Cuisinier uniquement."""
+    if not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:detail_recette", id=id)
+
+    photo = get_object_or_404(RecipePhoto, id=photo_id, recipe_id=id, actif=True)
+
+    with transaction.atomic():
+        RecipePhoto.objects.filter(recipe_id=id).update(is_main=False)
+        photo.is_main = True
+        photo.save(update_fields=["is_main"])
+
+    messages.success(request, "Photo mise en avant dans la galerie.")
+    return redirect("menu:detail_recette", id=id)
 
 
 # ─── Backup / Restore / Import recettes ──────────────────────────────────────

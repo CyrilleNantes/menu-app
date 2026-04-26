@@ -31,6 +31,10 @@ urlpatterns = [
     path("recettes/creer/", views.creer_recette, name="creer_recette"),
     path("recettes/<int:id>/modifier/", views.modifier_recette, name="modifier_recette"),
     path("recettes/<int:id>/supprimer/", views.supprimer_recette, name="supprimer_recette"),
+    # Galerie photos
+    path("recettes/<int:id>/photos/ajouter/", views.ajouter_photo_recette, name="ajouter_photo_recette"),
+    path("recettes/<int:id>/photos/<int:photo_id>/retirer/", views.retirer_photo_recette, name="retirer_photo_recette"),
+    path("recettes/<int:id>/photos/<int:photo_id>/promouvoir/", views.promouvoir_photo_recette, name="promouvoir_photo_recette"),
     # Google Calendar
     path("planning/<int:plan_id>/export-calendar/", views.export_calendar, name="export_calendar"),
     path("profil/nutrition/", views.dashboard_nutrition, name="dashboard_nutrition"),

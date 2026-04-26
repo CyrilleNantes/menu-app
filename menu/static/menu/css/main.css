@@ -648,6 +648,27 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
     .google-status--connected { flex-direction: column; align-items: flex-start; }
 }
 
+/* ── Galerie photos recette ───────────────────────────────────────────────── */
+.galerie-section { }
+.galerie-carousel { position: relative; overflow: hidden; border-radius: var(--radius); background: #f8f9fa; margin-bottom: 1rem; }
+.galerie-track { display: flex; transition: transform .35s ease; }
+.galerie-slide { min-width: 100%; position: relative; }
+.galerie-img { width: 100%; max-height: 380px; object-fit: cover; display: block; border-radius: var(--radius); }
+.galerie-caption { text-align: center; font-size: .82rem; color: var(--color-muted); padding: .4rem .75rem .6rem; }
+.galerie-actions { display: flex; gap: .5rem; justify-content: flex-end; padding: .4rem .6rem .5rem; }
+.galerie-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,.45); color: #fff; border: none; border-radius: 50%; width: 2rem; height: 2rem; font-size: 1.2rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2; }
+.galerie-nav--prev { left: .4rem; }
+.galerie-nav--next { right: .4rem; }
+.galerie-nav:hover { background: rgba(0,0,0,.7); }
+.galerie-dots { display: flex; justify-content: center; gap: .4rem; padding: .5rem 0 .3rem; }
+.galerie-dot { width: .5rem; height: .5rem; border-radius: 50%; background: #ccc; cursor: pointer; transition: background .2s; }
+.galerie-dot--active { background: var(--color-primary); }
+.galerie-upload-form { margin-top: .75rem; }
+.galerie-upload-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.galerie-upload-label { cursor: pointer; }
+.galerie-upload-input { display: none; }
+.galerie-upload-caption { flex: 1; min-width: 150px; padding: .4rem .6rem; border: 1px solid #ddd; border-radius: var(--radius); font-size: .85rem; }
+
 /* ── Alertes équilibre planning ───────────────────────────────────────────── */
 #alertes-planning { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .75rem; }
 .planning-alerte { display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem; background: #fff8e1; border: 1px solid #ffe082; border-radius: var(--radius); font-size: .85rem; }
