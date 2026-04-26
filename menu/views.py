@@ -24,6 +24,7 @@ from .integrations.google_tasks import google_tasks_export_courses
 from .integrations.openfoodfacts import rechercher_ingredient
 from .models import Family, Ingredient, Meal, MealProposal, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
+    bilan_planning,
     calculer_alertes_planning,
     exporter_backup,
     generer_liste_courses,
@@ -456,10 +457,10 @@ def planning_semaine(request, year, week):
             "dinner": meal_by_slot.get((d, "dinner")),
         })
 
-    # Indicateurs nutritionnels de la semaine
+    # Indicateurs nutritionnels de la semaine (hors créneaux absent)
     total_calories = total_proteins = 0.0
     for m in meals_qs:
-        if not m.is_leftovers and m.recipe:
+        if not m.is_leftovers and not m.absent and m.recipe:
             n = m.servings_count or m.recipe.base_servings or 1
             total_calories += (m.recipe.calories_per_serving or 0) * n
             total_proteins += (m.recipe.proteins_per_serving or 0) * n
@@ -514,6 +515,8 @@ def planning_semaine(request, year, week):
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
         # Alertes équilibre (nudges) — Cuisinier uniquement
         "alertes_planning": calculer_alertes_planning(plan, profile.family) if is_cuisinier else [],
+        # Bilan équilibre — Cuisinier uniquement
+        "bilan": bilan_planning(plan) if is_cuisinier else None,
     }
     return render(request, "menu/planning/semaine.html", ctx)
 
@@ -545,7 +548,28 @@ def modifier_meal(request, plan_id):
     if meal_time not in ("lunch", "dinner"):
         return JsonResponse({"ok": False, "error": "Créneau invalide", "code": "INVALID_TIME"}, status=400)
 
-    # Recette (optionnelle)
+    # ── Créneau absent (personne ne mange à la maison) ─────────────────────────
+    if body.get("absent") is True:
+        meal, _ = Meal.objects.update_or_create(
+            week_plan=plan,
+            date=meal_date,
+            meal_time=meal_time,
+            defaults={
+                "recipe": None,
+                "servings_count": None,
+                "is_leftovers": False,
+                "source_meal": None,
+                "absent": True,
+            },
+        )
+        return JsonResponse({"ok": True, "absent": True, "meal_id": meal.id})
+
+    # ── Lever l'absence (retour à créneau vide normal) ──────────────────────────
+    if body.get("absent") is False:
+        Meal.objects.filter(week_plan=plan, date=meal_date, meal_time=meal_time).update(absent=False)
+        return JsonResponse({"ok": True, "absent": False})
+
+    # ── Recette (optionnelle) ────────────────────────────────────────────────────
     recipe = None
     recipe_id = body.get("recipe_id")
     if recipe_id:
@@ -574,11 +598,13 @@ def modifier_meal(request, plan_id):
             "servings_count": servings,
             "is_leftovers": is_leftovers,
             "source_meal": source_meal,
+            "absent": False,  # toute sauvegarde de recette lève l'absence
         },
     )
 
     return JsonResponse({
         "ok": True,
+        "absent": False,
         "meal_id": meal.id,
         "recipe_id": recipe.id if recipe else None,
         "recipe_title": recipe.title if recipe else None,
@@ -637,6 +663,21 @@ def suggestions_repas(request, plan_id):
             for r in results
         ],
     })
+
+
+@require_GET
+@login_required
+def bilan_planning_ajax(request, plan_id):
+    """AJAX GET : retourne le bilan équilibre de la semaine (variété + nutrition)."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return JsonResponse({"ok": False, "error": "Famille requise", "code": "NO_FAMILY"}, status=403)
+    if not _verifier_cuisinier(request):
+        return JsonResponse({"ok": False, "error": "Réservé aux Cuisiniers", "code": "FORBIDDEN"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+    data = bilan_planning(plan)
+    return JsonResponse({"ok": True, "bilan": data})
 
 
 @require_POST

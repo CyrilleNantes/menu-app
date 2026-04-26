@@ -67,14 +67,71 @@
 </div>
 {% endif %}
 
-<!-- ── Bilan nutritionnel ────────────────────────────────────── -->
-{% if total_calories %}
-<div class="planning-nutri">
-    <span class="planning-nutri__item">🔥 <strong>{{ total_calories }}</strong> kcal cette semaine</span>
-    {% if total_proteins %}
-    <span class="planning-nutri__item">💪 <strong>{{ total_proteins }}g</strong> protéines</span>
-    {% endif %}
-    <span class="planning-nutri__item text-muted">{{ plan.meals.count }} repas planifiés</span>
+<!-- ── Bilan équilibre semaine (Cuisinier) ───────────────────── -->
+{% if is_cuisinier and bilan %}
+<div class="planning-bilan" id="planning-bilan" data-plan-id="{{ plan.id }}">
+    <div class="planning-bilan__title">📊 Équilibre de la semaine</div>
+    <div class="planning-bilan__grid">
+
+        <!-- Variété protéines -->
+        <div class="bilan-item {% if bilan.fish_ok %}bilan-item--ok{% else %}bilan-item--warn{% endif %}">
+            <span class="bilan-item__emoji">🐟</span>
+            <span class="bilan-item__value" id="bilan-fish">{{ bilan.fish_count }}</span>
+            <span class="bilan-item__label">poisson{% if bilan.fish_count > 1 %}s{% endif %}</span>
+            <span class="bilan-item__hint">{% if bilan.fish_ok %}✓{% else %}objectif : ≥1{% endif %}</span>
+        </div>
+
+        <div class="bilan-item {% if bilan.veg_ok %}bilan-item--ok{% else %}bilan-item--warn{% endif %}">
+            <span class="bilan-item__emoji">🥗</span>
+            <span class="bilan-item__value" id="bilan-veg">{{ bilan.veg_count }}</span>
+            <span class="bilan-item__label">végétarien{% if bilan.veg_count > 1 %}s{% endif %}</span>
+            <span class="bilan-item__hint">{% if bilan.veg_ok %}✓{% else %}objectif : ≥1{% endif %}</span>
+        </div>
+
+        <div class="bilan-item {% if bilan.red_meat_ok %}bilan-item--ok{% else %}bilan-item--warn{% endif %}">
+            <span class="bilan-item__emoji">🥩</span>
+            <span class="bilan-item__value" id="bilan-red-meat">{{ bilan.red_meat_count }}</span>
+            <span class="bilan-item__label">viande{% if bilan.red_meat_count > 1 %}s{% endif %} rouge{% if bilan.red_meat_count > 1 %}s{% endif %}</span>
+            <span class="bilan-item__hint">{% if bilan.red_meat_ok %}✓{% else %}max {{ bilan.max_red_meat }}/sem.{% endif %}</span>
+        </div>
+
+        {% if bilan.absent_count %}
+        <div class="bilan-item bilan-item--neutral">
+            <span class="bilan-item__emoji">🏠</span>
+            <span class="bilan-item__value" id="bilan-absent">{{ bilan.absent_count }}</span>
+            <span class="bilan-item__label">absent{% if bilan.absent_count > 1 %}s{% endif %}</span>
+            <span class="bilan-item__hint">créneaux ignorés</span>
+        </div>
+        {% endif %}
+
+        <!-- Nutrition -->
+        {% if bilan.cal_total %}
+        <div class="bilan-item bilan-item--{{ bilan.cal_status }}">
+            <span class="bilan-item__emoji">🔥</span>
+            <span class="bilan-item__value" id="bilan-cal">{{ bilan.cal_total }}</span>
+            <span class="bilan-item__label">kcal / sem.</span>
+            <div class="bilan-progress">
+                <div class="bilan-progress__bar bilan-progress__bar--{{ bilan.cal_status }}"
+                     style="width: {% if bilan.cal_pct > 100 %}100{% else %}{{ bilan.cal_pct }}{% endif %}%"></div>
+            </div>
+            <span class="bilan-item__hint">{{ bilan.cal_pct }}% cible</span>
+        </div>
+        {% endif %}
+
+        {% if bilan.prot_total %}
+        <div class="bilan-item bilan-item--{{ bilan.prot_status }}">
+            <span class="bilan-item__emoji">💪</span>
+            <span class="bilan-item__value" id="bilan-prot">{{ bilan.prot_total }}</span>
+            <span class="bilan-item__label">g prot. / sem.</span>
+            <div class="bilan-progress">
+                <div class="bilan-progress__bar bilan-progress__bar--{{ bilan.prot_status }}"
+                     style="width: {% if bilan.prot_pct > 100 %}100{% else %}{{ bilan.prot_pct }}{% endif %}%"></div>
+            </div>
+            <span class="bilan-item__hint">{{ bilan.prot_pct }}% cible</span>
+        </div>
+        {% endif %}
+
+    </div>
 </div>
 {% endif %}
 
@@ -88,7 +145,7 @@
     </div>
 
     <!-- Midi -->
-    <div class="meal-slot{% if day.lunch and day.lunch.recipe %} meal-slot--filled{% endif %}{% if day.lunch.is_leftovers %} meal-slot--leftovers{% endif %}"
+    <div class="meal-slot{% if day.lunch and day.lunch.recipe %} meal-slot--filled{% endif %}{% if day.lunch and day.lunch.is_leftovers %} meal-slot--leftovers{% endif %}{% if day.lunch and day.lunch.absent %} meal-slot--absent{% endif %}"
          data-date="{{ day.date|date:'Y-m-d' }}"
          data-meal-time="lunch"
          data-meal-id="{% if day.lunch %}{{ day.lunch.id }}{% endif %}"
@@ -96,10 +153,19 @@
          data-recipe-title="{% if day.lunch and day.lunch.recipe %}{{ day.lunch.recipe.title }}{% endif %}"
          data-servings="{% if day.lunch %}{{ day.lunch.servings_count|default:'' }}{% endif %}"
          data-is-leftovers="{% if day.lunch and day.lunch.is_leftovers %}true{% else %}false{% endif %}"
+         data-absent="{% if day.lunch and day.lunch.absent %}true{% else %}false{% endif %}"
          {% if is_cuisinier %}data-editable="true"{% endif %}>
         <span class="meal-slot__time">🍽️ Midi</span>
         <div class="meal-slot__body">
-            {% if day.lunch and day.lunch.recipe %}
+            {% if day.lunch and day.lunch.absent %}
+                <span class="meal-slot__absent-label">🏠 Absent</span>
+                {% if is_cuisinier %}
+                <button type="button" class="btn-unabsent btn btn--ghost btn--xs"
+                        data-date="{{ day.date|date:'Y-m-d' }}"
+                        data-meal-time="lunch"
+                        title="Annuler l'absence">✕</button>
+                {% endif %}
+            {% elif day.lunch and day.lunch.recipe %}
                 <span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>
                 <div class="meal-slot__meta">
                     {% if day.lunch.servings_count %}<span>{{ day.lunch.servings_count }} pers.</span>{% endif %}
@@ -108,17 +174,23 @@
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
                 {% if is_cuisinier %}
-                <button type="button" class="btn-suggestions btn btn--ghost btn--xs"
-                        data-date="{{ day.date|date:'Y-m-d' }}"
-                        data-meal-time="lunch"
-                        title="Suggestions">💡</button>
+                <div class="meal-slot__empty-actions">
+                    <button type="button" class="btn-suggestions btn btn--ghost btn--xs"
+                            data-date="{{ day.date|date:'Y-m-d' }}"
+                            data-meal-time="lunch"
+                            title="Suggestions">💡</button>
+                    <button type="button" class="btn-absent btn btn--ghost btn--xs"
+                            data-date="{{ day.date|date:'Y-m-d' }}"
+                            data-meal-time="lunch"
+                            title="Personne ne mange à la maison">🏠</button>
+                </div>
                 {% endif %}
             {% endif %}
         </div>
     </div>
 
     <!-- Soir -->
-    <div class="meal-slot{% if day.dinner and day.dinner.recipe %} meal-slot--filled{% endif %}{% if day.dinner.is_leftovers %} meal-slot--leftovers{% endif %}"
+    <div class="meal-slot{% if day.dinner and day.dinner.recipe %} meal-slot--filled{% endif %}{% if day.dinner and day.dinner.is_leftovers %} meal-slot--leftovers{% endif %}{% if day.dinner and day.dinner.absent %} meal-slot--absent{% endif %}"
          data-date="{{ day.date|date:'Y-m-d' }}"
          data-meal-time="dinner"
          data-meal-id="{% if day.dinner %}{{ day.dinner.id }}{% endif %}"
@@ -126,10 +198,19 @@
          data-recipe-title="{% if day.dinner and day.dinner.recipe %}{{ day.dinner.recipe.title }}{% endif %}"
          data-servings="{% if day.dinner %}{{ day.dinner.servings_count|default:'' }}{% endif %}"
          data-is-leftovers="{% if day.dinner and day.dinner.is_leftovers %}true{% else %}false{% endif %}"
+         data-absent="{% if day.dinner and day.dinner.absent %}true{% else %}false{% endif %}"
          {% if is_cuisinier %}data-editable="true"{% endif %}>
         <span class="meal-slot__time">🌙 Soir</span>
         <div class="meal-slot__body">
-            {% if day.dinner and day.dinner.recipe %}
+            {% if day.dinner and day.dinner.absent %}
+                <span class="meal-slot__absent-label">🏠 Absent</span>
+                {% if is_cuisinier %}
+                <button type="button" class="btn-unabsent btn btn--ghost btn--xs"
+                        data-date="{{ day.date|date:'Y-m-d' }}"
+                        data-meal-time="dinner"
+                        title="Annuler l'absence">✕</button>
+                {% endif %}
+            {% elif day.dinner and day.dinner.recipe %}
                 <span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>
                 <div class="meal-slot__meta">
                     {% if day.dinner.servings_count %}<span>{{ day.dinner.servings_count }} pers.</span>{% endif %}
@@ -138,10 +219,16 @@
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
                 {% if is_cuisinier %}
-                <button type="button" class="btn-suggestions btn btn--ghost btn--xs"
-                        data-date="{{ day.date|date:'Y-m-d' }}"
-                        data-meal-time="dinner"
-                        title="Suggestions">💡</button>
+                <div class="meal-slot__empty-actions">
+                    <button type="button" class="btn-suggestions btn btn--ghost btn--xs"
+                            data-date="{{ day.date|date:'Y-m-d' }}"
+                            data-meal-time="dinner"
+                            title="Suggestions">💡</button>
+                    <button type="button" class="btn-absent btn btn--ghost btn--xs"
+                            data-date="{{ day.date|date:'Y-m-d' }}"
+                            data-meal-time="dinner"
+                            title="Personne ne mange à la maison">🏠</button>
+                </div>
                 {% endif %}
             {% endif %}
         </div>

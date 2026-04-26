@@ -102,6 +102,8 @@
         // Ouvrir le dialog en cliquant sur un créneau
         document.querySelectorAll('.meal-slot[data-editable]').forEach(slot => {
             slot.addEventListener('click', function () {
+                // Ne pas ouvrir le dialog si le créneau est absent (géré par btn-unabsent)
+                if (this.dataset.absent === 'true') return;
                 currentSlot = {
                     date:       this.dataset.date,
                     meal_time:  this.dataset.mealTime,
@@ -179,6 +181,8 @@
                     if (typeof window._resetAlertesDismissed === 'function') {
                         window._resetAlertesDismissed();
                     }
+                    // Rafraîchir le bilan
+                    refreshBilan();
                 } else {
                     alert(`Erreur : ${data.error}`);
                 }
@@ -198,16 +202,35 @@
         );
         if (!slot) return;
 
-        // Mettre à jour les data attrs
+        const body = slot.querySelector('.meal-slot__body');
+        if (!body) return;
+
+        // ── Créneau marqué absent ──────────────────────────────────────────
+        if (data.absent === true) {
+            slot.dataset.absent = 'true';
+            slot.dataset.recipeId    = '';
+            slot.dataset.recipeTitle = '';
+            slot.dataset.isLeftovers = 'false';
+            slot.classList.remove('meal-slot--filled', 'meal-slot--leftovers');
+            slot.classList.add('meal-slot--absent');
+            body.innerHTML = `
+                <span class="meal-slot__absent-label">🏠 Absent</span>
+                <button type="button" class="btn-unabsent btn btn--ghost btn--xs"
+                        data-date="${dateStr}"
+                        data-meal-time="${mealTime}"
+                        title="Annuler l'absence">✕</button>`;
+            refreshBilan();
+            return;
+        }
+
+        // ── Absence levée ou recette normale ──────────────────────────────
+        slot.dataset.absent      = 'false';
         slot.dataset.mealId      = data.meal_id  || '';
         slot.dataset.recipeId    = data.recipe_id    || '';
         slot.dataset.recipeTitle = data.recipe_title || '';
         slot.dataset.servings    = data.servings_count || '';
         slot.dataset.isLeftovers = data.is_leftovers ? 'true' : 'false';
-
-        // Mettre à jour l'affichage
-        const body = slot.querySelector('.meal-slot__body');
-        if (!body) return;
+        slot.classList.remove('meal-slot--absent');
 
         if (data.recipe_title) {
             slot.classList.add('meal-slot--filled');
@@ -220,7 +243,16 @@
                 <div class="meal-slot__meta">${servings}${leftBadge}</div>`;
         } else {
             slot.classList.remove('meal-slot--filled', 'meal-slot--leftovers');
-            body.innerHTML = '<span class="meal-slot__empty">+ Ajouter</span>';
+            body.innerHTML = `
+                <span class="meal-slot__empty">+ Ajouter</span>
+                <div class="meal-slot__empty-actions">
+                    <button type="button" class="btn-suggestions btn btn--ghost btn--xs"
+                            data-date="${dateStr}" data-meal-time="${mealTime}"
+                            title="Suggestions">💡</button>
+                    <button type="button" class="btn-absent btn btn--ghost btn--xs"
+                            data-date="${dateStr}" data-meal-time="${mealTime}"
+                            title="Personne ne mange à la maison">🏠</button>
+                </div>`;
         }
 
         if (data.is_leftovers) {
@@ -228,6 +260,110 @@
         } else {
             slot.classList.remove('meal-slot--leftovers');
         }
+
+        refreshBilan();
+    }
+
+    // ── Bilan : refresh AJAX ──────────────────────────────────────────────────
+
+    async function refreshBilan() {
+        const bilanEl = document.getElementById('planning-bilan');
+        if (!bilanEl || !PLAN_ID) return;
+        try {
+            const resp = await fetch(`/planning/${PLAN_ID}/bilan/`, {
+                headers: { 'X-CSRFToken': CSRF },
+            });
+            const data = await resp.json();
+            if (!data.ok) return;
+            const b = data.bilan;
+
+            // Variété
+            _bilanSetItem(bilanEl, 'bilan-fish',     b.fish_count,     b.fish_ok,     'bilan-item--ok', 'bilan-item--warn');
+            _bilanSetItem(bilanEl, 'bilan-veg',      b.veg_count,      b.veg_ok,      'bilan-item--ok', 'bilan-item--warn');
+            _bilanSetItem(bilanEl, 'bilan-red-meat',  b.red_meat_count, b.red_meat_ok, 'bilan-item--ok', 'bilan-item--warn');
+
+            // Absent
+            const absentEl = bilanEl.querySelector('#bilan-absent');
+            if (absentEl) absentEl.textContent = b.absent_count;
+
+            // Nutrition
+            if (bilanEl.querySelector('#bilan-cal')) {
+                bilanEl.querySelector('#bilan-cal').textContent = b.cal_total;
+            }
+            if (bilanEl.querySelector('#bilan-prot')) {
+                bilanEl.querySelector('#bilan-prot').textContent = b.prot_total;
+            }
+
+            // Barres de progression
+            bilanEl.querySelectorAll('.bilan-progress__bar').forEach(bar => {
+                const isCalBar  = bar.closest('.bilan-item')?.querySelector('#bilan-cal');
+                const isProtBar = bar.closest('.bilan-item')?.querySelector('#bilan-prot');
+                if (isCalBar) {
+                    bar.style.width = `${Math.min(b.cal_pct, 100)}%`;
+                    bar.className = `bilan-progress__bar bilan-progress__bar--${b.cal_status}`;
+                } else if (isProtBar) {
+                    bar.style.width = `${Math.min(b.prot_pct, 100)}%`;
+                    bar.className = `bilan-progress__bar bilan-progress__bar--${b.prot_status}`;
+                }
+            });
+        } catch { /* silencieux — le bilan se mettra à jour au prochain chargement */ }
+    }
+
+    function _bilanSetItem(container, valueId, count, isOk, okClass, warnClass) {
+        const el = container.querySelector(`#${valueId}`);
+        if (el) el.textContent = count;
+        const item = el?.closest('.bilan-item');
+        if (item) {
+            item.classList.toggle(okClass,   isOk);
+            item.classList.toggle(warnClass, !isOk);
+        }
+    }
+
+    // ── Absent toggle (Cuisinier) ─────────────────────────────────────────────
+
+    if (IS_COOK) {
+        // Marquer un créneau absent
+        document.addEventListener('click', async e => {
+            const btn = e.target.closest('.btn-absent');
+            if (!btn) return;
+            e.stopPropagation();
+            const dateStr  = btn.dataset.date;
+            const mealTime = btn.dataset.mealTime;
+            try {
+                const resp = await fetch(`/planning/${PLAN_ID}/meal/`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                    body:    JSON.stringify({ date: dateStr, meal_time: mealTime, absent: true }),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    updateSlotDOM(dateStr, mealTime, data);
+                    if (typeof window._resetAlertesDismissed === 'function') {
+                        window._resetAlertesDismissed();
+                    }
+                }
+            } catch { /* silencieux */ }
+        });
+
+        // Annuler l'absence
+        document.addEventListener('click', async e => {
+            const btn = e.target.closest('.btn-unabsent');
+            if (!btn) return;
+            e.stopPropagation();
+            const dateStr  = btn.dataset.date;
+            const mealTime = btn.dataset.mealTime;
+            try {
+                const resp = await fetch(`/planning/${PLAN_ID}/meal/`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                    body:    JSON.stringify({ date: dateStr, meal_time: mealTime, absent: false }),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    updateSlotDOM(dateStr, mealTime, data);
+                }
+            } catch { /* silencieux */ }
+        });
     }
 
     function escHtml(str) {

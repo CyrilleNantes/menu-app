@@ -399,6 +399,11 @@ class Meal(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.SET_NULL, null=True, blank=True, related_name="meals")
     servings_count = models.PositiveIntegerField(blank=True, null=True)
     is_leftovers = models.BooleanField(default=False)
+    absent = models.BooleanField(
+        default=False,
+        verbose_name="Repas absent",
+        help_text="Personne ne mange à la maison pour ce créneau (cantine, travail…).",
+    )
     source_meal = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="leftover_meals")
     google_event_id = models.CharField(max_length=200, blank=True, default="", verbose_name="ID événement Google Calendar")
 

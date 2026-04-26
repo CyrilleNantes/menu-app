@@ -32,7 +32,7 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
 
     meals = (
         Meal.objects
-        .filter(week_plan=plan, is_leftovers=False, recipe__isnull=False)
+        .filter(week_plan=plan, absent=False, is_leftovers=False, recipe__isnull=False)
         .select_related("recipe")
         .prefetch_related("recipe__ingredients")
     )
@@ -125,7 +125,7 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
 
     meals = list(
         Meal.objects
-        .filter(week_plan=week_plan, recipe__isnull=False, is_leftovers=False)
+        .filter(week_plan=week_plan, absent=False, recipe__isnull=False, is_leftovers=False)
         .select_related("recipe")
     )
 
@@ -180,6 +180,70 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
 
     logger.debug("calculer_alertes_planning : plan=%s → %d alerte(s)", week_plan.pk, len(alertes))
     return alertes
+
+
+def bilan_planning(week_plan) -> dict:
+    """
+    Calcule le bilan équilibre de la semaine pour l'affichage dynamique.
+    Retourne un dict avec les compteurs variété, totaux nutritionnels et statuts.
+    Les créneaux `absent=True` sont exclus de tous les calculs.
+    """
+    config = NutritionConfig.get()
+
+    meals = list(
+        Meal.objects
+        .filter(week_plan=week_plan, absent=False, recipe__isnull=False, is_leftovers=False)
+        .select_related("recipe")
+    )
+
+    absent_count = Meal.objects.filter(week_plan=week_plan, absent=True).count()
+    total_slots  = 14  # 7 jours × 2 créneaux
+
+    protein_types  = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
+    fish_count     = protein_types.count("poisson")
+    red_meat_count = protein_types.count("boeuf") + protein_types.count("porc")
+    veg_count      = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
+
+    total_cal  = sum((m.recipe.calories_per_serving  or 0) for m in meals)
+    total_prot = sum((m.recipe.proteins_per_serving or 0) for m in meals)
+
+    cal_target  = config.calories_dinner_target  * (total_slots - absent_count)
+    prot_target = config.proteins_dinner_target  * (total_slots - absent_count)
+
+    def _pct(actual, target):
+        if not target or not actual:
+            return 0
+        return round(actual / target * 100)
+
+    def _status(actual, target):
+        if not target or not actual:
+            return "neutral"
+        pct = actual / target * 100
+        if pct < 60 or pct > 130:
+            return "alert"
+        if pct < 80 or pct > 110:
+            return "warning"
+        return "ok"
+
+    return {
+        "repas_avec_recette": len(meals),
+        "absent_count":       absent_count,
+        "fish_count":         fish_count,
+        "red_meat_count":     red_meat_count,
+        "veg_count":          veg_count,
+        "fish_ok":            fish_count >= 1,
+        "red_meat_ok":        red_meat_count <= config.max_red_meat_per_week,
+        "veg_ok":             veg_count >= 1,
+        "cal_total":          round(total_cal),
+        "prot_total":         round(total_prot, 1),
+        "cal_target":         round(cal_target),
+        "prot_target":        round(prot_target, 1),
+        "cal_pct":            _pct(total_cal, cal_target),
+        "prot_pct":           _pct(total_prot, prot_target),
+        "cal_status":         _status(total_cal, cal_target),
+        "prot_status":        _status(total_prot, prot_target),
+        "max_red_meat":       config.max_red_meat_per_week,
+    }
 
 
 def _saison_courante() -> str:
