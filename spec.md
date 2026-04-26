@@ -956,6 +956,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v2.3 | 2026-04-26 | Étape 18 — modèle `NutritionConfig` singleton PNNS (migration 0004, admin uniquement) |
 | v2.4 | 2026-04-26 | Étape 19 — algorithme de suggestions de menu (5 dimensions pondérées, dialog planning, JS) |
 | v2.5 | 2026-04-26 | Étape 20 — dashboard nutritionnel individuel + bloc "Pour toi" dans fiche recette |
+| v2.6 | 2026-04-26 | Étape 21 — alertes équilibre planning (nudges Cuisinier, dismissables, sessionStorage) |
+
+> [LOG 2026-04-26] Étape 21 — calculer_alertes_planning dans services.py : 5 alertes (poisson manquant, quota viande rouge, pas végétarien, calories > 130%, protéines < 60%). Banderoles dismissables dans semaine.html sous la toolbar. Dismiss via sessionStorage par plan_id. Réaffichage automatique après chaque sauvegarde de repas. Cuisinier uniquement.
 
 > [LOG 2026-04-26] Étape 20 — Dashboard nutritionnel GET /profil/nutrition/ : bilan semaine (calories + protéines) personnalisé via portions_factor. Barres de progression 🟢🟡🔴 vs cibles NutritionConfig × portions_factor × 14 créneaux. Détail jour par jour avec lien recette. Bloc "Pour toi" dans detail_recette : macros × portions_factor, conditionnel sur calories_per_serving. Lien depuis la page profil. Mention PNNS systématique.
 
