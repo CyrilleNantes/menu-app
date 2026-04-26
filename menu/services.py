@@ -2,13 +2,15 @@ import io
 import json
 import logging
 import zipfile as zf_lib
+from datetime import date as date_type
 
 from django.contrib.auth.models import User as DjangoUser
 from django.db import connection, transaction
 
 from .models import (
-    Ingredient, IngredientGroup, Meal, Recipe, RecipeSection, RecipeStep,
-    ShoppingItem, ShoppingList, WeekPlan,
+    Ingredient, IngredientGroup, Meal, NutritionConfig, Recipe,
+    RecipeSection, RecipeStep, Review, ShoppingItem, ShoppingList,
+    UserProfile, WeekPlan,
 )
 
 logger = logging.getLogger("menu")
@@ -111,6 +113,165 @@ def calculer_macros_recette(recipe: Recipe) -> None:
     recipe.carbs_per_serving = round(total_carbs / n, 1) if total_carbs else None
     recipe.fats_per_serving = round(total_fats / n, 1) if total_fats else None
     recipe.save(update_fields=["calories_per_serving", "proteins_per_serving", "carbs_per_serving", "fats_per_serving"])
+
+
+def _saison_courante() -> str:
+    """Retourne la saison courante : printemps / ete / automne / hiver."""
+    mois = date_type.today().month
+    if mois in (3, 4, 5):  return "printemps"
+    if mois in (6, 7, 8):  return "ete"
+    if mois in (9, 10, 11): return "automne"
+    return "hiver"
+
+
+def suggerer_recettes(family, week_plan, target_date, meal_time: str) -> list[dict]:
+    """
+    Retourne les 5 meilleures recettes candidates pour un créneau (date + meal_time).
+
+    Score composite 0.0–1.0 sur 5 dimensions pondérées :
+      30% fraîcheur/rotation · 30% appréciation famille · 20% variété protéines
+      10% saisonnalité · 10% équilibre nutritionnel semaine
+
+    Chaque résultat : {'recipe': Recipe, 'score': float, 'reasons': dict}
+    """
+    config = NutritionConfig.get()
+    saison = _saison_courante()
+
+    # ── Candidats ─────────────────────────────────────────────────────────────
+    all_recipes = list(Recipe.objects.filter(actif=True))
+    if not all_recipes:
+        return []
+
+    # ── Membres de la famille ──────────────────────────────────────────────────
+    family_user_ids = set(
+        UserProfile.objects.filter(family=family).values_list("user_id", flat=True)
+    )
+
+    # ── Dernière utilisation de chaque recette pour cette famille ──────────────
+    # Parcours trié par date → la dernière écriture pour chaque recipe_id gagne
+    last_used: dict[int, date_type] = {}
+    for m in (
+        Meal.objects
+        .filter(week_plan__family=family, recipe__isnull=False)
+        .order_by("date")
+        .values("recipe_id", "date")
+    ):
+        last_used[m["recipe_id"]] = m["date"]
+
+    # ── Avis famille par recette ───────────────────────────────────────────────
+    family_stars: dict[int, list[int]] = {}
+    for r in Review.objects.filter(user_id__in=family_user_ids).values("recipe_id", "stars"):
+        family_stars.setdefault(r["recipe_id"], []).append(r["stars"])
+
+    def _family_avg(recipe_id: int):
+        stars = family_stars.get(recipe_id, [])
+        return sum(stars) / len(stars) if stars else None
+
+    # ── Repas déjà planifiés dans ce WeekPlan ─────────────────────────────────
+    week_meals = list(
+        Meal.objects.filter(week_plan=week_plan, recipe__isnull=False)
+        .select_related("recipe")
+    )
+    day_meals = [m for m in week_meals if m.date == target_date]
+
+    day_protein_types   = [m.recipe.protein_type for m in day_meals  if m.recipe.protein_type]
+    week_protein_types  = [m.recipe.protein_type for m in week_meals if m.recipe.protein_type]
+    red_meat_count      = week_protein_types.count("boeuf") + week_protein_types.count("porc")
+
+    # Calories/protéines déjà planifiées (référence : 1 portion par repas)
+    week_calories = sum(m.recipe.calories_per_serving or 0 for m in week_meals)
+    week_proteins = sum(m.recipe.proteins_per_serving or 0 for m in week_meals)
+
+    # Cibles hebdomadaires (14 créneaux × cible dîner)
+    cal_week_target  = config.calories_dinner_target * 14
+    prot_week_target = config.proteins_dinner_target * 14
+
+    # ── Scoring ───────────────────────────────────────────────────────────────
+    results = []
+
+    for recipe in all_recipes:
+        avg_fam  = _family_avg(recipe.id)
+        last     = last_used.get(recipe.id)
+
+        # ── Dim 1 : Fraîcheur / rotation (30%) ────────────────────────────────
+        if last is None:
+            rotation_score = 1.0
+        else:
+            days_since = (target_date - last).days
+            if avg_fam is not None and avg_fam < 2 and days_since < config.min_days_low_rated_repeat:
+                rotation_score = 0.0
+            elif days_since < config.min_days_before_repeat:
+                rotation_score = 0.0
+            else:
+                span = max(config.min_days_low_rated_repeat - config.min_days_before_repeat, 1)
+                rotation_score = min(1.0, 0.3 + 0.7 * (days_since - config.min_days_before_repeat) / span)
+
+        # ── Dim 2 : Appréciation famille (30%) ────────────────────────────────
+        famille_score = 0.5 if avg_fam is None else avg_fam / 5.0
+
+        # ── Dim 3 : Variété protéines (20%) ───────────────────────────────────
+        pt = recipe.protein_type
+        if not pt:
+            variete_score = 0.5  # neutre si non renseigné
+        elif day_protein_types.count(pt) >= 2:
+            variete_score = 0.0  # règle dure : 2× même protéine dans la journée
+        elif pt in ("boeuf", "porc") and red_meat_count >= config.max_red_meat_per_week:
+            variete_score = 0.0  # règle dure : quota viande rouge atteint
+        else:
+            variete_score = 0.5
+            if pt not in week_protein_types:
+                variete_score += 0.3   # bonus : absent de la semaine
+            elif week_protein_types.count(pt) >= 2:
+                variete_score -= 0.2   # malus : déjà 2× cette semaine
+            variete_score = max(0.0, min(1.0, variete_score))
+
+        # ── Dim 4 : Saisonnalité (10%) ────────────────────────────────────────
+        seasons = recipe.seasons or []
+        if not seasons:
+            saison_score = 0.7
+        elif saison in seasons:
+            saison_score = 1.0
+        else:
+            saison_score = 0.2
+
+        # ── Dim 5 : Équilibre nutritionnel semaine (10%) ──────────────────────
+        equilibre_score = 0.5
+        if cal_week_target > 0 and week_calories > cal_week_target * 1.1:
+            if "leger" in (recipe.health_tags or []):
+                equilibre_score += 0.2
+        if prot_week_target > 0 and week_proteins < prot_week_target * 0.7:
+            if "proteine" in (recipe.health_tags or []):
+                equilibre_score += 0.2
+        equilibre_score = min(1.0, equilibre_score)
+
+        # ── Score final ────────────────────────────────────────────────────────
+        score = (
+            rotation_score  * 0.30 +
+            famille_score   * 0.30 +
+            variete_score   * 0.20 +
+            saison_score    * 0.10 +
+            equilibre_score * 0.10
+        )
+
+        results.append({
+            "recipe": recipe,
+            "score": round(score, 3),
+            "reasons": {
+                "rotation":  round(rotation_score,  2),
+                "famille":   round(famille_score,   2),
+                "variete":   round(variete_score,   2),
+                "saison":    round(saison_score,    2),
+                "equilibre": round(equilibre_score, 2),
+            },
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    logger.debug(
+        "suggerer_recettes : famille=%s date=%s %s → %d candidats, top score=%.3f",
+        family.pk, target_date, meal_time,
+        len(results), results[0]["score"] if results else 0,
+    )
+    return results[:5]
 
 
 def _parse_float(val: str):

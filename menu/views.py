@@ -29,6 +29,7 @@ from .services import (
     importer_recette_depuis_json,
     restaurer_backup,
     sauvegarder_recette_depuis_post,
+    suggerer_recettes,
 )
 
 logger = logging.getLogger("menu")
@@ -409,6 +410,57 @@ def modifier_meal(request, plan_id):
         "servings_count": meal.servings_count,
         "is_leftovers": meal.is_leftovers,
         "calories_per_serving": recipe.calories_per_serving if recipe else None,
+    })
+
+
+@login_required
+def suggestions_repas(request, plan_id):
+    """
+    AJAX GET : retourne les 5 meilleures suggestions de recettes pour un créneau.
+    Params GET : date=YYYY-MM-DD & meal_time=lunch|dinner
+    """
+    profile = _get_profile(request)
+    if not profile or not _verifier_cuisinier(request):
+        return JsonResponse({"ok": False, "error": "Réservé aux Cuisiniers", "code": "FORBIDDEN"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    date_str  = request.GET.get("date", "").strip()
+    meal_time = request.GET.get("meal_time", "").strip()
+
+    if not date_str or meal_time not in ("lunch", "dinner"):
+        return JsonResponse({"ok": False, "error": "Paramètres invalides", "code": "BAD_PARAMS"}, status=400)
+
+    try:
+        from datetime import date as date_type
+        target_date = date_type.fromisoformat(date_str)
+    except ValueError:
+        return JsonResponse({"ok": False, "error": "Date invalide", "code": "BAD_DATE"}, status=400)
+
+    try:
+        results = suggerer_recettes(profile.family, plan, target_date, meal_time)
+    except Exception as exc:
+        logger.error("suggestions_repas — erreur inattendue : %s", exc, exc_info=True)
+        return JsonResponse({"ok": False, "error": "Erreur serveur", "code": "SERVER_ERROR"}, status=500)
+
+    if not results:
+        return JsonResponse({
+            "ok": True,
+            "suggestions": [],
+            "message": "Pas assez de recettes dans le catalogue pour cette période.",
+        })
+
+    return JsonResponse({
+        "ok": True,
+        "suggestions": [
+            {
+                "recipe_id": r["recipe"].id,
+                "title":     r["recipe"].title,
+                "score":     r["score"],
+                "reasons":   r["reasons"],
+            }
+            for r in results
+        ],
     })
 
 

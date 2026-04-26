@@ -17,6 +17,7 @@ urlpatterns = [
     path("planning/<int:plan_id>/meal/", views.modifier_meal, name="modifier_meal"),
     path("planning/<int:plan_id>/publier/", views.publier_planning, name="publier_planning"),
     path("planning/<int:plan_id>/proposer/", views.proposer_repas, name="proposer_repas"),
+    path("planning/<int:plan_id>/suggestions/", views.suggestions_repas, name="suggestions_repas"),
     path("planning/proposition/<int:proposal_id>/supprimer/", views.supprimer_proposition, name="supprimer_proposition"),
     path("api/recettes/", views.api_recettes, name="api_recettes"),
     path("courses/<int:plan_id>/", views.liste_courses, name="liste_courses"),

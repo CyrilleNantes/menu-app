@@ -93,6 +93,12 @@
                 </div>
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
+                {% if is_cuisinier %}
+                <button type="button" class="btn-suggestions btn btn--ghost btn--xs"
+                        data-date="{{ day.date|date:'Y-m-d' }}"
+                        data-meal-time="lunch"
+                        title="Suggestions">💡</button>
+                {% endif %}
             {% endif %}
         </div>
     </div>
@@ -117,6 +123,12 @@
                 </div>
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
+                {% if is_cuisinier %}
+                <button type="button" class="btn-suggestions btn btn--ghost btn--xs"
+                        data-date="{{ day.date|date:'Y-m-d' }}"
+                        data-meal-time="dinner"
+                        title="Suggestions">💡</button>
+                {% endif %}
             {% endif %}
         </div>
     </div>
@@ -216,6 +228,26 @@
      data-plan-id="{{ plan.id }}"
      data-is-cuisinier="{{ is_cuisinier|yesno:'true,false' }}"></div>
 {{ meals_avec_recette|json_script:"meals-json" }}
+
+<!-- ── Dialog : suggestions de recettes (Cuisinier) ────────── -->
+{% if is_cuisinier %}
+<dialog id="dialog-suggestions" class="planning-dialog planning-dialog--suggestions">
+    <h2 class="planning-dialog__title">💡 Suggestions</h2>
+    <p class="planning-dialog__slot" id="suggestions-label"></p>
+
+    <div id="suggestions-loading" class="suggestions-loading" style="display:none">
+        <span class="spinner"></span> Calcul en cours…
+    </div>
+    <div id="suggestions-empty" class="text-muted" style="display:none">
+        Pas assez de recettes dans le catalogue pour proposer des suggestions.
+    </div>
+    <ul id="suggestions-list" class="suggestions-list"></ul>
+
+    <div class="planning-dialog__actions">
+        <button type="button" id="btn-cancel-suggestions" class="btn btn--secondary">Fermer</button>
+    </div>
+</dialog>
+{% endif %}
 
 <!-- ── Dialog : modifier un repas (Cuisinier) ───────────────── -->
 {% if is_cuisinier %}
