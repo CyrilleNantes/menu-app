@@ -92,6 +92,11 @@
             ({ title }) => { recipeName.textContent = title; recipeName.classList.remove('text-muted'); }
         );
 
+        // Écoute l'événement émis par "Utiliser" dans le dialog suggestions
+        document.getElementById('meal-recipe-search')?.addEventListener('suggestion-select', e => {
+            search.setSelected(e.detail.id, e.detail.title);
+        });
+
         let currentSlot = {};
 
         // Ouvrir le dialog en cliquant sur un créneau
@@ -170,6 +175,10 @@
                         const label = `${currentSlot.date} ${body.meal_time === 'lunch' ? 'Midi' : 'Soir'} — ${data.recipe_title}`;
                         mealsAvecRecette.push({ id: data.meal_id, label });
                     }
+                    // Réafficher les alertes d'équilibre (le menu a changé)
+                    if (typeof window._resetAlertesDismissed === 'function') {
+                        window._resetAlertesDismissed();
+                    }
                 } else {
                     alert(`Erreur : ${data.error}`);
                 }
@@ -227,6 +236,172 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+    }
+
+    // ── Alertes équilibre — dismiss via sessionStorage ───────────────────────
+
+    (function initAlertes() {
+        const container = document.getElementById('alertes-planning');
+        if (!container) return;
+
+        const planId    = container.dataset.planId;
+        const storageKey = `dismissed_alertes_${planId}`;
+
+        function getDismissed() {
+            try { return JSON.parse(sessionStorage.getItem(storageKey) || '[]'); }
+            catch { return []; }
+        }
+
+        function saveDismissed(arr) {
+            sessionStorage.setItem(storageKey, JSON.stringify(arr));
+        }
+
+        // Masquer les alertes déjà ignorées au chargement de la page
+        const dismissed = getDismissed();
+        container.querySelectorAll('.planning-alerte').forEach(el => {
+            if (dismissed.includes(el.dataset.type)) {
+                el.style.display = 'none';
+            }
+        });
+
+        // Bouton ✕ — dismiss
+        container.addEventListener('click', e => {
+            const btn = e.target.closest('.planning-alerte__dismiss');
+            if (!btn) return;
+            const alerte = btn.closest('.planning-alerte');
+            if (!alerte) return;
+            const type = alerte.dataset.type;
+            const arr  = getDismissed();
+            if (!arr.includes(type)) arr.push(type);
+            saveDismissed(arr);
+            alerte.style.display = 'none';
+        });
+
+        // Exposer une fonction pour réafficher les alertes après modification d'un repas
+        window._resetAlertesDismissed = function () {
+            saveDismissed([]);
+            container.querySelectorAll('.planning-alerte').forEach(el => {
+                el.style.display = '';
+            });
+        };
+    })();
+
+    // ── Dialogue : suggestions de recettes (Cuisinier) ──────────────────────
+
+    if (IS_COOK) {
+        const dlgSug      = document.getElementById('dialog-suggestions');
+        const sugLabel    = document.getElementById('suggestions-label');
+        const sugLoading  = document.getElementById('suggestions-loading');
+        const sugEmpty    = document.getElementById('suggestions-empty');
+        const sugList     = document.getElementById('suggestions-list');
+
+        const REASON_ICONS = {
+            rotation:  { icon: '🔄', label: 'Rotation' },
+            famille:   { icon: '⭐', label: 'Avis famille' },
+            variete:   { icon: '🥩', label: 'Variété' },
+            saison:    { icon: '🌿', label: 'Saison' },
+            equilibre: { icon: '⚖️', label: 'Équilibre' },
+        };
+
+        // Clic sur le bouton 💡 d'un créneau vide
+        document.addEventListener('click', async e => {
+            const btn = e.target.closest('.btn-suggestions');
+            if (!btn) return;
+            e.stopPropagation(); // ne pas ouvrir le dialog repas
+
+            const dateStr  = btn.dataset.date;
+            const mealTime = btn.dataset.mealTime;
+            const label    = mealTime === 'lunch' ? 'Midi' : 'Soir';
+            sugLabel.textContent = `${dateStr} — ${label}`;
+
+            // Réinitialiser l'état du dialog
+            sugList.innerHTML    = '';
+            sugEmpty.style.display   = 'none';
+            sugLoading.style.display = 'block';
+            dlgSug.showModal();
+
+            try {
+                const url  = `/planning/${PLAN_ID}/suggestions/?date=${dateStr}&meal_time=${mealTime}`;
+                const resp = await fetch(url, { headers: { 'X-CSRFToken': CSRF } });
+                const data = await resp.json();
+
+                sugLoading.style.display = 'none';
+
+                if (!data.ok || !data.suggestions?.length) {
+                    sugEmpty.style.display = 'block';
+                    return;
+                }
+
+                data.suggestions.forEach(s => {
+                    const scorePercent = Math.round(s.score * 100);
+
+                    // Icônes de justification triées par score décroissant
+                    const reasonsHtml = Object.entries(s.reasons)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([key, val]) => {
+                            const r = REASON_ICONS[key] || { icon: '?', label: key };
+                            const opacity = val < 0.3 ? 'sug-reason--low' : val >= 0.7 ? 'sug-reason--high' : '';
+                            return `<span class="sug-reason ${opacity}" title="${r.label} : ${Math.round(val * 100)}%">${r.icon}</span>`;
+                        }).join('');
+
+                    const li = document.createElement('li');
+                    li.className = 'sug-item';
+                    li.innerHTML = `
+                        <div class="sug-item__main">
+                            <span class="sug-item__title">${escHtml(s.title)}</span>
+                            <span class="sug-item__score">${scorePercent}%</span>
+                        </div>
+                        <div class="sug-item__reasons">${reasonsHtml}</div>
+                        <button type="button"
+                                class="btn btn--primary btn--sm btn-use-suggestion"
+                                data-recipe-id="${s.recipe_id}"
+                                data-recipe-title="${escHtml(s.title)}"
+                                data-date="${dateStr}"
+                                data-meal-time="${mealTime}">
+                            Utiliser
+                        </button>`;
+                    sugList.appendChild(li);
+                });
+
+            } catch {
+                sugLoading.style.display = 'none';
+                sugEmpty.style.display   = 'block';
+                sugEmpty.textContent     = 'Erreur lors du chargement des suggestions.';
+            }
+        });
+
+        // Sélectionner une suggestion → pré-remplir le dialog repas
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('.btn-use-suggestion');
+            if (!btn) return;
+
+            dlgSug.close();
+
+            // Simuler l'ouverture du dialog repas avec cette recette pré-sélectionnée
+            const slot = document.querySelector(
+                `.meal-slot[data-date="${btn.dataset.date}"][data-meal-time="${btn.dataset.mealTime}"]`
+            );
+            if (slot) {
+                // Déclencher le click sur le slot pour ouvrir le dialog repas
+                slot.click();
+                // Puis pré-remplir la recette après ouverture (micro-délai pour le showModal)
+                setTimeout(() => {
+                    const recipeSearch = document.getElementById('meal-recipe-search');
+                    const recipeName   = document.getElementById('meal-recipe-name');
+                    if (recipeSearch && recipeName) {
+                        recipeSearch.value  = btn.dataset.recipeTitle;
+                        recipeName.textContent = btn.dataset.recipeTitle;
+                        recipeName.classList.remove('text-muted');
+                        // Mettre à jour l'état interne du search helper via un événement custom
+                        recipeSearch.dispatchEvent(new CustomEvent('suggestion-select', {
+                            detail: { id: btn.dataset.recipeId, title: btn.dataset.recipeTitle }
+                        }));
+                    }
+                }, 50);
+            }
+        });
+
+        document.getElementById('btn-cancel-suggestions')?.addEventListener('click', () => dlgSug.close());
     }
 
     // ── Dialogue : proposer une recette (Convive) ─────────────────────────────

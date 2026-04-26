@@ -9,7 +9,7 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Prefetch, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -22,13 +22,17 @@ from .integrations.google_auth import google_build_auth_url, google_exchange_cod
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
 from .integrations.openfoodfacts import rechercher_ingredient
-from .models import Family, Ingredient, Meal, MealProposal, Recipe, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, Meal, MealProposal, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
+    calculer_alertes_planning,
     exporter_backup,
     generer_liste_courses,
     importer_recette_depuis_json,
+    notifier_nouvelle_proposition,
+    notifier_planning_publie,
     restaurer_backup,
     sauvegarder_recette_depuis_post,
+    suggerer_recettes,
 )
 
 logger = logging.getLogger("menu")
@@ -47,19 +51,31 @@ def service_worker(request):
     )
 
 
-# Mots-clés par tag alimentaire pour les alertes allergies (simple, non bloquant)
-ALLERGEN_KEYWORDS = {
-    "gluten": ["farine", "blé", "seigle", "orge", "avoine", "pain", "pâte", "semoule", "couscous"],
-    "lactose": ["lait", "beurre", "crème", "fromage", "yaourt", "mozzarella", "cheddar", "parmesan", "gruyère"],
-    "fruits_a_coque": ["noix", "noisette", "amande", "cajou", "pistache", "noix de coco", "pécan"],
-    "arachides": ["cacahuète", "arachide", "beurre de cacahuète"],
-    "oeufs": ["œuf", "oeuf", "jaune d'œuf", "blanc d'œuf"],
-    "poisson": ["saumon", "thon", "cabillaud", "sardine", "anchois", "truite"],
-    "fruits_de_mer": ["crevette", "moule", "homard", "crabe", "calamar", "poulpe"],
-    "soja": ["soja", "tofu", "edamame", "miso"],
-    "vegetarien": [],
-    "vegan": [],
+# Configuration des tags alimentaires : 14 allergènes majeurs EU + végétarien/végan
+DIETARY_TAG_CONFIG = {
+    "gluten":         {"label": "Gluten",          "emoji": "🌾", "keywords": ["farine", "blé", "seigle", "orge", "avoine", "pain", "pâte", "semoule", "couscous", "boulgour", "épeautre", "chapelure", "brioche"]},
+    "lactose":        {"label": "Lactose",         "emoji": "🥛", "keywords": ["lait", "beurre", "crème", "fromage", "yaourt", "mozzarella", "cheddar", "parmesan", "gruyère", "ricotta", "mascarpone", "kéfir", "crème fraîche"]},
+    "oeufs":          {"label": "Œufs",            "emoji": "🥚", "keywords": ["œuf", "oeuf", "jaune d'œuf", "blanc d'œuf", "mayonnaise"]},
+    "poisson":        {"label": "Poisson",         "emoji": "🐟", "keywords": ["saumon", "thon", "cabillaud", "sardine", "anchois", "truite", "dorade", "maquereau", "sole", "bar", "lieu", "merlan", "tilapia", "hareng"]},
+    "crustaces":      {"label": "Crustacés",       "emoji": "🦐", "keywords": ["crevette", "homard", "crabe", "langoustine", "écrevisse", "langouste"]},
+    "mollusques":     {"label": "Mollusques",      "emoji": "🦪", "keywords": ["moule", "huître", "calamar", "poulpe", "seiche", "escargot", "palourde", "coque", "bulot"]},
+    "fruits_a_coque": {"label": "Fruits à coque",  "emoji": "🥜", "keywords": ["noix", "noisette", "amande", "cajou", "pistache", "noix de coco", "pécan", "macadamia", "noix du brésil", "noix de cajou"]},
+    "arachides":      {"label": "Arachides",       "emoji": "🥜", "keywords": ["cacahuète", "arachide", "beurre de cacahuète"]},
+    "soja":           {"label": "Soja",            "emoji": "🫘", "keywords": ["soja", "tofu", "edamame", "miso", "sauce soja", "tempeh", "lait de soja"]},
+    "celeri":         {"label": "Céleri",          "emoji": "🌿", "keywords": ["céleri", "celeri", "céleri-rave"]},
+    "moutarde":       {"label": "Moutarde",        "emoji": "🌿", "keywords": ["moutarde", "graines de moutarde"]},
+    "sesame":         {"label": "Sésame",          "emoji": "🌾", "keywords": ["sésame", "sesame", "tahini", "halva"]},
+    "sulfites":       {"label": "Sulfites",        "emoji": "🍷", "keywords": ["vin", "vinaigre de vin", "vinaigre balsamique", "raisin sec", "abricot sec"]},
+    "lupin":          {"label": "Lupin",           "emoji": "🌿", "keywords": ["lupin", "farine de lupin"]},
+    "vegetarien":     {"label": "Végétarien",      "emoji": "🥦", "keywords": []},
+    "vegan":          {"label": "Végan",           "emoji": "🌱", "keywords": []},
 }
+
+# Liste ordonnée pour les formulaires / templates
+DIETARY_TAG_CHOICES = [
+    (key, cfg["label"], cfg["emoji"])
+    for key, cfg in DIETARY_TAG_CONFIG.items()
+]
 
 
 def _saison_courante():
@@ -73,17 +89,36 @@ def _saison_courante():
     return "hiver"
 
 
-def _alertes_allergies(recipe, dietary_tags):
-    if not dietary_tags:
+def _alertes_allergies(ingredients, dietary_tags):
+    """
+    Retourne une liste de dicts {tag, label, emoji, ingredients}
+    pour chaque restriction de l'utilisateur correspondant à un ingrédient.
+
+    ingredients : liste d'objets Ingredient (déjà chargés)
+    dietary_tags : liste de tags du UserProfile
+    """
+    if not dietary_tags or not ingredients:
         return []
     alertes = []
-    noms = [ing.name.lower() for ing in recipe.ingredients.all()]
+    noms = [(ing.name, ing.name.lower()) for ing in ingredients]
     for tag in dietary_tags:
-        mots = ALLERGEN_KEYWORDS.get(tag, [])
-        for mot in mots:
-            if any(mot in nom for nom in noms):
-                alertes.append(tag)
-                break
+        cfg = DIETARY_TAG_CONFIG.get(tag)
+        if not cfg or not cfg["keywords"]:
+            continue
+        matching = []
+        for ing_name, ing_lower in noms:
+            for mot in cfg["keywords"]:
+                if mot in ing_lower:
+                    if ing_name not in matching:
+                        matching.append(ing_name)
+                    break
+        if matching:
+            alertes.append({
+                "tag": tag,
+                "label": cfg["label"],
+                "emoji": cfg["emoji"],
+                "ingredients": matching,
+            })
     return alertes
 
 
@@ -202,15 +237,140 @@ def profil(request):
     google_connected = TokenOAuth.objects.filter(user=request.user, service="google").exists()
 
     ctx = {
-        "profile":          profile,
-        "rank_info":        rank_info,
-        "nb_recettes":      nb_recettes,
-        "nb_avis":          nb_avis,
-        "nb_proposals":     nb_proposals,
-        "famille_members":  famille_members,
-        "google_connected": google_connected,
+        "profile":              profile,
+        "rank_info":            rank_info,
+        "nb_recettes":          nb_recettes,
+        "nb_avis":              nb_avis,
+        "nb_proposals":         nb_proposals,
+        "famille_members":      famille_members,
+        "google_connected":     google_connected,
+        "dietary_tag_choices":  DIETARY_TAG_CHOICES,
     }
     return render(request, "menu/profil.html", ctx)
+
+
+@login_required
+def dashboard_nutrition(request):
+    """
+    Dashboard nutritionnel individuel — semaine en cours, macros personnalisées
+    via UserProfile.portions_factor. Toutes les valeurs sont des repères indicatifs PNNS.
+    """
+    from datetime import date as date_type
+    from .models import NutritionConfig
+
+    profile = _get_profile(request)
+    if not profile:
+        return redirect("menu:home")
+
+    pf = profile.portions_factor  # facteur de portion de l'utilisateur
+    config = NutritionConfig.get()
+
+    # Cibles journalières personnalisées (déjeuner + dîner = 2 × cible dîner)
+    cal_day_target  = config.calories_dinner_target  * 2 * pf
+    prot_day_target = config.proteins_dinner_target  * 2 * pf
+    cal_week_target  = cal_day_target  * 7
+    prot_week_target = prot_day_target * 7
+
+    # Planning de la semaine en cours pour la famille
+    today     = date_type.today()
+    iso       = today.isocalendar()
+    week_plan = None
+    days_data = []
+    total_cal_week  = 0.0
+    total_prot_week = 0.0
+
+    if profile.family:
+        from datetime import timedelta
+        monday = today - timedelta(days=today.weekday())
+        week_plan = (
+            WeekPlan.objects
+            .filter(family=profile.family, period_start__lte=monday + timedelta(days=6), period_end__gte=monday)
+            .order_by("-period_start")
+            .first()
+        )
+
+    # Q1 — _status défini une seule fois, hors boucle
+    def _status(actual, target):
+        if target <= 0 or actual <= 0:
+            return "neutral"
+        pct = actual / target * 100
+        if pct < 60 or pct > 130:
+            return "alert"
+        if pct < 80 or pct > 110:
+            return "warning"
+        return "ok"
+
+    if week_plan:
+        meals_qs = (
+            Meal.objects
+            .filter(week_plan=week_plan, recipe__isnull=False)
+            .select_related("recipe")
+            .order_by("date", "meal_time")
+        )
+        meals_by_date: dict = {}
+        for m in meals_qs:
+            meals_by_date.setdefault(m.date, []).append(m)
+
+        DAY_NAMES = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+        from datetime import timedelta
+        monday = week_plan.period_start
+
+        for i in range(7):
+            d = monday + timedelta(days=i)
+            day_meals_raw = meals_by_date.get(d, [])
+            day_cal  = 0.0
+            day_prot = 0.0
+            meals_out = []
+
+            for m in day_meals_raw:
+                r = m.recipe
+                cal  = round((r.calories_per_serving  or 0) * pf, 1)
+                prot = round((r.proteins_per_serving or 0) * pf, 1)
+                day_cal  += cal
+                day_prot += prot
+                meals_out.append({
+                    "meal_time":     m.meal_time,
+                    "recipe_id":     r.id,
+                    "recipe_title":  r.title,
+                    "calories":      cal  if r.calories_per_serving  else None,
+                    "proteins":      prot if r.proteins_per_serving else None,
+                    "is_leftovers":  m.is_leftovers,
+                })
+
+            total_cal_week  += day_cal
+            total_prot_week += day_prot
+
+            days_data.append({
+                "date":       d,
+                "day_name":   DAY_NAMES[i],
+                "is_today":   d == today,
+                "meals":      meals_out,
+                "total_cal":  round(day_cal, 0),
+                "total_prot": round(day_prot, 1),
+                "cal_status":  _status(day_cal,  cal_day_target),
+                "prot_status": _status(day_prot, prot_day_target),
+            })
+
+    def _pct(actual, target):
+        return min(round(actual / target * 100) if target > 0 else 0, 130)
+
+    ctx = {
+        "profile":           profile,
+        "week_plan":         week_plan,
+        "days_data":         days_data,
+        "total_cal_week":    round(total_cal_week, 0),
+        "total_prot_week":   round(total_prot_week, 1),
+        "cal_day_target":    round(cal_day_target,  0),
+        "prot_day_target":   round(prot_day_target, 1),
+        "cal_week_target":   round(cal_week_target,  0),
+        "prot_week_target":  round(prot_week_target, 1),
+        "cal_week_pct":      _pct(total_cal_week,  cal_week_target),
+        "prot_week_pct":     _pct(total_prot_week, prot_week_target),
+        # Q2 — réutilise _status au lieu de lambdas anonymes dupliquées
+        "cal_week_status":   _status(total_cal_week,  cal_week_target),
+        "prot_week_status":  _status(total_prot_week, prot_week_target),
+    }
+    return render(request, "menu/profil/nutrition.html", ctx)
 
 
 def _get_profile(request):
@@ -249,14 +409,30 @@ def planning_semaine(request, year, week):
         return redirect("menu:planning")
     week_end = week_start + timedelta(days=6)              # dimanche
 
-    # Créer le WeekPlan s'il n'existe pas encore
+    # Rôle déterminé tôt — nécessaire pour la création du WeekPlan
+    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
+
+    # Créer le WeekPlan s'il n'existe pas encore.
+    # `created_by` DOIT être un Cuisinier — si l'utilisateur est un Convive,
+    # on utilise le premier Cuisinier de la famille pour respecter la contrainte métier.
+    if is_cuisinier:
+        plan_creator = request.user
+    else:
+        cuisinier_profile = (
+            UserProfile.objects
+            .filter(family=profile.family, role__in=["cuisinier", "chef_etoile"])
+            .select_related("user")
+            .first()
+        )
+        plan_creator = cuisinier_profile.user if cuisinier_profile else request.user
+
     with transaction.atomic():
         plan, _ = WeekPlan.objects.get_or_create(
             family=profile.family,
             period_start=week_start,
             defaults={
                 "period_end": week_end,
-                "created_by": request.user,
+                "created_by": plan_creator,
                 "status": "draft",
             },
         )
@@ -287,8 +463,6 @@ def planning_semaine(request, year, week):
             n = m.servings_count or m.recipe.base_servings or 1
             total_calories += (m.recipe.calories_per_serving or 0) * n
             total_proteins += (m.recipe.proteins_per_serving or 0) * n
-
-    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
 
     # Propositions visibles par le Cuisinier
     proposals = []
@@ -338,6 +512,8 @@ def planning_semaine(request, year, week):
         # Lien courses
         "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
+        # Alertes équilibre (nudges) — Cuisinier uniquement
+        "alertes_planning": calculer_alertes_planning(plan, profile.family) if is_cuisinier else [],
     }
     return render(request, "menu/planning/semaine.html", ctx)
 
@@ -412,6 +588,57 @@ def modifier_meal(request, plan_id):
     })
 
 
+@login_required
+def suggestions_repas(request, plan_id):
+    """
+    AJAX GET : retourne les 5 meilleures suggestions de recettes pour un créneau.
+    Params GET : date=YYYY-MM-DD & meal_time=lunch|dinner
+    """
+    profile = _get_profile(request)
+    if not profile or not _verifier_cuisinier(request):
+        return JsonResponse({"ok": False, "error": "Réservé aux Cuisiniers", "code": "FORBIDDEN"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    date_str  = request.GET.get("date", "").strip()
+    meal_time = request.GET.get("meal_time", "").strip()
+
+    if not date_str or meal_time not in ("lunch", "dinner"):
+        return JsonResponse({"ok": False, "error": "Paramètres invalides", "code": "BAD_PARAMS"}, status=400)
+
+    try:
+        from datetime import date as date_type
+        target_date = date_type.fromisoformat(date_str)
+    except ValueError:
+        return JsonResponse({"ok": False, "error": "Date invalide", "code": "BAD_DATE"}, status=400)
+
+    try:
+        results = suggerer_recettes(profile.family, plan, target_date, meal_time)
+    except Exception as exc:
+        logger.error("suggestions_repas — erreur inattendue : %s", exc, exc_info=True)
+        return JsonResponse({"ok": False, "error": "Erreur serveur", "code": "SERVER_ERROR"}, status=500)
+
+    if not results:
+        return JsonResponse({
+            "ok": True,
+            "suggestions": [],
+            "message": "Pas assez de recettes dans le catalogue pour cette période.",
+        })
+
+    return JsonResponse({
+        "ok": True,
+        "suggestions": [
+            {
+                "recipe_id": r["recipe"].id,
+                "title":     r["recipe"].title,
+                "score":     r["score"],
+                "reasons":   r["reasons"],
+            }
+            for r in results
+        ],
+    })
+
+
 @require_POST
 @login_required
 def publier_planning(request, plan_id):
@@ -432,6 +659,7 @@ def publier_planning(request, plan_id):
         plan.save(update_fields=["status"])
         messages.success(request, "Menu publié ! Vous pouvez maintenant générer la liste de courses.")
         logger.info("Planning %d publié par %s.", plan.id, request.user.email)
+        notifier_planning_publie(plan)
 
     iso = plan.period_start.isocalendar()
     return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
@@ -440,10 +668,12 @@ def publier_planning(request, plan_id):
 @require_POST
 @login_required
 def proposer_repas(request, plan_id):
-    """AJAX : un Convive propose une recette pour ce planning."""
+    """AJAX : un Convive propose une recette pour ce planning. Réservé aux Convives."""
     profile = _get_profile(request)
     if not profile or not profile.family:
         return JsonResponse({"ok": False, "error": "Famille requise", "code": "NO_FAMILY"}, status=403)
+    if profile.role in ("cuisinier", "chef_etoile"):
+        return JsonResponse({"ok": False, "error": "Les Cuisiniers peuvent directement modifier le planning", "code": "FORBIDDEN"}, status=403)
 
     plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
 
@@ -466,6 +696,7 @@ def proposer_repas(request, plan_id):
         message=message,
         week_plan=plan,
     )
+    notifier_nouvelle_proposition(proposal)
 
     return JsonResponse({
         "ok": True,
@@ -676,12 +907,22 @@ def liste_recettes(request):
 
 @login_required
 def detail_recette(request, id):
+    # Profil chargé une seule fois — réutilisé partout dans la vue (B3)
+    profile = _get_profile(request)
+
     recipe = get_object_or_404(
         Recipe.objects.select_related("created_by").prefetch_related(
             "ingredient_groups__ingredients",
+            "ingredients",
             "steps",
             "sections",
             "reviews__user",
+            # B2 — prefetch filtré : évite la 2ᵉ requête dans gallery_photos
+            Prefetch(
+                "photos",
+                queryset=RecipePhoto.objects.filter(actif=True).order_by("order", "created_at"),
+                to_attr="active_photos",
+            ),
         ),
         id=id,
         actif=True,
@@ -689,34 +930,27 @@ def detail_recette(request, id):
 
     stats = recipe.reviews.aggregate(note_moyenne=Avg("stars"), nb_avis=Count("id"))
 
-    dietary_tags = []
-    try:
-        dietary_tags = request.user.profile.dietary_tags or []
-    except UserProfile.DoesNotExist:
-        pass
-
-    alertes = _alertes_allergies(recipe, dietary_tags)
+    # Alertes allergies — profil réutilisé (B3)
+    dietary_tags = profile.dietary_tags if profile else []
+    recipe_ingredients = list(recipe.ingredients.all())
+    alertes = _alertes_allergies(recipe_ingredients, dietary_tags)
 
     # Dernier avis de l'utilisateur courant
     user_last_review = recipe.reviews.filter(user=request.user).order_by("-created_at").first()
 
-    # Avis des membres de la famille (hors l'utilisateur courant, pour la section dédiée)
+    # Avis des membres de la famille — profil réutilisé (B3)
     family_reviews = []
-    try:
-        profile = request.user.profile
-        if profile.family:
-            family_ids = list(
-                UserProfile.objects.filter(family=profile.family)
-                .exclude(user=request.user)
-                .values_list("user_id", flat=True)
-            )
-            family_reviews = list(
-                recipe.reviews.filter(user_id__in=family_ids)
-                .select_related("user")
-                .order_by("-created_at")[:20]
-            )
-    except UserProfile.DoesNotExist:
-        pass
+    if profile and profile.family:
+        family_ids = list(
+            UserProfile.objects.filter(family=profile.family)
+            .exclude(user=request.user)
+            .values_list("user_id", flat=True)
+        )
+        family_reviews = list(
+            recipe.reviews.filter(user_id__in=family_ids)
+            .select_related("user")
+            .order_by("-created_at")[:20]
+        )
 
     # Pré-calcul des rangs par reviewer pour éviter le N+1
     raw_reviews = list(
@@ -735,6 +969,15 @@ def detail_recette(request, id):
                 rank_cache[uid] = (0, "")
         all_reviews_with_rank.append((r, rank_cache[uid]))
 
+    # Bloc "Pour toi" — profil réutilisé (B3)
+    portions_factor = profile.portions_factor if profile else 1.0
+    pour_toi_cal  = round(recipe.calories_per_serving  * portions_factor, 0) if recipe.calories_per_serving  else None
+    pour_toi_prot = round(recipe.proteins_per_serving * portions_factor, 1) if recipe.proteins_per_serving else None
+
+    # Galerie photos — utilise le prefetch filtré (B2)
+    gallery_photos = recipe.active_photos
+    is_cuisinier_here = bool(profile and profile.role in ("cuisinier", "chef_etoile"))
+
     ctx = {
         "recipe": recipe,
         "note_moyenne": stats["note_moyenne"],
@@ -743,6 +986,10 @@ def detail_recette(request, id):
         "user_last_review": user_last_review,
         "family_reviews": family_reviews,
         "all_reviews": all_reviews_with_rank,
+        "pour_toi_cal":  pour_toi_cal,
+        "pour_toi_prot": pour_toi_prot,
+        "gallery_photos": gallery_photos,
+        "is_cuisinier": is_cuisinier_here,
     }
     return render(request, "menu/recettes/detail.html", ctx)
 
@@ -829,6 +1076,7 @@ def creer_recette(request):
             seasons=cd.get("seasons") or [],
             health_tags=cd.get("health_tags") or [],
             complexity=cd["complexity"],
+            protein_type=cd.get("protein_type") or None,
             created_by=request.user,
         )
         sauvegarder_recette_depuis_post(recipe, request.POST)
@@ -866,6 +1114,7 @@ def modifier_recette(request, id):
             recipe.seasons = cd.get("seasons") or []
             recipe.health_tags = cd.get("health_tags") or []
             recipe.complexity = cd["complexity"]
+            recipe.protein_type = cd.get("protein_type") or None
             recipe.save()
             sauvegarder_recette_depuis_post(recipe, request.POST)
             messages.success(request, "Recette enregistrée !")
@@ -882,6 +1131,7 @@ def modifier_recette(request, id):
             "seasons": recipe.seasons,
             "health_tags": recipe.health_tags,
             "complexity": recipe.complexity,
+            "protein_type": recipe.protein_type or "",
         })
 
     recipe_data = recipe
@@ -904,6 +1154,73 @@ def supprimer_recette(request, id):
     recipe.save(update_fields=["actif"])
     messages.success(request, f"« {recipe.title} » a été supprimée.")
     return redirect("menu:liste_recettes")
+
+
+# ─── Galerie photos ──────────────────────────────────────────────────────────
+
+@require_POST
+@login_required
+def ajouter_photo_recette(request, id):
+    """Upload d'une photo supplémentaire — accessible à tout utilisateur connecté."""
+    recipe = get_object_or_404(Recipe, id=id, actif=True)
+    photo_file = request.FILES.get("photo")
+
+    if not photo_file:
+        messages.error(request, "Aucun fichier fourni.")
+        return redirect("menu:detail_recette", id=id)
+
+    photo_url = upload_photo(photo_file)
+    if not photo_url:
+        messages.error(request, "L'upload de la photo a échoué. Réessayez.")
+        return redirect("menu:detail_recette", id=id)
+
+    caption = request.POST.get("caption", "").strip() or None
+    order   = recipe.photos.filter(actif=True).count()
+
+    RecipePhoto.objects.create(
+        recipe=recipe,
+        photo_url=photo_url,
+        caption=caption,
+        order=order,
+        uploaded_by=request.user,
+    )
+    messages.success(request, "Photo ajoutée à la galerie !")
+    logger.info("Photo ajoutée à la recette '%s' par %s.", recipe.title, request.user.email)
+    return redirect("menu:detail_recette", id=id)
+
+
+@require_POST
+@login_required
+def retirer_photo_recette(request, id, photo_id):
+    """Soft-delete d'une photo de galerie — Cuisinier uniquement."""
+    if not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:detail_recette", id=id)
+
+    photo = get_object_or_404(RecipePhoto, id=photo_id, recipe_id=id)
+    photo.actif = False
+    photo.save(update_fields=["actif"])
+    messages.success(request, "Photo retirée de la galerie.")
+    return redirect("menu:detail_recette", id=id)
+
+
+@require_POST
+@login_required
+def promouvoir_photo_recette(request, id, photo_id):
+    """Passe une photo en is_main=True, remet toutes les autres à False — Cuisinier uniquement."""
+    if not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:detail_recette", id=id)
+
+    photo = get_object_or_404(RecipePhoto, id=photo_id, recipe_id=id, actif=True)
+
+    with transaction.atomic():
+        RecipePhoto.objects.filter(recipe_id=id).update(is_main=False)
+        photo.is_main = True
+        photo.save(update_fields=["is_main"])
+
+    messages.success(request, "Photo mise en avant dans la galerie.")
+    return redirect("menu:detail_recette", id=id)
 
 
 # ─── Backup / Restore / Import recettes ──────────────────────────────────────
@@ -1100,6 +1417,89 @@ def modifier_creneaux_calendar(request):
     messages.success(request, "Créneaux Google Calendar mis à jour.")
     logger.debug("modifier_creneaux_calendar : créneaux mis à jour pour user %s", request.user.id)
     return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def modifier_portions_factor(request):
+    """Enregistre le facteur de portion individuel de l'utilisateur."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    try:
+        value = float(request.POST.get("portions_factor", "1.0"))
+        if value <= 0 or value > 5:
+            raise ValueError("Hors plage")
+    except (ValueError, TypeError):
+        messages.error(request, "Valeur invalide pour le facteur de portion (entre 0.1 et 5.0).")
+        return redirect("menu:profil")
+
+    profile.portions_factor = round(value, 2)
+    profile.save(update_fields=["portions_factor"])
+    messages.success(request, "Facteur de portion mis à jour.")
+    logger.debug("modifier_portions_factor : portions_factor=%.2f pour user %s", profile.portions_factor, request.user.id)
+    return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def modifier_dietary_tags(request):
+    """Enregistre les restrictions alimentaires / allergènes du profil utilisateur."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    tags = request.POST.getlist("tags")
+    # Valider que les tags soumis font partie de la liste connue
+    tags_valides = [t for t in tags if t in DIETARY_TAG_CONFIG]
+    profile.dietary_tags = tags_valides
+    profile.save(update_fields=["dietary_tags"])
+    messages.success(request, "Restrictions alimentaires mises à jour.")
+    logger.debug("modifier_dietary_tags : %s pour user %s", tags_valides, request.user.id)
+    return redirect("menu:profil")
+
+
+@login_required
+def compatibilite_recette(request, id):
+    """
+    Page de compatibilité famille : qui peut manger cette recette ?
+    Accessible à tous les membres authentifiés de la famille.
+    """
+    recipe = get_object_or_404(
+        Recipe.objects.prefetch_related("ingredients"),
+        id=id,
+        actif=True,
+    )
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        messages.error(request, "Vous devez appartenir à une famille pour voir cette page.")
+        return redirect("menu:detail_recette", id=id)
+
+    membres = (
+        UserProfile.objects
+        .filter(family=profile.family)
+        .select_related("user")
+        .order_by("user__first_name")
+    )
+
+    ingredients = list(recipe.ingredients.all())
+
+    compat = []
+    for m in membres:
+        alertes = _alertes_allergies(ingredients, m.dietary_tags or [])
+        compat.append({
+            "profil": m,
+            "alertes": alertes,
+            "ok": len(alertes) == 0,
+        })
+
+    return render(request, "menu/recettes/compatibilite.html", {
+        "recipe": recipe,
+        "compat": compat,
+    })
 
 
 # ─── Export Google Tasks ─────────────────────────────────────────────────────

@@ -178,9 +178,54 @@
         {% endif %}
     </section>
 
+    <!-- ── Facteur de portion ─────────────────────────────────── -->
+    <section class="profil-section">
+        <h2 class="profil-section__title">⚖️ Mon facteur de portion</h2>
+        <p class="text-muted" style="margin-bottom:.75rem">
+            Utilisé pour personnaliser les calculs nutritionnels.<br>
+            <strong>1.0</strong> = adulte référence · <strong>1.3</strong> = ado garçon 15–16 ans · <strong>0.9</strong> = ado fille 13 ans
+        </p>
+        <form method="post" action="{% url 'menu:modifier_portions_factor' %}" class="portions-form">
+            {% csrf_token %}
+            <div class="portions-row">
+                <input type="number"
+                       name="portions_factor"
+                       value="{{ profile.portions_factor }}"
+                       min="0.1" max="5.0" step="0.1"
+                       class="input-short"
+                       required>
+                <button type="submit" class="btn btn--secondary btn--sm">Enregistrer</button>
+            </div>
+        </form>
+    </section>
+
+    <!-- ── Restrictions alimentaires ─────────────────────────── -->
+    <section class="profil-section">
+        <h2 class="profil-section__title">🚫 Mes restrictions alimentaires</h2>
+        <p class="text-muted" style="margin-bottom:.75rem">
+            Les recettes seront vérifiées automatiquement par rapport à cette liste.
+            Laisse tout décoché si tu n'as pas de restrictions.
+        </p>
+        <form method="post" action="{% url 'menu:modifier_dietary_tags' %}">
+            {% csrf_token %}
+            <div class="dietary-tags-grid">
+                {% for key, label, emoji in dietary_tag_choices %}
+                <label class="dietary-tag-option {% if key in profile.dietary_tags %}dietary-tag-option--active{% endif %}">
+                    <input type="checkbox" name="tags" value="{{ key }}"
+                           {% if key in profile.dietary_tags %}checked{% endif %}>
+                    <span class="dietary-tag-option__emoji">{{ emoji }}</span>
+                    <span class="dietary-tag-option__label">{{ label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <button type="submit" class="btn btn--secondary btn--sm" style="margin-top:.75rem">Enregistrer mes restrictions</button>
+        </form>
+    </section>
+
     <!-- ── Actions ──────────────────────────────────────────────── -->
     <div class="profil-actions">
         <a href="{% url 'menu:planning' %}" class="btn btn--secondary">← Planning</a>
+        <a href="{% url 'menu:dashboard_nutrition' %}" class="btn btn--secondary">⚖️ Mon bilan nutritionnel</a>
         <a href="{% url 'menu:liste_recettes' %}" class="btn btn--secondary">Recettes</a>
     </div>
 

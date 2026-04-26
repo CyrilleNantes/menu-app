@@ -1,10 +1,45 @@
 from django.contrib import admin
 from .models import (
     Family, UserProfile, TokenOAuth,
+    NutritionConfig, RecipePhoto,
     Recipe, IngredientGroup, Ingredient, RecipeStep, RecipeSection,
     Review, WeekPlan, Meal, MealProposal,
     ShoppingList, ShoppingItem, NotificationPreference,
 )
+
+
+@admin.register(NutritionConfig)
+class NutritionConfigAdmin(admin.ModelAdmin):
+    """
+    Singleton — un seul enregistrement autorisé (pk=1).
+    Toutes les valeurs sont des repères PNNS indicatifs, pas des prescriptions médicales.
+    """
+    fieldsets = [
+        ("Objectifs par repas (adulte référence — portions_factor = 1.0)", {
+            "fields": ("calories_dinner_target", "proteins_dinner_target"),
+        }),
+        ("Fréquences hebdomadaires", {
+            "fields": ("max_red_meat_per_week", "min_fish_per_week", "min_vegetarian_per_week"),
+        }),
+        ("Rotation des plats", {
+            "fields": ("min_days_before_repeat", "min_days_low_rated_repeat"),
+        }),
+    ]
+
+    def has_add_permission(self, request):
+        """Désactive le bouton Ajouter si le singleton existe déjà."""
+        return not NutritionConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        """Empêche la suppression du singleton."""
+        return False
+
+
+@admin.register(RecipePhoto)
+class RecipePhotoAdmin(admin.ModelAdmin):
+    list_display = ("recipe", "uploaded_by", "is_main", "actif", "order", "created_at")
+    list_filter  = ("is_main", "actif")
+    search_fields = ("recipe__title",)
 
 
 class IngredientInline(admin.TabularInline):
@@ -29,8 +64,8 @@ class RecipeSectionInline(admin.TabularInline):
 
 @admin.register(Recipe)
 class RecipeAdmin(admin.ModelAdmin):
-    list_display = ("title", "category", "complexity", "created_by", "actif", "created_at")
-    list_filter = ("category", "complexity", "actif", "seasons")
+    list_display = ("title", "category", "complexity", "protein_type", "created_by", "actif", "created_at")
+    list_filter = ("category", "complexity", "protein_type", "actif", "seasons")
     search_fields = ("title", "description")
     inlines = [IngredientGroupInline, RecipeStepInline, RecipeSectionInline]
 
@@ -43,7 +78,7 @@ class FamilyAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "role", "family")
+    list_display = ("user", "role", "family", "portions_factor")
     list_filter = ("role",)
     search_fields = ("user__username", "user__email")
 

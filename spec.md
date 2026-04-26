@@ -1,7 +1,7 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v2.0** — affichée dans le footer de l'application.
+> Version courante : **v3.0** — affichée dans le footer de l'application.
 > Dernière mise à jour : 2026-04-26
 
 ---
@@ -28,6 +28,11 @@ Permettre à des familles de planifier leurs menus hebdomadaires, gérer un cata
 - Gamification : rangs progressifs pour Cuisiniers et Convives
 - Gestion légère des allergies/régimes par profil utilisateur
 - PWA installable sur mobile (service worker, cache offline)
+- Algorithme de suggestions de menu (rotation, préférences famille, variété protéines, saisonnalité, équilibre nutritionnel)
+- Cadre nutritionnel de référence PNNS (configurable, indicatif — pas médical)
+- Dashboard nutritionnel individuel par utilisateur (portions personnalisées via `portions_factor`)
+- Alertes équilibre non bloquantes dans la vue planning
+- Galerie photos par recette (upload par tout utilisateur connecté)
 
 ### 1.3 Hors périmètre (Anti-Scope)
 
@@ -39,9 +44,9 @@ Permettre à des familles de planifier leurs menus hebdomadaires, gérer un cata
 - Ne PAS exposer d'API REST publique (pas de DRF)
 - Ne PAS implémenter Docker
 - Ne PAS ajouter de système de messagerie entre utilisateurs
-- Ne PAS implémenter de notifications (architecture prévue, implémentation ultérieure)
-- Ne PAS implémenter de galerie de photos d'étapes (architecture prévue, implémentation ultérieure)
+- Ne PAS implémenter de notifications push — email uniquement, implémentation ultérieure
 - Ne PAS gérer des allergies avec un moteur de règles complexe — tags simples uniquement
+- Ne PAS afficher de recommandations médicales — les données nutritionnelles sont des repères indicatifs PNNS uniquement
 - Ne PAS suggérer d'alternatives à la stack sans demande explicite
 
 ### 1.4 Vue d'ensemble fonctionnelle (User Stories)
@@ -190,6 +195,7 @@ Extension du modèle User Django. Un profil par utilisateur.
 | `lunch_end` | `TimeField` | non | `13:00` | Fin déjeuner pour export Google Calendar |
 | `dinner_start` | `TimeField` | non | `20:30` | Début dîner pour export Google Calendar |
 | `dinner_end` | `TimeField` | non | `21:30` | Fin dîner pour export Google Calendar |
+| `portions_factor` | `FloatField` | non | `1.0` | Facteur de portion individuel pour le calcul nutritionnel personnalisé. Adulte référence = 1.0 ; ado garçon 15–16 ans ≈ 1.3 ; ado fille 13 ans ≈ 0.9. Configurable librement dans le profil. |
 
 **Propriété calculée `rank`** : retourne `(level, name)` — calculée à partir du rôle et des contributions (non stockée en base).
 
@@ -215,6 +221,7 @@ Catalogue global partagé entre toutes les familles.
 | `seasons` | `JSONField` | non | `[]` | Ex. `["printemps", "ete"]` |
 | `health_tags` | `JSONField` | non | `[]` | Ex. `["leger", "proteine"]` |
 | `complexity` | `CharField(20)` | non | `"simple"` | `simple` / `intermediaire` / `elabore` |
+| `protein_type` | `CharField(20)` | oui | `null` | Protéine principale : `boeuf` / `volaille` / `porc` / `poisson` / `oeufs` / `legumineuses` / `autre` / `aucune`. Utilisé par l'algorithme de suggestions pour assurer la variété. |
 | `calories_per_serving` | `FloatField` | oui | — | Kcal par portion (calculé) |
 | `proteins_per_serving` | `FloatField` | oui | — | Protéines (g) par portion (calculé) |
 | `carbs_per_serving` | `FloatField` | oui | — | Glucides (g) par portion (calculé) |
@@ -399,7 +406,9 @@ Article dans une liste de courses.
 
 ---
 
-### 4.15 `NotificationPreference` *(architecture prévue — non implémentée)*
+### 4.15 `NotificationPreference`
+
+Préférences de notification par utilisateur et par canal. Utilisé par les services email pour respecter l'opt-out.
 
 | Champ | Type Django | Nullable | Défaut | Description |
 |-------|-------------|----------|--------|-------------|
@@ -407,6 +416,8 @@ Article dans une liste de courses.
 | `user` | `ForeignKey(User)` | non | — | Utilisateur |
 | `channel` | `CharField(20)` | non | — | `email` / `push` / `in_app` |
 | `enabled` | `BooleanField` | non | `True` | Activé/désactivé |
+
+**Comportement** : si un utilisateur a un enregistrement `channel="email", enabled=False`, il ne reçoit aucun email transactionnel. Absence d'enregistrement = opt-in par défaut. Configurable uniquement via l'admin Django (pas d'UI utilisateur pour le MVP).
 
 ---
 
@@ -561,6 +572,8 @@ Article dans une liste de courses.
 - Propositions des Convives en attente (visibles par le Cuisinier)
 - Indicateurs nutritionnels de la semaine (calories / protéines cumulés)
 
+**Création automatique du WeekPlan** : si aucun plan n'existe pour la semaine demandée, `planning_semaine` le crée automatiquement en `draft`. `created_by` est toujours un Cuisinier — si l'utilisateur courant est un Convive, le premier Cuisinier de la famille est utilisé comme auteur.
+
 ---
 
 ### 5.9 Composition et modification du planning
@@ -599,10 +612,11 @@ Article dans une liste de courses.
 
 **URL** : `POST /planning/<id>/proposer/` → `menu:proposer_repas`
 **Vue** : `proposer_repas(request, plan_id)`
-**Accès** : Convive uniquement
+**Accès** : Convive uniquement (les Cuisiniers modifient le planning directement)
 
 **Règles de gestion** :
 1. Crée un `MealProposal` lié à la famille et au planning
+2. Un Cuisinier qui tente de proposer reçoit une erreur 403 — il doit utiliser `modifier_meal` directement
 
 **Réponse** :
 - Succès : `{"ok": true}` + mise à jour de l'UI
@@ -752,6 +766,165 @@ DRAFT ──[publier_planning]──► PUBLISHED
 
 ---
 
+### 4.16 `NutritionConfig`
+
+Singleton de configuration du cadre nutritionnel de référence (PNNS — ANSES France). Un seul enregistrement en base, modifiable uniquement via l'admin Django.
+
+Toutes les valeurs sont des **repères indicatifs de bonne pratique**, jamais des prescriptions médicales. Toujours affichées avec la mention "Valeurs estimées — repères indicatifs PNNS".
+
+| Champ | Type Django | Défaut | Description |
+|-------|-------------|--------|-------------|
+| `calories_dinner_target` | `PositiveIntegerField` | `850` | Cible kcal pour un dîner (adulte référence, `portions_factor = 1.0`) |
+| `proteins_dinner_target` | `PositiveIntegerField` | `27` | Cible protéines (g) pour un dîner |
+| `max_red_meat_per_week` | `PositiveSmallIntegerField` | `3` | Max repas viande rouge par semaine (bœuf + porc) |
+| `min_fish_per_week` | `PositiveSmallIntegerField` | `1` | Min repas poisson par semaine |
+| `min_vegetarian_per_week` | `PositiveSmallIntegerField` | `1` | Min repas végétarien par semaine (`protein_type = "aucune"` ou `"legumineuses"`) |
+| `min_days_before_repeat` | `PositiveSmallIntegerField` | `14` | Jours minimum avant de replanifier un même plat |
+| `min_days_low_rated_repeat` | `PositiveSmallIntegerField` | `21` | Jours minimum avant de replanifier un plat noté < 2★ par la famille |
+
+**Pattern singleton** : `save()` surchargé pour forcer `pk=1`. Accès via `NutritionConfig.objects.get_or_create(pk=1)`.
+
+---
+
+### 4.17 `RecipePhoto`
+
+Photos supplémentaires d'une recette (galerie). La photo principale reste `Recipe.photo_url` (Cloudinary, upload à la création).
+
+| Champ | Type Django | Nullable | Défaut | Description |
+|-------|-------------|----------|--------|-------------|
+| `id` | `BigAutoField` | non | auto | Clé primaire |
+| `recipe` | `ForeignKey(Recipe)` | non | — | Recette parente |
+| `photo_url` | `URLField` | non | — | URL Cloudinary |
+| `caption` | `CharField(100)` | oui | — | Légende optionnelle |
+| `is_main` | `BooleanField` | non | `False` | Photo mise en avant dans la galerie (≠ `Recipe.photo_url`) |
+| `order` | `PositiveIntegerField` | non | `0` | Ordre d'affichage |
+| `uploaded_by` | `ForeignKey(User)` | oui | `null` | Auteur de l'upload — `SET_NULL` si l'utilisateur est supprimé (préserve la photo) |
+| `actif` | `BooleanField` | non | `True` | Soft delete — retrait par le Cuisinier |
+| `created_at` | `DateTimeField` | non | auto | Date d'upload |
+
+**Accès** : tout utilisateur connecté peut uploader. Seul le Cuisinier peut promouvoir ou retirer une photo.
+
+---
+
+## 5.18 Algorithme de suggestions de menu
+
+**URL** : `GET /planning/<plan_id>/suggestions/?date=YYYY-MM-DD&meal_time=lunch|dinner` → `menu:suggestions_repas`
+**Vue** : `suggestions_repas(request, plan_id)`
+**Accès** : Cuisinier uniquement
+
+**Service** : `services.suggerer_recettes(family, week_plan, date, meal_time)` — retourne une liste de 5 recettes triées par score décroissant.
+
+**Calcul du score composite (0.0 → 1.0) :**
+
+Chaque recette candidate reçoit un score sur 5 dimensions pondérées :
+
+| Dimension | Poids | Logique |
+|-----------|-------|---------|
+| Fraîcheur / rotation | 30% | Score 0 si < `min_days_before_repeat` jours depuis la dernière utilisation pour cette famille. Score 0 si < `min_days_low_rated_repeat` ET note famille < 2★. Score linéaire 0.3→1.0 au-delà du seuil. Score 1.0 si jamais cuisiné. |
+| Appréciation famille | 30% | Moyenne des `Review.stars` des membres de **cette famille uniquement**. Score = note / 5. Score neutre 0.5 si aucun avis famille. |
+| Variété protéines | 20% | Score 0 (règle dure) si : même `protein_type` déjà 2× dans la journée, OU viande rouge (`boeuf` + `porc`) déjà ≥ `max_red_meat_per_week` dans la semaine. Bonus +0.3 si ce `protein_type` absent de la semaine. Malus −0.2 si déjà présent 2× dans la semaine. |
+| Saisonnalité | 10% | Compatible saison courante → 1.0. Toutes saisons → 0.7. Incompatible → 0.2. |
+| Équilibre nutritionnel semaine | 10% | Nudge uniquement — jamais de score 0. Si semaine > 110% objectif calorique : +0.2 aux recettes `health_tag = "leger"`. Si semaine < 70% objectif protéines : +0.2 aux recettes `health_tag = "proteine"`. |
+
+**score_final = Σ(score_dimension × poids)**
+
+**Interface :**
+- Bouton "💡 Suggestions" sur chaque créneau vide du planning
+- Affiche les 5 recettes avec icônes de justification : 🔄 rotation · ⭐ avis famille · 🥩 variété · 🌿 saison · ⚖️ équilibre
+- Sélection libre — le Cuisinier peut ignorer et choisir autre chose
+
+**Gestion des erreurs** :
+- Aucune recette candidate après filtrage → message "Pas assez de recettes dans le catalogue pour cette période"
+- Erreur serveur → HTTP 500 loggé + message générique
+
+**Réponse** :
+- `{"ok": true, "suggestions": [{"recipe_id": 12, "title": "...", "score": 0.82, "reasons": {"rotation": 0.9, "famille": 0.8, "variete": 1.0, "saison": 0.7, "equilibre": 0.5}}]}`
+
+---
+
+## 5.19 Dashboard nutritionnel individuel
+
+**URL** : `GET /profil/nutrition/` → `menu:dashboard_nutrition`
+**Vue** : `dashboard_nutrition(request)`
+**Template** : `menu/profil/nutrition.html`
+**Accès** : tout utilisateur connecté
+
+**Principe clé** : tout est calculé **par utilisateur** via son `portions_factor`.
+`macros_utilisateur = macros_recette_par_portion × portions_factor`
+
+**Données affichées — vue semaine en cours :**
+- Liste des repas planifiés pour la famille (WeekPlan publié ou en cours)
+- Pour chaque repas : calories et protéines calculées pour cet utilisateur
+- Total journalier et hebdomadaire
+- Barre de progression vs cibles (`NutritionConfig × portions_factor`) :
+  - 🟢 Dans la cible : 80–110%
+  - 🟡 Légèrement hors cible : 60–80% ou 110–130%
+  - 🔴 Significativement hors cible : < 60% ou > 130%
+- Mention systématique : *"Valeurs estimées — repères indicatifs PNNS"*
+
+**Données affichées — bloc dans la fiche recette (`detail_recette`) :**
+- Ligne "Pour toi : ~X kcal · Yg de protéines" calculée avec `portions_factor`
+- Affichage conditionnel : uniquement si `calories_per_serving` renseigné sur la recette
+
+**Ce qu'on n'affiche PAS :**
+- Pas de total famille agrégé
+- Pas de graphes complexes
+- Pas de recommandations médicales
+
+**Gestion des erreurs** :
+- Aucun WeekPlan publié pour la semaine → message "Aucun menu planifié cette semaine"
+
+---
+
+## 5.20 Alertes équilibre (nudges planning)
+
+Affichées dans la vue planning (`planning_semaine`). Jamais bloquantes, jamais en modal. Visibles uniquement par le Cuisinier.
+
+**Règles — banderoles dismissables, recalculées à chaque modification du menu :**
+
+| Condition | Message affiché |
+|-----------|----------------|
+| 0 repas `protein_type = "poisson"` dans la semaine | 🐟 Pensez à intégrer un repas poisson cette semaine |
+| Repas viande rouge (`boeuf` + `porc`) ≥ `max_red_meat_per_week` | 🥩 Vous avez déjà X repas de viande rouge cette semaine |
+| 0 repas végétarien (`protein_type = "aucune"` ou `"legumineuses"`) | 🥦 Un repas végétarien serait bienvenu |
+| Calories semaine > 130% objectif (`NutritionConfig`) | ⚠️ La semaine semble chargée en calories |
+| Protéines semaine < 60% objectif | 💪 Les protéines sont un peu faibles cette semaine |
+
+**Implémentation** : calcul dans `services.py` → `calculer_alertes_planning(week_plan, family)` → retourne une liste de dicts `{type, message, dismissable}`. Rendu dans le template via `{% for alerte in alertes %}`.
+
+**Dismissal** : via sessionStorage JS — les alertes réapparaissent si le menu est modifié.
+
+---
+
+## 5.21 Galerie photos recette
+
+**Upload :**
+**URL** : `POST /recettes/<id>/photos/ajouter/` → `menu:ajouter_photo_recette`
+**Accès** : tout utilisateur connecté
+
+**Règles de gestion** :
+1. Upload vers Cloudinary via `integrations/cloudinary.py`
+2. Crée un `RecipePhoto` avec `uploaded_by = request.user`
+3. Redirection vers la fiche recette + message flash
+
+**Gestion de la galerie (Cuisinier uniquement) :**
+**URL** : `POST /recettes/<id>/photos/<photo_id>/retirer/` → `menu:retirer_photo_recette`
+**URL** : `POST /recettes/<id>/photos/<photo_id>/promouvoir/` → `menu:promouvoir_photo_recette`
+
+- Retirer : passe `actif=False` (soft delete)
+- Promouvoir : passe `is_main=True` sur cette photo, `False` sur les autres
+
+**Affichage dans `detail_recette` :**
+- Carousel vanilla JS sous la photo principale (`menu/js/galerie.js`)
+- Navigation gauche/droite, indicateur de position
+- Légende optionnelle affichée sous chaque photo
+
+**Gestion des erreurs** :
+- Upload Cloudinary échoué → message flash, pas de `RecipePhoto` créé
+- Photo non trouvée → `get_object_or_404` → HTTP 404
+
+---
+
 ## 8. Fixtures de référence
 
 ### 8.1 Recette exemple — Hachis Parmentier
@@ -774,6 +947,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 |-----------|------|-------------|
 | `0001_initial` | 2026-04-25 | Schéma initial — tous les modèles |
 | `0002_calendar_fields` | 2026-04-26 | `UserProfile` : créneaux Google Calendar (4 TimeField) — `Meal` : `google_event_id` |
+| `0003_intelligence_fields` | 2026-04-26 | `Recipe.protein_type` + `UserProfile.portions_factor` |
+| `0004_nutrition_config` | 2026-04-26 | Modèle `NutritionConfig` singleton PNNS |
+| `0005_recipe_photos` | 2026-04-26 | Modèle `RecipePhoto` — galerie photos recette |
 
 ---
 
@@ -784,6 +960,16 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v1.0 | 2026-04-25 | Initialisation du projet — spec complète |
 | v1.1 | 2026-04-25 | Ajout `Ingredient.quantity_note` + fixture Hachis Parmentier |
 | v2.0 | 2026-04-26 | Application complète — Phases 1, 2 et 3 livrées (16 étapes) |
+| v2.1 | 2026-04-26 | Phase 4 spécifiée — cadre PNNS, algo suggestions, dashboard individuel, alertes, galerie photos |
+| v2.2 | 2026-04-26 | Étape 17 — `Recipe.protein_type` + `UserProfile.portions_factor` (migration 0003, formulaire recette, profil) |
+| v2.3 | 2026-04-26 | Étape 18 — modèle `NutritionConfig` singleton PNNS (migration 0004, admin uniquement) |
+| v2.4 | 2026-04-26 | Étape 19 — algorithme de suggestions de menu (5 dimensions pondérées, dialog planning, JS) |
+| v2.5 | 2026-04-26 | Étape 20 — dashboard nutritionnel individuel + bloc "Pour toi" dans fiche recette |
+| v2.6 | 2026-04-26 | Étape 21 — alertes équilibre planning (nudges Cuisinier, dismissables, sessionStorage) |
+| v2.7 | 2026-04-26 | Étape 22 — galerie photos recette (carousel, upload Cloudinary, gestion Cuisinier) |
+| v2.8 | 2026-04-26 | Étape 23 — notifications email (planning publié → Convives, proposition → Cuisiniers) |
+| v2.9 | 2026-04-26 | Étape 24 — allergies enrichies : 16 tags EU, alertes par ingrédient, formulaire profil, page compatibilité famille |
+| v3.0 | 2026-04-26 | Revue de code — B1 WeekPlan created_by, B2 prefetch photos, B3 profil N+1, S1-S3 spec, Q1-Q2 qualité |
 
 ### Détail v2.0
 

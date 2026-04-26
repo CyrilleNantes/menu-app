@@ -1,0 +1,13 @@
+Bonjour !
+
+{{ proposed_by }} a proposé une nouvelle recette pour le planning de la famille {{ family_name }} :
+
+  {{ recipe.title }}
+{% if message %}
+Message : "{{ message }}"
+{% endif %}
+
+Connectez-vous à Menu Familial pour accepter ou ignorer cette proposition.
+
+Bonne cuisine !
+L'équipe Menu Familial

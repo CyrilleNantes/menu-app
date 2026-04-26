@@ -17,6 +17,7 @@ urlpatterns = [
     path("planning/<int:plan_id>/meal/", views.modifier_meal, name="modifier_meal"),
     path("planning/<int:plan_id>/publier/", views.publier_planning, name="publier_planning"),
     path("planning/<int:plan_id>/proposer/", views.proposer_repas, name="proposer_repas"),
+    path("planning/<int:plan_id>/suggestions/", views.suggestions_repas, name="suggestions_repas"),
     path("planning/proposition/<int:proposal_id>/supprimer/", views.supprimer_proposition, name="supprimer_proposition"),
     path("api/recettes/", views.api_recettes, name="api_recettes"),
     path("courses/<int:plan_id>/", views.liste_courses, name="liste_courses"),
@@ -30,9 +31,17 @@ urlpatterns = [
     path("recettes/creer/", views.creer_recette, name="creer_recette"),
     path("recettes/<int:id>/modifier/", views.modifier_recette, name="modifier_recette"),
     path("recettes/<int:id>/supprimer/", views.supprimer_recette, name="supprimer_recette"),
+    # Galerie photos
+    path("recettes/<int:id>/photos/ajouter/", views.ajouter_photo_recette, name="ajouter_photo_recette"),
+    path("recettes/<int:id>/photos/<int:photo_id>/retirer/", views.retirer_photo_recette, name="retirer_photo_recette"),
+    path("recettes/<int:id>/photos/<int:photo_id>/promouvoir/", views.promouvoir_photo_recette, name="promouvoir_photo_recette"),
     # Google Calendar
     path("planning/<int:plan_id>/export-calendar/", views.export_calendar, name="export_calendar"),
+    path("profil/nutrition/", views.dashboard_nutrition, name="dashboard_nutrition"),
     path("profil/creneaux-calendar/", views.modifier_creneaux_calendar, name="modifier_creneaux_calendar"),
+    path("profil/portions-factor/", views.modifier_portions_factor, name="modifier_portions_factor"),
+    path("profil/dietary-tags/", views.modifier_dietary_tags, name="modifier_dietary_tags"),
+    path("recettes/<int:id>/compatibilite/", views.compatibilite_recette, name="compatibilite_recette"),
     # Google Tasks
     path("courses/<int:plan_id>/export-tasks/", views.export_tasks, name="export_tasks"),
     # OAuth Google

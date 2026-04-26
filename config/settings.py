@@ -200,6 +200,31 @@ ACCOUNT_LOGOUT_REDIRECT_URL = "/connexion/"
 LOGIN_URL = "/connexion/"
 
 # =========================================================
+# 📧 EMAIL (SMTP via Railway)
+# =========================================================
+
+_email_host_user = os.getenv("EMAIL_HOST_USER", "")
+
+if _email_host_user:
+    # Config SMTP réelle (prod / dev Railway)
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+    EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+    EMAIL_HOST_USER = _email_host_user
+    EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+else:
+    # Fallback local : affiche les emails dans la console
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    EMAIL_HOST_USER = ""
+    EMAIL_HOST_PASSWORD = ""
+
+DEFAULT_FROM_EMAIL = os.getenv(
+    "DEFAULT_FROM_EMAIL",
+    f"Menu Familial <{_email_host_user}>" if _email_host_user else "Menu Familial <noreply@menu-familial.app>",
+)
+
+# =========================================================
 # 📋 LOGGING
 # =========================================================
 

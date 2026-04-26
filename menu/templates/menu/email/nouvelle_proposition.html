@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nouvelle proposition — {{ recipe.title }}</title>
+<style>
+  body { margin: 0; padding: 0; background: #f5f5f5; font-family: Arial, sans-serif; color: #222; }
+  .wrapper { max-width: 600px; margin: 32px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .header { background: #2d6a4f; color: #fff; padding: 28px 32px; }
+  .header h1 { margin: 0; font-size: 1.4rem; }
+  .header p { margin: 6px 0 0; opacity: .85; font-size: .9rem; }
+  .body { padding: 28px 32px; }
+  .body p { line-height: 1.6; margin: 0 0 16px; }
+  .recipe-card { background: #f0f9f4; border-left: 4px solid #2d6a4f; border-radius: 6px; padding: 16px 20px; margin: 16px 0; }
+  .recipe-card h2 { margin: 0 0 6px; font-size: 1.1rem; color: #2d6a4f; }
+  .recipe-card p { margin: 0; font-size: .9rem; color: #555; }
+  .message-block { background: #fffde7; border-left: 4px solid #fdd835; border-radius: 6px; padding: 12px 16px; margin: 16px 0; font-size: .9rem; color: #555; font-style: italic; }
+  .footer { padding: 20px 32px; background: #f9f9f9; font-size: .8rem; color: #888; border-top: 1px solid #eee; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1>💡 Nouvelle proposition de repas</h1>
+    <p>Famille {{ family_name }}</p>
+  </div>
+
+  <div class="body">
+    <p><strong>{{ proposed_by }}</strong> souhaite ajouter une recette au planning :</p>
+
+    <div class="recipe-card">
+      <h2>{{ recipe.title }}</h2>
+      {% if recipe.description %}
+      <p>{{ recipe.description }}</p>
+      {% endif %}
+      {% if recipe.prep_time or recipe.cook_time %}
+      <p style="margin-top:8px">
+        {% if recipe.prep_time %}🥄 Prép. {{ recipe.prep_time }} min{% endif %}
+        {% if recipe.cook_time %} &nbsp;·&nbsp; 🔥 Cuisson {{ recipe.cook_time }} min{% endif %}
+      </p>
+      {% endif %}
+    </div>
+
+    {% if message %}
+    <div class="message-block">
+      "{{ message }}"
+    </div>
+    {% endif %}
+
+    <p>Connectez-vous à Menu Familial pour intégrer cette proposition dans le planning de la semaine.</p>
+  </div>
+
+  <div class="footer">
+    Vous recevez cet email car vous êtes Cuisinier de la famille <strong>{{ family_name }}</strong> sur Menu Familial.<br>
+    Pour modifier vos préférences de notification, connectez-vous à l'application.
+  </div>
+</div>
+</body>
+</html>

@@ -2,13 +2,15 @@ import io
 import json
 import logging
 import zipfile as zf_lib
+from datetime import date as date_type
 
 from django.contrib.auth.models import User as DjangoUser
 from django.db import connection, transaction
 
 from .models import (
-    Ingredient, IngredientGroup, Meal, Recipe, RecipeSection, RecipeStep,
-    ShoppingItem, ShoppingList, WeekPlan,
+    Ingredient, IngredientGroup, Meal, MealProposal, NutritionConfig, NotificationPreference,
+    Recipe, RecipeSection, RecipeStep, Review, ShoppingItem, ShoppingList,
+    UserProfile, WeekPlan,
 )
 
 logger = logging.getLogger("menu")
@@ -111,6 +113,232 @@ def calculer_macros_recette(recipe: Recipe) -> None:
     recipe.carbs_per_serving = round(total_carbs / n, 1) if total_carbs else None
     recipe.fats_per_serving = round(total_fats / n, 1) if total_fats else None
     recipe.save(update_fields=["calories_per_serving", "proteins_per_serving", "carbs_per_serving", "fats_per_serving"])
+
+
+def calculer_alertes_planning(week_plan, family) -> list[dict]:
+    """
+    Analyse le WeekPlan et retourne les alertes d'équilibre nutritionnel (nudges).
+    Jamais bloquantes — uniquement affichées au Cuisinier dans le planning.
+    Retourne une liste de dicts {type, message, dismissable}.
+    """
+    config = NutritionConfig.get()
+
+    meals = list(
+        Meal.objects
+        .filter(week_plan=week_plan, recipe__isnull=False, is_leftovers=False)
+        .select_related("recipe")
+    )
+
+    protein_types = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
+    red_meat_count = protein_types.count("boeuf") + protein_types.count("porc")
+    fish_count     = protein_types.count("poisson")
+    veg_count      = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
+
+    # Totaux nutritionnels (référence : 1 portion par repas)
+    total_cal  = sum(m.recipe.calories_per_serving  or 0 for m in meals)
+    total_prot = sum(m.recipe.proteins_per_serving or 0 for m in meals)
+
+    cal_week_target  = config.calories_dinner_target  * 14
+    prot_week_target = config.proteins_dinner_target  * 14
+
+    alertes = []
+
+    if fish_count == 0:
+        alertes.append({
+            "type": "poisson",
+            "message": "🐟 Pensez à intégrer un repas poisson cette semaine",
+            "dismissable": True,
+        })
+
+    if red_meat_count >= config.max_red_meat_per_week:
+        alertes.append({
+            "type": "viande_rouge",
+            "message": f"🥩 Vous avez déjà {red_meat_count} repas de viande rouge cette semaine",
+            "dismissable": True,
+        })
+
+    if veg_count == 0:
+        alertes.append({
+            "type": "vegetarien",
+            "message": "🥦 Un repas végétarien serait bienvenu",
+            "dismissable": True,
+        })
+
+    if cal_week_target > 0 and total_cal > cal_week_target * 1.3:
+        alertes.append({
+            "type": "calories_hautes",
+            "message": "⚠️ La semaine semble chargée en calories",
+            "dismissable": True,
+        })
+
+    if prot_week_target > 0 and total_prot > 0 and total_prot < prot_week_target * 0.6:
+        alertes.append({
+            "type": "proteines_basses",
+            "message": "💪 Les protéines sont un peu faibles cette semaine",
+            "dismissable": True,
+        })
+
+    logger.debug("calculer_alertes_planning : plan=%s → %d alerte(s)", week_plan.pk, len(alertes))
+    return alertes
+
+
+def _saison_courante() -> str:
+    """Retourne la saison courante : printemps / ete / automne / hiver."""
+    mois = date_type.today().month
+    if mois in (3, 4, 5):  return "printemps"
+    if mois in (6, 7, 8):  return "ete"
+    if mois in (9, 10, 11): return "automne"
+    return "hiver"
+
+
+def suggerer_recettes(family, week_plan, target_date, meal_time: str) -> list[dict]:
+    """
+    Retourne les 5 meilleures recettes candidates pour un créneau (date + meal_time).
+
+    Score composite 0.0–1.0 sur 5 dimensions pondérées :
+      30% fraîcheur/rotation · 30% appréciation famille · 20% variété protéines
+      10% saisonnalité · 10% équilibre nutritionnel semaine
+
+    Chaque résultat : {'recipe': Recipe, 'score': float, 'reasons': dict}
+    """
+    config = NutritionConfig.get()
+    saison = _saison_courante()
+
+    # ── Candidats ─────────────────────────────────────────────────────────────
+    all_recipes = list(Recipe.objects.filter(actif=True))
+    if not all_recipes:
+        return []
+
+    # ── Membres de la famille ──────────────────────────────────────────────────
+    family_user_ids = set(
+        UserProfile.objects.filter(family=family).values_list("user_id", flat=True)
+    )
+
+    # ── Dernière utilisation de chaque recette pour cette famille ──────────────
+    # Parcours trié par date → la dernière écriture pour chaque recipe_id gagne
+    last_used: dict[int, date_type] = {}
+    for m in (
+        Meal.objects
+        .filter(week_plan__family=family, recipe__isnull=False)
+        .order_by("date")
+        .values("recipe_id", "date")
+    ):
+        last_used[m["recipe_id"]] = m["date"]
+
+    # ── Avis famille par recette ───────────────────────────────────────────────
+    family_stars: dict[int, list[int]] = {}
+    for r in Review.objects.filter(user_id__in=family_user_ids).values("recipe_id", "stars"):
+        family_stars.setdefault(r["recipe_id"], []).append(r["stars"])
+
+    def _family_avg(recipe_id: int):
+        stars = family_stars.get(recipe_id, [])
+        return sum(stars) / len(stars) if stars else None
+
+    # ── Repas déjà planifiés dans ce WeekPlan ─────────────────────────────────
+    week_meals = list(
+        Meal.objects.filter(week_plan=week_plan, recipe__isnull=False)
+        .select_related("recipe")
+    )
+    day_meals = [m for m in week_meals if m.date == target_date]
+
+    day_protein_types   = [m.recipe.protein_type for m in day_meals  if m.recipe.protein_type]
+    week_protein_types  = [m.recipe.protein_type for m in week_meals if m.recipe.protein_type]
+    red_meat_count      = week_protein_types.count("boeuf") + week_protein_types.count("porc")
+
+    # Calories/protéines déjà planifiées (référence : 1 portion par repas)
+    week_calories = sum(m.recipe.calories_per_serving or 0 for m in week_meals)
+    week_proteins = sum(m.recipe.proteins_per_serving or 0 for m in week_meals)
+
+    # Cibles hebdomadaires (14 créneaux × cible dîner)
+    cal_week_target  = config.calories_dinner_target * 14
+    prot_week_target = config.proteins_dinner_target * 14
+
+    # ── Scoring ───────────────────────────────────────────────────────────────
+    results = []
+
+    for recipe in all_recipes:
+        avg_fam  = _family_avg(recipe.id)
+        last     = last_used.get(recipe.id)
+
+        # ── Dim 1 : Fraîcheur / rotation (30%) ────────────────────────────────
+        if last is None:
+            rotation_score = 1.0
+        else:
+            days_since = (target_date - last).days
+            if avg_fam is not None and avg_fam < 2 and days_since < config.min_days_low_rated_repeat:
+                rotation_score = 0.0
+            elif days_since < config.min_days_before_repeat:
+                rotation_score = 0.0
+            else:
+                span = max(config.min_days_low_rated_repeat - config.min_days_before_repeat, 1)
+                rotation_score = min(1.0, 0.3 + 0.7 * (days_since - config.min_days_before_repeat) / span)
+
+        # ── Dim 2 : Appréciation famille (30%) ────────────────────────────────
+        famille_score = 0.5 if avg_fam is None else avg_fam / 5.0
+
+        # ── Dim 3 : Variété protéines (20%) ───────────────────────────────────
+        pt = recipe.protein_type
+        if not pt:
+            variete_score = 0.5  # neutre si non renseigné
+        elif day_protein_types.count(pt) >= 2:
+            variete_score = 0.0  # règle dure : 2× même protéine dans la journée
+        elif pt in ("boeuf", "porc") and red_meat_count >= config.max_red_meat_per_week:
+            variete_score = 0.0  # règle dure : quota viande rouge atteint
+        else:
+            variete_score = 0.5
+            if pt not in week_protein_types:
+                variete_score += 0.3   # bonus : absent de la semaine
+            elif week_protein_types.count(pt) >= 2:
+                variete_score -= 0.2   # malus : déjà 2× cette semaine
+            variete_score = max(0.0, min(1.0, variete_score))
+
+        # ── Dim 4 : Saisonnalité (10%) ────────────────────────────────────────
+        seasons = recipe.seasons or []
+        if not seasons:
+            saison_score = 0.7
+        elif saison in seasons:
+            saison_score = 1.0
+        else:
+            saison_score = 0.2
+
+        # ── Dim 5 : Équilibre nutritionnel semaine (10%) ──────────────────────
+        equilibre_score = 0.5
+        if cal_week_target > 0 and week_calories > cal_week_target * 1.1:
+            if "leger" in (recipe.health_tags or []):
+                equilibre_score += 0.2
+        if prot_week_target > 0 and week_proteins < prot_week_target * 0.7:
+            if "proteine" in (recipe.health_tags or []):
+                equilibre_score += 0.2
+        equilibre_score = min(1.0, equilibre_score)
+
+        # ── Score final ────────────────────────────────────────────────────────
+        score = (
+            rotation_score  * 0.30 +
+            famille_score   * 0.30 +
+            variete_score   * 0.20 +
+            saison_score    * 0.10 +
+            equilibre_score * 0.10
+        )
+
+        results.append({
+            "recipe": recipe,
+            "score": round(score, 3),
+            "reasons": {
+                "rotation":  round(rotation_score,  2),
+                "famille":   round(famille_score,   2),
+                "variete":   round(variete_score,   2),
+                "saison":    round(saison_score,    2),
+                "equilibre": round(equilibre_score, 2),
+            },
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    logger.debug(
+        "suggerer_recettes : famille=%s date=%s %s → %d candidats, top score=%.3f",
+        family.pk, target_date, meal_time,
+        len(results), results[0]["score"] if results else 0,
+    )
+    return results[:5]
 
 
 def _parse_float(val: str):
@@ -406,3 +634,94 @@ def importer_recette_depuis_json(data: dict, user) -> tuple:
     logger.info("Recette importée : '%s' (%d groupes, %d étapes).",
                 recipe.title, recipe.ingredient_groups.count(), recipe.steps.count())
     return recipe, True
+
+
+# ─── Notifications email ─────────────────────────────────────────────────────
+
+def _destinataires_email(profiles) -> list:
+    """
+    Filtre une queryset de UserProfile pour ne garder que les utilisateurs
+    qui n'ont PAS explicitement désactivé les notifications email.
+    """
+    result = []
+    for profile in profiles:
+        if not profile.user.email:
+            continue
+        a_desactive = NotificationPreference.objects.filter(
+            user=profile.user, channel="email", enabled=False
+        ).exists()
+        if not a_desactive:
+            result.append(profile.user.email)
+    return result
+
+
+def notifier_planning_publie(plan: WeekPlan) -> None:
+    """
+    Envoie un récapitulatif de la semaine à tous les membres de la famille
+    qui n'ont pas désactivé les notifications email.
+    """
+    from .integrations.email import envoyer_email
+
+    membres = plan.family.members.select_related("user").all()
+    recipients = _destinataires_email(membres)
+    if not recipients:
+        return
+
+    meals = (
+        plan.meals
+        .filter(recipe__isnull=False)
+        .select_related("recipe")
+        .order_by("date", "meal_time")
+    )
+
+    context = {
+        "plan": plan,
+        "meals": meals,
+        "family_name": plan.family.name,
+        "period_start": plan.period_start,
+        "period_end": plan.period_end,
+        "published_by": plan.created_by.first_name or plan.created_by.email,
+    }
+
+    envoyer_email(
+        subject=f"🍽️ Menu du {plan.period_start.strftime('%d/%m')} — {plan.family.name}",
+        template_txt="menu/email/planning_publie.txt",
+        template_html="menu/email/planning_publie.html",
+        context=context,
+        recipients=recipients,
+    )
+
+
+def notifier_nouvelle_proposition(proposal: MealProposal) -> None:
+    """
+    Envoie un email aux Cuisiniers de la famille quand un Convive propose une recette.
+    N'envoie pas à la personne qui vient de proposer.
+    """
+    from .integrations.email import envoyer_email
+
+    cuisiniers = (
+        proposal.family.members
+        .filter(role__in=["cuisinier", "chef_etoile"])
+        .exclude(user=proposal.proposed_by)
+        .select_related("user")
+    )
+    recipients = _destinataires_email(cuisiniers)
+    if not recipients:
+        return
+
+    context = {
+        "proposal": proposal,
+        "recipe": proposal.recipe,
+        "proposed_by": proposal.proposed_by.first_name or proposal.proposed_by.email,
+        "plan": proposal.week_plan,
+        "family_name": proposal.family.name,
+        "message": proposal.message,
+    }
+
+    envoyer_email(
+        subject=f"💡 {proposal.proposed_by.first_name or 'Quelqu\'un'} propose « {proposal.recipe.title} »",
+        template_txt="menu/email/nouvelle_proposition.txt",
+        template_html="menu/email/nouvelle_proposition.html",
+        context=context,
+        recipients=recipients,
+    )
