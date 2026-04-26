@@ -28,6 +28,8 @@ from .services import (
     exporter_backup,
     generer_liste_courses,
     importer_recette_depuis_json,
+    notifier_nouvelle_proposition,
+    notifier_planning_publie,
     restaurer_backup,
     sauvegarder_recette_depuis_post,
     suggerer_recettes,
@@ -609,6 +611,7 @@ def publier_planning(request, plan_id):
         plan.save(update_fields=["status"])
         messages.success(request, "Menu publié ! Vous pouvez maintenant générer la liste de courses.")
         logger.info("Planning %d publié par %s.", plan.id, request.user.email)
+        notifier_planning_publie(plan)
 
     iso = plan.period_start.isocalendar()
     return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
@@ -643,6 +646,7 @@ def proposer_repas(request, plan_id):
         message=message,
         week_plan=plan,
     )
+    notifier_nouvelle_proposition(proposal)
 
     return JsonResponse({
         "ok": True,

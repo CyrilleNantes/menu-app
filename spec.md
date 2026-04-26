@@ -1,7 +1,7 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v2.7** — affichée dans le footer de l'application.
+> Version courante : **v2.8** — affichée dans le footer de l'application.
 > Dernière mise à jour : 2026-04-26
 
 ---
@@ -960,6 +960,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v2.5 | 2026-04-26 | Étape 20 — dashboard nutritionnel individuel + bloc "Pour toi" dans fiche recette |
 | v2.6 | 2026-04-26 | Étape 21 — alertes équilibre planning (nudges Cuisinier, dismissables, sessionStorage) |
 | v2.7 | 2026-04-26 | Étape 22 — galerie photos recette (carousel, upload Cloudinary, gestion Cuisinier) |
+| v2.8 | 2026-04-26 | Étape 23 — notifications email (planning publié → Convives, proposition → Cuisiniers) |
+
+> [LOG 2026-04-26] Étape 23 — Notifications email transactionnelles. Config SMTP via variables d'env Railway (EMAIL_HOST, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, EMAIL_PORT, EMAIL_USE_TLS, DEFAULT_FROM_EMAIL). Fallback console.EmailBackend si EMAIL_HOST_USER absent. Integration menu/integrations/email.py : envoyer_email() → EmailMultiAlternatives HTML+texte, fail_silently via try/except. Services : notifier_planning_publie(plan) → email à tous les membres de la famille (sauf opt-out NotificationPreference); notifier_nouvelle_proposition(proposal) → email aux Cuisiniers (sauf proposant). Templates HTML responsive inline CSS + .txt plain text. Appelé dans publier_planning et proposer_repas (fire-and-forget).
 
 > [LOG 2026-04-26] Étape 22 — Galerie photos recette. Modèle RecipePhoto (photo_url Cloudinary, caption, is_main, order, actif soft-delete, uploaded_by). Migration 0005_recipe_photos. Vues ajouter_photo_recette (upload Cloudinary → RecipePhoto), retirer_photo_recette (soft delete actif=False), promouvoir_photo_recette (is_main=True atomique). Carousel vanilla JS (galerie.js) : translateX track, dots cliquables, swipe tactile (seuil 40px), aria-hidden. Section galerie dans detail.html : carousel + upload ouvert à tous connectés + boutons gestion Cuisinier (mettre en avant / retirer). CSS galerie complet dans main.css.
 

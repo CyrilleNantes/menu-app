@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Menu de la semaine — {{ family_name }}</title>
+<style>
+  body { margin: 0; padding: 0; background: #f5f5f5; font-family: Arial, sans-serif; color: #222; }
+  .wrapper { max-width: 600px; margin: 32px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .header { background: #2d6a4f; color: #fff; padding: 28px 32px; }
+  .header h1 { margin: 0; font-size: 1.4rem; }
+  .header p { margin: 6px 0 0; opacity: .85; font-size: .9rem; }
+  .body { padding: 28px 32px; }
+  .body p { line-height: 1.6; margin: 0 0 16px; }
+  .meal-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  .meal-table th { text-align: left; padding: 8px 12px; background: #f0f4f0; font-size: .8rem; text-transform: uppercase; color: #555; }
+  .meal-table td { padding: 10px 12px; border-bottom: 1px solid #eee; font-size: .95rem; }
+  .meal-table tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .75rem; background: #e8f5e9; color: #2d6a4f; margin-left: 6px; }
+  .footer { padding: 20px 32px; background: #f9f9f9; font-size: .8rem; color: #888; border-top: 1px solid #eee; }
+  .empty { color: #999; font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1>🍽️ Menu de la semaine</h1>
+    <p>{{ period_start|date:"d/m/Y" }} – {{ period_end|date:"d/m/Y" }} &nbsp;·&nbsp; {{ family_name }}</p>
+  </div>
+
+  <div class="body">
+    <p>Bonjour ! <strong>{{ published_by }}</strong> vient de publier le menu de la semaine.</p>
+
+    {% if meals %}
+    <table class="meal-table">
+      <thead>
+        <tr>
+          <th>Jour</th>
+          <th>Moment</th>
+          <th>Recette</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for meal in meals %}
+        <tr>
+          <td>{{ meal.date|date:"l d/m" }}</td>
+          <td>{{ meal.get_meal_time_display }}</td>
+          <td>
+            {{ meal.recipe.title }}
+            {% if meal.is_leftovers %}<span class="badge">restes</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Aucun repas planifié pour le moment.</p>
+    {% endif %}
+
+    <p>Bonne semaine et bon appétit ! 🥗</p>
+  </div>
+
+  <div class="footer">
+    Vous recevez cet email car vous êtes membre de la famille <strong>{{ family_name }}</strong> sur Menu Familial.<br>
+    Pour modifier vos préférences de notification, connectez-vous à l'application.
+  </div>
+</div>
+</body>
+</html>

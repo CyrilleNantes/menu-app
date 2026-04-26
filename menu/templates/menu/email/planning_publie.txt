@@ -1,0 +1,13 @@
+Bonjour !
+
+Le menu de la semaine du {{ period_start|date:"d/m/Y" }} au {{ period_end|date:"d/m/Y" }} vient d'être publié par {{ published_by }} pour la famille {{ family_name }}.
+
+{% if meals %}PROGRAMME DE LA SEMAINE
+{% for meal in meals %}
+{{ meal.date|date:"l d/m" }} — {{ meal.get_meal_time_display }} : {{ meal.recipe.title }}{% if meal.is_leftovers %} (restes){% endif %}
+{% endfor %}
+{% else %}Aucun repas planifié pour le moment.
+{% endif %}
+
+Bonne semaine et bon appétit !
+L'équipe Menu Familial

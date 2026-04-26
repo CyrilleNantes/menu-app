@@ -8,8 +8,8 @@ from django.contrib.auth.models import User as DjangoUser
 from django.db import connection, transaction
 
 from .models import (
-    Ingredient, IngredientGroup, Meal, NutritionConfig, Recipe,
-    RecipeSection, RecipeStep, Review, ShoppingItem, ShoppingList,
+    Ingredient, IngredientGroup, Meal, MealProposal, NutritionConfig, NotificationPreference,
+    Recipe, RecipeSection, RecipeStep, Review, ShoppingItem, ShoppingList,
     UserProfile, WeekPlan,
 )
 
@@ -634,3 +634,94 @@ def importer_recette_depuis_json(data: dict, user) -> tuple:
     logger.info("Recette importée : '%s' (%d groupes, %d étapes).",
                 recipe.title, recipe.ingredient_groups.count(), recipe.steps.count())
     return recipe, True
+
+
+# ─── Notifications email ─────────────────────────────────────────────────────
+
+def _destinataires_email(profiles) -> list:
+    """
+    Filtre une queryset de UserProfile pour ne garder que les utilisateurs
+    qui n'ont PAS explicitement désactivé les notifications email.
+    """
+    result = []
+    for profile in profiles:
+        if not profile.user.email:
+            continue
+        a_desactive = NotificationPreference.objects.filter(
+            user=profile.user, channel="email", enabled=False
+        ).exists()
+        if not a_desactive:
+            result.append(profile.user.email)
+    return result
+
+
+def notifier_planning_publie(plan: WeekPlan) -> None:
+    """
+    Envoie un récapitulatif de la semaine à tous les membres de la famille
+    qui n'ont pas désactivé les notifications email.
+    """
+    from .integrations.email import envoyer_email
+
+    membres = plan.family.members.select_related("user").all()
+    recipients = _destinataires_email(membres)
+    if not recipients:
+        return
+
+    meals = (
+        plan.meals
+        .filter(recipe__isnull=False)
+        .select_related("recipe")
+        .order_by("date", "meal_time")
+    )
+
+    context = {
+        "plan": plan,
+        "meals": meals,
+        "family_name": plan.family.name,
+        "period_start": plan.period_start,
+        "period_end": plan.period_end,
+        "published_by": plan.created_by.first_name or plan.created_by.email,
+    }
+
+    envoyer_email(
+        subject=f"🍽️ Menu du {plan.period_start.strftime('%d/%m')} — {plan.family.name}",
+        template_txt="menu/email/planning_publie.txt",
+        template_html="menu/email/planning_publie.html",
+        context=context,
+        recipients=recipients,
+    )
+
+
+def notifier_nouvelle_proposition(proposal: MealProposal) -> None:
+    """
+    Envoie un email aux Cuisiniers de la famille quand un Convive propose une recette.
+    N'envoie pas à la personne qui vient de proposer.
+    """
+    from .integrations.email import envoyer_email
+
+    cuisiniers = (
+        proposal.family.members
+        .filter(role__in=["cuisinier", "chef_etoile"])
+        .exclude(user=proposal.proposed_by)
+        .select_related("user")
+    )
+    recipients = _destinataires_email(cuisiniers)
+    if not recipients:
+        return
+
+    context = {
+        "proposal": proposal,
+        "recipe": proposal.recipe,
+        "proposed_by": proposal.proposed_by.first_name or proposal.proposed_by.email,
+        "plan": proposal.week_plan,
+        "family_name": proposal.family.name,
+        "message": proposal.message,
+    }
+
+    envoyer_email(
+        subject=f"💡 {proposal.proposed_by.first_name or 'Quelqu\'un'} propose « {proposal.recipe.title} »",
+        template_txt="menu/email/nouvelle_proposition.txt",
+        template_html="menu/email/nouvelle_proposition.html",
+        context=context,
+        recipients=recipients,
+    )
