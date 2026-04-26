@@ -648,6 +648,47 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
     .google-status--connected { flex-direction: column; align-items: flex-start; }
 }
 
+/* ── Dashboard nutritionnel ───────────────────────────────────────────────── */
+.nutri-dashboard { max-width: 700px; margin: 0 auto; }
+.nutri-disclaimer { font-size: .8rem; margin-top: .25rem; }
+.nutri-empty { text-align: center; padding: 2rem 0; }
+.nutri-section { margin: 1.5rem 0; }
+.nutri-section__title { font-size: 1rem; font-weight: 700; margin-bottom: .75rem; color: var(--color-primary); }
+.nutri-week-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.nutri-week-card { background: #f8f9fa; border-radius: var(--radius); padding: 1rem; }
+.nutri-week-card__label { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--color-muted); }
+.nutri-week-card__value { font-size: 1.4rem; font-weight: 700; margin: .2rem 0; }
+.nutri-week-card__target { font-size: .78rem; margin-bottom: .5rem; }
+.nutri-progress { background: #e0e0e0; border-radius: 99px; height: 8px; overflow: hidden; }
+.nutri-progress__bar { height: 100%; border-radius: 99px; max-width: 100%; transition: width .3s; }
+.nutri-progress__bar--ok      { background: #4caf50; }
+.nutri-progress__bar--warning { background: #ff9800; }
+.nutri-progress__bar--alert   { background: #f44336; }
+.nutri-progress__bar--neutral { background: #9e9e9e; }
+.nutri-progress__label { font-size: .78rem; margin-top: .3rem; }
+.nutri-days { display: flex; flex-direction: column; gap: .75rem; }
+.nutri-day { border: 1px solid #e8e8e8; border-radius: var(--radius); padding: .85rem; }
+.nutri-day--today { border-color: var(--color-primary); background: #f0faf5; }
+.nutri-day__header { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.nutri-day__name { font-weight: 700; font-size: .92rem; }
+.nutri-day__date { font-size: .78rem; }
+.nutri-day__total { margin-left: auto; font-size: .82rem; font-weight: 600; }
+.nutri-day__meals { list-style: none; display: flex; flex-direction: column; gap: .3rem; }
+.nutri-day__meal { display: flex; align-items: center; gap: .4rem; font-size: .85rem; flex-wrap: wrap; }
+.nutri-day__meal-time { font-size: .95rem; }
+.nutri-day__meal-title { font-weight: 500; color: var(--color-primary); text-decoration: none; }
+.nutri-day__meal-title:hover { text-decoration: underline; }
+.nutri-day__meal-macros { font-size: .78rem; }
+.nutri-day__empty { font-size: .82rem; font-style: italic; }
+/* Bloc "Pour toi" dans la fiche recette */
+.nutri-pour-toi { margin-top: .75rem; padding: .5rem .75rem; background: #f0faf5; border-radius: var(--radius); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .88rem; }
+.nutri-pour-toi__label { font-weight: 600; }
+.nutri-pour-toi__value { color: var(--color-primary); font-weight: 500; }
+.nutri-pour-toi__link { font-size: .78rem; }
+/* Portions factor form */
+.portions-form { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.portions-row { display: flex; align-items: center; gap: .5rem; }
+
 /* ── Suggestions de menu ──────────────────────────────────────────────────── */
 .btn-suggestions {
     display: none; /* caché par défaut — JS le montre au survol du slot vide */

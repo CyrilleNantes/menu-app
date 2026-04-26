@@ -1,0 +1,121 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Mon bilan nutritionnel — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="nutri-dashboard">
+
+    <div class="page-header">
+        <h1>⚖️ Mon bilan nutritionnel</h1>
+        <p class="text-muted nutri-disclaimer">
+            Valeurs estimées — repères indicatifs PNNS · facteur portion :
+            <strong>{{ profile.portions_factor }}</strong>
+            <a href="{% url 'menu:profil' %}" class="link-muted">(modifier)</a>
+        </p>
+    </div>
+
+    {% if not week_plan %}
+    <div class="nutri-empty">
+        <p class="text-muted">Aucun menu planifié pour cette semaine.</p>
+        <a href="{% url 'menu:planning' %}" class="btn btn--secondary">Voir le planning</a>
+    </div>
+
+    {% else %}
+
+    <!-- ── Bilan semaine ──────────────────────────────────────────── -->
+    <section class="nutri-section">
+        <h2 class="nutri-section__title">Semaine en cours</h2>
+
+        <div class="nutri-week-grid">
+            <!-- Calories semaine -->
+            <div class="nutri-week-card">
+                <div class="nutri-week-card__label">🔥 Calories</div>
+                <div class="nutri-week-card__value">{{ total_cal_week|floatformat:0 }} kcal</div>
+                <div class="nutri-week-card__target text-muted">cible : {{ cal_week_target|floatformat:0 }} kcal</div>
+                <div class="nutri-progress">
+                    <div class="nutri-progress__bar nutri-progress__bar--{{ cal_week_status }}"
+                         style="width: {{ cal_week_pct }}%"></div>
+                </div>
+                <div class="nutri-progress__label {{ cal_week_status }}">
+                    {% if cal_week_status == "ok" %}🟢{% elif cal_week_status == "warning" %}🟡{% elif cal_week_status == "alert" %}🔴{% endif %}
+                    {{ cal_week_pct }}%
+                </div>
+            </div>
+
+            <!-- Protéines semaine -->
+            <div class="nutri-week-card">
+                <div class="nutri-week-card__label">💪 Protéines</div>
+                <div class="nutri-week-card__value">{{ total_prot_week }}g</div>
+                <div class="nutri-week-card__target text-muted">cible : {{ prot_week_target }}g</div>
+                <div class="nutri-progress">
+                    <div class="nutri-progress__bar nutri-progress__bar--{{ prot_week_status }}"
+                         style="width: {{ prot_week_pct }}%"></div>
+                </div>
+                <div class="nutri-progress__label {{ prot_week_status }}">
+                    {% if prot_week_status == "ok" %}🟢{% elif prot_week_status == "warning" %}🟡{% elif prot_week_status == "alert" %}🔴{% endif %}
+                    {{ prot_week_pct }}%
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Détail jour par jour ───────────────────────────────────── -->
+    <section class="nutri-section">
+        <h2 class="nutri-section__title">Détail journalier</h2>
+
+        <div class="nutri-days">
+            {% for day in days_data %}
+            <div class="nutri-day {% if day.is_today %}nutri-day--today{% endif %}">
+                <div class="nutri-day__header">
+                    <span class="nutri-day__name">{{ day.day_name }}</span>
+                    <span class="nutri-day__date text-muted">{{ day.date|date:"d/m" }}</span>
+                    {% if day.total_cal %}
+                    <span class="nutri-day__total">
+                        {% if day.cal_status == "ok" %}🟢{% elif day.cal_status == "warning" %}🟡{% elif day.cal_status == "alert" %}🔴{% endif %}
+                        {{ day.total_cal|floatformat:0 }} kcal · {{ day.total_prot }}g prot.
+                    </span>
+                    {% endif %}
+                </div>
+
+                {% if day.meals %}
+                <ul class="nutri-day__meals">
+                    {% for m in day.meals %}
+                    <li class="nutri-day__meal">
+                        <span class="nutri-day__meal-time">{% if m.meal_time == "lunch" %}🍽️{% else %}🌙{% endif %}</span>
+                        <a href="{% url 'menu:detail_recette' m.recipe_id %}" class="nutri-day__meal-title">
+                            {{ m.recipe_title }}
+                        </a>
+                        {% if m.calories %}
+                        <span class="nutri-day__meal-macros text-muted">
+                            ~{{ m.calories|floatformat:0 }} kcal
+                            {% if m.proteins %}· {{ m.proteins }}g prot.{% endif %}
+                        </span>
+                        {% else %}
+                        <span class="text-muted nutri-day__meal-macros">Valeurs nutritionnelles non renseignées</span>
+                        {% endif %}
+                        {% if m.is_leftovers %}<span class="badge badge--leftovers">Restes</span>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted nutri-day__empty">Aucun repas planifié</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <p class="nutri-disclaimer text-muted" style="margin-top:1.5rem">
+        ⚠️ Valeurs estimées calculées à partir des données saisies dans les recettes.
+        Ces repères sont fournis à titre indicatif uniquement (PNNS — ANSES France) et ne constituent pas une recommandation médicale.
+    </p>
+
+    {% endif %}
+
+    <div class="profil-actions">
+        <a href="{% url 'menu:profil' %}" class="btn btn--secondary">← Mon profil</a>
+        <a href="{% url 'menu:planning' %}" class="btn btn--secondary">Planning</a>
+    </div>
+
+</div>
+{% endblock %}

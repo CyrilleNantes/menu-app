@@ -214,6 +214,128 @@ def profil(request):
     return render(request, "menu/profil.html", ctx)
 
 
+@login_required
+def dashboard_nutrition(request):
+    """
+    Dashboard nutritionnel individuel — semaine en cours, macros personnalisées
+    via UserProfile.portions_factor. Toutes les valeurs sont des repères indicatifs PNNS.
+    """
+    from datetime import date as date_type
+    from .models import NutritionConfig
+
+    profile = _get_profile(request)
+    if not profile:
+        return redirect("menu:home")
+
+    pf = profile.portions_factor  # facteur de portion de l'utilisateur
+    config = NutritionConfig.get()
+
+    # Cibles journalières personnalisées (déjeuner + dîner = 2 × cible dîner)
+    cal_day_target  = config.calories_dinner_target  * 2 * pf
+    prot_day_target = config.proteins_dinner_target  * 2 * pf
+    cal_week_target  = cal_day_target  * 7
+    prot_week_target = prot_day_target * 7
+
+    # Planning de la semaine en cours pour la famille
+    today     = date_type.today()
+    iso       = today.isocalendar()
+    week_plan = None
+    days_data = []
+    total_cal_week  = 0.0
+    total_prot_week = 0.0
+
+    if profile.family:
+        from datetime import timedelta
+        monday = today - timedelta(days=today.weekday())
+        week_plan = (
+            WeekPlan.objects
+            .filter(family=profile.family, period_start__lte=monday + timedelta(days=6), period_end__gte=monday)
+            .order_by("-period_start")
+            .first()
+        )
+
+    if week_plan:
+        meals_qs = (
+            Meal.objects
+            .filter(week_plan=week_plan, recipe__isnull=False)
+            .select_related("recipe")
+            .order_by("date", "meal_time")
+        )
+        meals_by_date: dict = {}
+        for m in meals_qs:
+            meals_by_date.setdefault(m.date, []).append(m)
+
+        DAY_NAMES = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+        from datetime import timedelta
+        monday = week_plan.period_start
+
+        for i in range(7):
+            d = monday + timedelta(days=i)
+            day_meals_raw = meals_by_date.get(d, [])
+            day_cal  = 0.0
+            day_prot = 0.0
+            meals_out = []
+
+            for m in day_meals_raw:
+                r = m.recipe
+                cal  = round((r.calories_per_serving  or 0) * pf, 1)
+                prot = round((r.proteins_per_serving or 0) * pf, 1)
+                day_cal  += cal
+                day_prot += prot
+                meals_out.append({
+                    "meal_time":     m.meal_time,
+                    "recipe_id":     r.id,
+                    "recipe_title":  r.title,
+                    "calories":      cal  if r.calories_per_serving  else None,
+                    "proteins":      prot if r.proteins_per_serving else None,
+                    "is_leftovers":  m.is_leftovers,
+                })
+
+            total_cal_week  += day_cal
+            total_prot_week += day_prot
+
+            def _status(actual, target):
+                if target <= 0:
+                    return "neutral"
+                pct = actual / target * 100
+                if pct < 60 or pct > 130:
+                    return "alert"
+                if pct < 80 or pct > 110:
+                    return "warning"
+                return "ok"
+
+            days_data.append({
+                "date":       d,
+                "day_name":   DAY_NAMES[i],
+                "is_today":   d == today,
+                "meals":      meals_out,
+                "total_cal":  round(day_cal, 0),
+                "total_prot": round(day_prot, 1),
+                "cal_status":  _status(day_cal,  cal_day_target)  if day_cal  else "neutral",
+                "prot_status": _status(day_prot, prot_day_target) if day_prot else "neutral",
+            })
+
+    def _pct(actual, target):
+        return min(round(actual / target * 100) if target > 0 else 0, 130)
+
+    ctx = {
+        "profile":           profile,
+        "week_plan":         week_plan,
+        "days_data":         days_data,
+        "total_cal_week":    round(total_cal_week, 0),
+        "total_prot_week":   round(total_prot_week, 1),
+        "cal_day_target":    round(cal_day_target,  0),
+        "prot_day_target":   round(prot_day_target, 1),
+        "cal_week_target":   round(cal_week_target,  0),
+        "prot_week_target":  round(prot_week_target, 1),
+        "cal_week_pct":      _pct(total_cal_week,  cal_week_target),
+        "prot_week_pct":     _pct(total_prot_week, prot_week_target),
+        "cal_week_status":   (lambda a, t: "alert" if a/t*100 < 60 or a/t*100 > 130 else "warning" if a/t*100 < 80 or a/t*100 > 110 else "ok")(total_cal_week, cal_week_target) if cal_week_target > 0 and total_cal_week > 0 else "neutral",
+        "prot_week_status":  (lambda a, t: "alert" if a/t*100 < 60 or a/t*100 > 130 else "warning" if a/t*100 < 80 or a/t*100 > 110 else "ok")(total_prot_week, prot_week_target) if prot_week_target > 0 and total_prot_week > 0 else "neutral",
+    }
+    return render(request, "menu/profil/nutrition.html", ctx)
+
+
 def _get_profile(request):
     """Retourne le profil utilisateur ou None."""
     try:
@@ -787,6 +909,16 @@ def detail_recette(request, id):
                 rank_cache[uid] = (0, "")
         all_reviews_with_rank.append((r, rank_cache[uid]))
 
+    # Bloc "Pour toi" — macros personnalisées via portions_factor
+    portions_factor = 1.0
+    try:
+        portions_factor = request.user.profile.portions_factor
+    except UserProfile.DoesNotExist:
+        pass
+
+    pour_toi_cal  = round(recipe.calories_per_serving  * portions_factor, 0) if recipe.calories_per_serving  else None
+    pour_toi_prot = round(recipe.proteins_per_serving * portions_factor, 1) if recipe.proteins_per_serving else None
+
     ctx = {
         "recipe": recipe,
         "note_moyenne": stats["note_moyenne"],
@@ -795,6 +927,8 @@ def detail_recette(request, id):
         "user_last_review": user_last_review,
         "family_reviews": family_reviews,
         "all_reviews": all_reviews_with_rank,
+        "pour_toi_cal":  pour_toi_cal,
+        "pour_toi_prot": pour_toi_prot,
     }
     return render(request, "menu/recettes/detail.html", ctx)
 

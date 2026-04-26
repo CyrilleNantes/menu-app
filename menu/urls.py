@@ -33,6 +33,7 @@ urlpatterns = [
     path("recettes/<int:id>/supprimer/", views.supprimer_recette, name="supprimer_recette"),
     # Google Calendar
     path("planning/<int:plan_id>/export-calendar/", views.export_calendar, name="export_calendar"),
+    path("profil/nutrition/", views.dashboard_nutrition, name="dashboard_nutrition"),
     path("profil/creneaux-calendar/", views.modifier_creneaux_calendar, name="modifier_creneaux_calendar"),
     path("profil/portions-factor/", views.modifier_portions_factor, name="modifier_portions_factor"),
     # Google Tasks
