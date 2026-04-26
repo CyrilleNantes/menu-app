@@ -137,6 +137,7 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .recette-detail { display: flex; flex-direction: column; gap: 2rem; }
 
 .alerte-allergies { background: #fff3cd; border: 1px solid #ffc107; border-radius: var(--radius); padding: .75rem 1rem; font-size: .9rem; }
+.alerte-allergies__list { margin: .4rem 0 0 1.25rem; display: flex; flex-direction: column; gap: .3rem; }
 
 .recette-detail__header { display: flex; flex-direction: column; gap: 1rem; }
 .recette-detail__photo { height: 220px; border-radius: var(--radius); background-size: cover; background-position: center; }
@@ -744,3 +745,36 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .btn--ghost { background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); }
 .btn--ghost:hover { background: var(--color-primary); color: #fff; }
 .btn--xs { padding: .15rem .5rem; font-size: .75rem; }
+
+/* ── Dietary tags (profil) ──────────────────────────────────────────────── */
+.dietary-tags-grid { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.dietary-tag-option { display: flex; align-items: center; gap: .35rem; cursor: pointer; padding: .4rem .75rem; border: 1.5px solid #ddd; border-radius: 20px; font-size: .85rem; background: #fafafa; transition: border-color .15s, background .15s; user-select: none; }
+.dietary-tag-option input { position: absolute; opacity: 0; width: 0; height: 0; }
+.dietary-tag-option:hover { border-color: var(--color-primary-light); background: #f0f9f4; }
+.dietary-tag-option--active,
+.dietary-tag-option:has(input:checked) { border-color: var(--color-primary); background: #e8f5e9; font-weight: 600; color: var(--color-primary); }
+.dietary-tag-option__emoji { font-size: 1rem; }
+
+/* ── Compatibilité famille ──────────────────────────────────────────────── */
+.compat-page { display: flex; flex-direction: column; gap: 1.5rem; max-width: 680px; margin: 0 auto; }
+.compat-header { display: flex; flex-direction: column; gap: .4rem; }
+.compat-title { font-size: 1.6rem; font-weight: 800; }
+.compat-subtitle { font-size: 1rem; }
+.compat-list { display: flex; flex-direction: column; gap: .75rem; }
+.compat-item { border: 1.5px solid #e0e0e0; border-radius: var(--radius); padding: .9rem 1rem; background: #fff; }
+.compat-item--ok { border-color: #a8d5b5; background: #f0faf4; }
+.compat-item--warn { border-color: #ffc107; background: #fffef0; }
+.compat-item__header { display: flex; align-items: center; gap: .75rem; }
+.compat-item__avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--color-primary); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: .95rem; flex-shrink: 0; }
+.compat-item__info { flex: 1; display: flex; flex-direction: column; }
+.compat-item__name { font-weight: 600; font-size: .95rem; }
+.compat-item__role { font-size: .8rem; }
+.compat-badge { padding: .25rem .6rem; border-radius: 20px; font-size: .8rem; font-weight: 600; }
+.compat-badge--ok { background: #d1e7dd; color: #0a3622; }
+.compat-badge--warn { background: #fff3cd; color: #6b4e00; }
+.compat-item__alertes { margin: .6rem 0 0 .5rem; list-style: none; display: flex; flex-direction: column; gap: .3rem; }
+.compat-alerte { display: flex; gap: .5rem; font-size: .88rem; align-items: baseline; }
+.compat-alerte__tag { font-weight: 600; white-space: nowrap; }
+.compat-alerte__ings { font-style: italic; }
+.compat-item__no-tags { font-size: .82rem; margin-top: .4rem; padding-left: .5rem; }
+.compat-legend { font-size: .85rem; border-top: 1px solid #eee; padding-top: .75rem; }

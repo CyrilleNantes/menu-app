@@ -51,19 +51,31 @@ def service_worker(request):
     )
 
 
-# Mots-clés par tag alimentaire pour les alertes allergies (simple, non bloquant)
-ALLERGEN_KEYWORDS = {
-    "gluten": ["farine", "blé", "seigle", "orge", "avoine", "pain", "pâte", "semoule", "couscous"],
-    "lactose": ["lait", "beurre", "crème", "fromage", "yaourt", "mozzarella", "cheddar", "parmesan", "gruyère"],
-    "fruits_a_coque": ["noix", "noisette", "amande", "cajou", "pistache", "noix de coco", "pécan"],
-    "arachides": ["cacahuète", "arachide", "beurre de cacahuète"],
-    "oeufs": ["œuf", "oeuf", "jaune d'œuf", "blanc d'œuf"],
-    "poisson": ["saumon", "thon", "cabillaud", "sardine", "anchois", "truite"],
-    "fruits_de_mer": ["crevette", "moule", "homard", "crabe", "calamar", "poulpe"],
-    "soja": ["soja", "tofu", "edamame", "miso"],
-    "vegetarien": [],
-    "vegan": [],
+# Configuration des tags alimentaires : 14 allergènes majeurs EU + végétarien/végan
+DIETARY_TAG_CONFIG = {
+    "gluten":         {"label": "Gluten",          "emoji": "🌾", "keywords": ["farine", "blé", "seigle", "orge", "avoine", "pain", "pâte", "semoule", "couscous", "boulgour", "épeautre", "chapelure", "brioche"]},
+    "lactose":        {"label": "Lactose",         "emoji": "🥛", "keywords": ["lait", "beurre", "crème", "fromage", "yaourt", "mozzarella", "cheddar", "parmesan", "gruyère", "ricotta", "mascarpone", "kéfir", "crème fraîche"]},
+    "oeufs":          {"label": "Œufs",            "emoji": "🥚", "keywords": ["œuf", "oeuf", "jaune d'œuf", "blanc d'œuf", "mayonnaise"]},
+    "poisson":        {"label": "Poisson",         "emoji": "🐟", "keywords": ["saumon", "thon", "cabillaud", "sardine", "anchois", "truite", "dorade", "maquereau", "sole", "bar", "lieu", "merlan", "tilapia", "hareng"]},
+    "crustaces":      {"label": "Crustacés",       "emoji": "🦐", "keywords": ["crevette", "homard", "crabe", "langoustine", "écrevisse", "langouste"]},
+    "mollusques":     {"label": "Mollusques",      "emoji": "🦪", "keywords": ["moule", "huître", "calamar", "poulpe", "seiche", "escargot", "palourde", "coque", "bulot"]},
+    "fruits_a_coque": {"label": "Fruits à coque",  "emoji": "🥜", "keywords": ["noix", "noisette", "amande", "cajou", "pistache", "noix de coco", "pécan", "macadamia", "noix du brésil", "noix de cajou"]},
+    "arachides":      {"label": "Arachides",       "emoji": "🥜", "keywords": ["cacahuète", "arachide", "beurre de cacahuète"]},
+    "soja":           {"label": "Soja",            "emoji": "🫘", "keywords": ["soja", "tofu", "edamame", "miso", "sauce soja", "tempeh", "lait de soja"]},
+    "celeri":         {"label": "Céleri",          "emoji": "🌿", "keywords": ["céleri", "celeri", "céleri-rave"]},
+    "moutarde":       {"label": "Moutarde",        "emoji": "🌿", "keywords": ["moutarde", "graines de moutarde"]},
+    "sesame":         {"label": "Sésame",          "emoji": "🌾", "keywords": ["sésame", "sesame", "tahini", "halva"]},
+    "sulfites":       {"label": "Sulfites",        "emoji": "🍷", "keywords": ["vin", "vinaigre de vin", "vinaigre balsamique", "raisin sec", "abricot sec"]},
+    "lupin":          {"label": "Lupin",           "emoji": "🌿", "keywords": ["lupin", "farine de lupin"]},
+    "vegetarien":     {"label": "Végétarien",      "emoji": "🥦", "keywords": []},
+    "vegan":          {"label": "Végan",           "emoji": "🌱", "keywords": []},
 }
+
+# Liste ordonnée pour les formulaires / templates
+DIETARY_TAG_CHOICES = [
+    (key, cfg["label"], cfg["emoji"])
+    for key, cfg in DIETARY_TAG_CONFIG.items()
+]
 
 
 def _saison_courante():
@@ -77,17 +89,36 @@ def _saison_courante():
     return "hiver"
 
 
-def _alertes_allergies(recipe, dietary_tags):
-    if not dietary_tags:
+def _alertes_allergies(ingredients, dietary_tags):
+    """
+    Retourne une liste de dicts {tag, label, emoji, ingredients}
+    pour chaque restriction de l'utilisateur correspondant à un ingrédient.
+
+    ingredients : liste d'objets Ingredient (déjà chargés)
+    dietary_tags : liste de tags du UserProfile
+    """
+    if not dietary_tags or not ingredients:
         return []
     alertes = []
-    noms = [ing.name.lower() for ing in recipe.ingredients.all()]
+    noms = [(ing.name, ing.name.lower()) for ing in ingredients]
     for tag in dietary_tags:
-        mots = ALLERGEN_KEYWORDS.get(tag, [])
-        for mot in mots:
-            if any(mot in nom for nom in noms):
-                alertes.append(tag)
-                break
+        cfg = DIETARY_TAG_CONFIG.get(tag)
+        if not cfg or not cfg["keywords"]:
+            continue
+        matching = []
+        for ing_name, ing_lower in noms:
+            for mot in cfg["keywords"]:
+                if mot in ing_lower:
+                    if ing_name not in matching:
+                        matching.append(ing_name)
+                    break
+        if matching:
+            alertes.append({
+                "tag": tag,
+                "label": cfg["label"],
+                "emoji": cfg["emoji"],
+                "ingredients": matching,
+            })
     return alertes
 
 
@@ -206,13 +237,14 @@ def profil(request):
     google_connected = TokenOAuth.objects.filter(user=request.user, service="google").exists()
 
     ctx = {
-        "profile":          profile,
-        "rank_info":        rank_info,
-        "nb_recettes":      nb_recettes,
-        "nb_avis":          nb_avis,
-        "nb_proposals":     nb_proposals,
-        "famille_members":  famille_members,
-        "google_connected": google_connected,
+        "profile":              profile,
+        "rank_info":            rank_info,
+        "nb_recettes":          nb_recettes,
+        "nb_avis":              nb_avis,
+        "nb_proposals":         nb_proposals,
+        "famille_members":      famille_members,
+        "google_connected":     google_connected,
+        "dietary_tag_choices":  DIETARY_TAG_CHOICES,
     }
     return render(request, "menu/profil.html", ctx)
 
@@ -860,6 +892,7 @@ def detail_recette(request, id):
     recipe = get_object_or_404(
         Recipe.objects.select_related("created_by").prefetch_related(
             "ingredient_groups__ingredients",
+            "ingredients",
             "steps",
             "sections",
             "reviews__user",
@@ -877,7 +910,8 @@ def detail_recette(request, id):
     except UserProfile.DoesNotExist:
         pass
 
-    alertes = _alertes_allergies(recipe, dietary_tags)
+    recipe_ingredients = list(recipe.ingredients.all())
+    alertes = _alertes_allergies(recipe_ingredients, dietary_tags)
 
     # Dernier avis de l'utilisateur courant
     user_last_review = recipe.reviews.filter(user=request.user).order_by("-created_at").first()
@@ -1399,6 +1433,65 @@ def modifier_portions_factor(request):
     messages.success(request, "Facteur de portion mis à jour.")
     logger.debug("modifier_portions_factor : portions_factor=%.2f pour user %s", profile.portions_factor, request.user.id)
     return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def modifier_dietary_tags(request):
+    """Enregistre les restrictions alimentaires / allergènes du profil utilisateur."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    tags = request.POST.getlist("tags")
+    # Valider que les tags soumis font partie de la liste connue
+    tags_valides = [t for t in tags if t in DIETARY_TAG_CONFIG]
+    profile.dietary_tags = tags_valides
+    profile.save(update_fields=["dietary_tags"])
+    messages.success(request, "Restrictions alimentaires mises à jour.")
+    logger.debug("modifier_dietary_tags : %s pour user %s", tags_valides, request.user.id)
+    return redirect("menu:profil")
+
+
+@login_required
+def compatibilite_recette(request, id):
+    """
+    Page de compatibilité famille : qui peut manger cette recette ?
+    Accessible à tous les membres authentifiés de la famille.
+    """
+    recipe = get_object_or_404(
+        Recipe.objects.prefetch_related("ingredients"),
+        id=id,
+        actif=True,
+    )
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        messages.error(request, "Vous devez appartenir à une famille pour voir cette page.")
+        return redirect("menu:detail_recette", id=id)
+
+    membres = (
+        UserProfile.objects
+        .filter(family=profile.family)
+        .select_related("user")
+        .order_by("user__first_name")
+    )
+
+    ingredients = list(recipe.ingredients.all())
+
+    compat = []
+    for m in membres:
+        alertes = _alertes_allergies(ingredients, m.dietary_tags or [])
+        compat.append({
+            "profil": m,
+            "alertes": alertes,
+            "ok": len(alertes) == 0,
+        })
+
+    return render(request, "menu/recettes/compatibilite.html", {
+        "recipe": recipe,
+        "compat": compat,
+    })
 
 
 # ─── Export Google Tasks ─────────────────────────────────────────────────────

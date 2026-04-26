@@ -1,0 +1,70 @@
+{% extends "menu/base.html" %}
+{% load static %}
+
+{% block title %}Compatibilité — {{ recipe.title }} — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="compat-page">
+
+    <div class="compat-header">
+        <a href="{% url 'menu:detail_recette' recipe.id %}" class="btn btn--secondary btn--sm">← Retour à la recette</a>
+        <h1 class="compat-title">👨‍👩‍👧 Compatibilité famille</h1>
+        <p class="compat-subtitle text-muted">{{ recipe.title }}</p>
+    </div>
+
+    {% if compat %}
+    <div class="compat-list">
+        {% for item in compat %}
+        <div class="compat-item {% if item.ok %}compat-item--ok{% else %}compat-item--warn{% endif %}">
+            <div class="compat-item__header">
+                <span class="compat-item__avatar">
+                    {{ item.profil.user.first_name|first|upper|default:item.profil.user.email|first|upper }}
+                </span>
+                <div class="compat-item__info">
+                    <span class="compat-item__name">
+                        {{ item.profil.user.first_name|default:item.profil.user.email }}
+                    </span>
+                    <span class="compat-item__role text-muted">{{ item.profil.get_role_display }}</span>
+                </div>
+                <span class="compat-item__status">
+                    {% if item.ok %}
+                    <span class="compat-badge compat-badge--ok">✅ Compatible</span>
+                    {% else %}
+                    <span class="compat-badge compat-badge--warn">⚠️ Incompatible</span>
+                    {% endif %}
+                </span>
+            </div>
+
+            {% if not item.ok %}
+            <ul class="compat-item__alertes">
+                {% for alerte in item.alertes %}
+                <li class="compat-alerte">
+                    <span class="compat-alerte__tag">{{ alerte.emoji }} {{ alerte.label }}</span>
+                    <span class="compat-alerte__ings text-muted">{{ alerte.ingredients|join:", " }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if not item.profil.dietary_tags %}
+            <p class="compat-item__no-tags text-muted">Aucune restriction renseignée</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="compat-legend">
+        <p class="text-muted">
+            💡 Les restrictions alimentaires sont configurées par chaque membre depuis sa
+            <a href="{% url 'menu:profil' %}">page profil</a>.
+        </p>
+    </div>
+
+    {% else %}
+    <p class="text-muted" style="text-align:center;margin-top:2rem">
+        Aucun membre dans la famille pour le moment.
+    </p>
+    {% endif %}
+
+</div>
+{% endblock %}

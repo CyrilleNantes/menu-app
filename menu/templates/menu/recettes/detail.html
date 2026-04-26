@@ -8,8 +8,12 @@
 
     {% if alertes %}
     <div class="alerte-allergies">
-        ⚠️ Cette recette peut contenir des ingrédients incompatibles avec votre profil :
-        {% for tag in alertes %}<strong>{{ tag }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}
+        ⚠️ Cette recette contient des ingrédients incompatibles avec votre profil :
+        <ul class="alerte-allergies__list">
+            {% for alerte in alertes %}
+            <li><strong>{{ alerte.emoji }} {{ alerte.label }}</strong> — {{ alerte.ingredients|join:", " }}</li>
+            {% endfor %}
+        </ul>
     </div>
     {% endif %}
 
@@ -256,6 +260,9 @@
 
     <div class="recette-detail__actions">
         <a href="{% url 'menu:liste_recettes' %}" class="btn btn--secondary">← Retour au catalogue</a>
+        {% if request.user.profile.family %}
+        <a href="{% url 'menu:compatibilite_recette' recipe.id %}" class="btn btn--secondary">👨‍👩‍👧 Compatibilité famille</a>
+        {% endif %}
         {% if request.user == recipe.created_by or request.user.profile.role == 'chef_etoile' %}
         <a href="{% url 'menu:modifier_recette' recipe.id %}" class="btn btn--primary">Modifier</a>
         {% endif %}
