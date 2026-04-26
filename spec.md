@@ -954,6 +954,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v2.1 | 2026-04-26 | Phase 4 spécifiée — cadre PNNS, algo suggestions, dashboard individuel, alertes, galerie photos |
 | v2.2 | 2026-04-26 | Étape 17 — `Recipe.protein_type` + `UserProfile.portions_factor` (migration 0003, formulaire recette, profil) |
 | v2.3 | 2026-04-26 | Étape 18 — modèle `NutritionConfig` singleton PNNS (migration 0004, admin uniquement) |
+| v2.4 | 2026-04-26 | Étape 19 — algorithme de suggestions de menu (5 dimensions pondérées, dialog planning, JS) |
+
+> [LOG 2026-04-26] Étape 19 — Algo suggerer_recettes dans services.py : score composite 5 dimensions (fraîcheur 30%, famille 30%, variété 20%, saison 10%, équilibre 10%). Règles dures variété : même protein_type 2×/jour ou quota viande rouge → score 0. Vue AJAX suggestions_repas GET avec params date/meal_time. UI : bouton 💡 au survol des créneaux vides, dialog suggestions avec icônes 🔄⭐🥩🌿⚖️, "Utiliser" pré-remplit le dialog repas.
 
 > [LOG 2026-04-26] Étape 18 — Ajout du modèle NutritionConfig singleton (7 paramètres PNNS avec valeurs par défaut ANSES). Pattern singleton : save() force pk=1, méthode get() via get_or_create. Admin Django avec fieldsets clairs, has_add_permission désactivé si existe, has_delete_permission toujours False. Migration 0004_nutrition_config. Aucun accès UI — admin uniquement.
 
