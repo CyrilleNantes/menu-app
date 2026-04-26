@@ -1,7 +1,7 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v2.1** — affichée dans le footer de l'application.
+> Version courante : **v2.7** — affichée dans le footer de l'application.
 > Dernière mise à jour : 2026-04-26
 
 ---
@@ -941,6 +941,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0001_initial` | 2026-04-25 | Schéma initial — tous les modèles |
 | `0002_calendar_fields` | 2026-04-26 | `UserProfile` : créneaux Google Calendar (4 TimeField) — `Meal` : `google_event_id` |
 | `0003_intelligence_fields` | 2026-04-26 | `Recipe.protein_type` + `UserProfile.portions_factor` |
+| `0004_nutrition_config` | 2026-04-26 | Modèle `NutritionConfig` singleton PNNS |
+| `0005_recipe_photos` | 2026-04-26 | Modèle `RecipePhoto` — galerie photos recette |
 
 ---
 
@@ -957,6 +959,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v2.4 | 2026-04-26 | Étape 19 — algorithme de suggestions de menu (5 dimensions pondérées, dialog planning, JS) |
 | v2.5 | 2026-04-26 | Étape 20 — dashboard nutritionnel individuel + bloc "Pour toi" dans fiche recette |
 | v2.6 | 2026-04-26 | Étape 21 — alertes équilibre planning (nudges Cuisinier, dismissables, sessionStorage) |
+| v2.7 | 2026-04-26 | Étape 22 — galerie photos recette (carousel, upload Cloudinary, gestion Cuisinier) |
+
+> [LOG 2026-04-26] Étape 22 — Galerie photos recette. Modèle RecipePhoto (photo_url Cloudinary, caption, is_main, order, actif soft-delete, uploaded_by). Migration 0005_recipe_photos. Vues ajouter_photo_recette (upload Cloudinary → RecipePhoto), retirer_photo_recette (soft delete actif=False), promouvoir_photo_recette (is_main=True atomique). Carousel vanilla JS (galerie.js) : translateX track, dots cliquables, swipe tactile (seuil 40px), aria-hidden. Section galerie dans detail.html : carousel + upload ouvert à tous connectés + boutons gestion Cuisinier (mettre en avant / retirer). CSS galerie complet dans main.css.
 
 > [LOG 2026-04-26] Étape 21 — calculer_alertes_planning dans services.py : 5 alertes (poisson manquant, quota viande rouge, pas végétarien, calories > 130%, protéines < 60%). Banderoles dismissables dans semaine.html sous la toolbar. Dismiss via sessionStorage par plan_id. Réaffichage automatique après chaque sauvegarde de repas. Cuisinier uniquement.
 
