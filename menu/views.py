@@ -22,10 +22,11 @@ from .integrations.google_auth import google_build_auth_url, google_exchange_cod
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
 from .integrations.openfoodfacts import rechercher_ingredient
-from .models import Family, Ingredient, Meal, MealProposal, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
     bilan_planning,
     calculer_alertes_planning,
+    calculer_wpd,
     exporter_backup,
     generer_liste_courses,
     importer_recette_depuis_json,
@@ -257,7 +258,6 @@ def dashboard_nutrition(request):
     via UserProfile.portions_factor. Toutes les valeurs sont des repères indicatifs PNNS.
     """
     from datetime import date as date_type
-    from .models import NutritionConfig
 
     profile = _get_profile(request)
     if not profile:
@@ -639,6 +639,7 @@ def suggestions_repas(request, plan_id):
         return JsonResponse({"ok": False, "error": "Date invalide", "code": "BAD_DATE"}, status=400)
 
     try:
+        wpd     = calculer_wpd(plan, NutritionConfig.get())
         results = suggerer_recettes(profile.family, plan, target_date, meal_time)
     except Exception as exc:
         logger.error("suggestions_repas — erreur inattendue : %s", exc, exc_info=True)
@@ -647,18 +648,25 @@ def suggestions_repas(request, plan_id):
     if not results:
         return JsonResponse({
             "ok": True,
+            "wpd": 1.0,
+            "deficit_proteique": False,
             "suggestions": [],
             "message": "Pas assez de recettes dans le catalogue pour cette période.",
         })
 
     return JsonResponse({
-        "ok": True,
+        "ok":               True,
+        "wpd":              wpd,
+        "deficit_proteique": wpd > 1.0,
         "suggestions": [
             {
-                "recipe_id": r["recipe"].id,
-                "title":     r["recipe"].title,
-                "score":     r["score"],
-                "reasons":   r["reasons"],
+                "recipe_id":          r["recipe"].id,
+                "title":              r["recipe"].title,
+                "score":              r["score"],
+                "protein_score":      r["protein_score"],
+                "protein_level":      r["protein_level"],
+                "proteins_per_serving": r["proteins_per_serving"],
+                "reasons":            r["reasons"],
             }
             for r in results
         ],

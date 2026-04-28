@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v3.0** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-04-26
+> Version courante : **v3.1** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-04-27
 
 ---
 
@@ -814,23 +814,73 @@ Photos supplémentaires d'une recette (galerie). La photo principale reste `Reci
 
 **Service** : `services.suggerer_recettes(family, week_plan, date, meal_time)` — retourne une liste de 5 recettes triées par score décroissant.
 
-**Calcul du score composite (0.0 → 1.0) :**
+**Calcul du score composite (0.0 → 1.0) — poids dynamiques :**
 
-Chaque recette candidate reçoit un score sur 5 dimensions pondérées :
+Chaque recette candidate reçoit un score sur 5 dimensions. Les poids varient dynamiquement selon le déficit protéique hebdomadaire (voir WPD ci-dessous). Les poids sont toujours normalisés à 100%.
 
-| Dimension | Poids | Logique |
-|-----------|-------|---------|
-| Fraîcheur / rotation | 30% | Score 0 si < `min_days_before_repeat` jours depuis la dernière utilisation pour cette famille. Score 0 si < `min_days_low_rated_repeat` ET note famille < 2★. Score linéaire 0.3→1.0 au-delà du seuil. Score 1.0 si jamais cuisiné. |
-| Appréciation famille | 30% | Moyenne des `Review.stars` des membres de **cette famille uniquement**. Score = note / 5. Score neutre 0.5 si aucun avis famille. |
-| Variété protéines | 20% | Score 0 (règle dure) si : même `protein_type` déjà 2× dans la journée, OU viande rouge (`boeuf` + `porc`) déjà ≥ `max_red_meat_per_week` dans la semaine. Bonus +0.3 si ce `protein_type` absent de la semaine. Malus −0.2 si déjà présent 2× dans la semaine. |
-| Saisonnalité | 10% | Compatible saison courante → 1.0. Toutes saisons → 0.7. Incompatible → 0.2. |
-| Équilibre nutritionnel semaine | 10% | Nudge uniquement — jamais de score 0. Si semaine > 110% objectif calorique : +0.2 aux recettes `health_tag = "leger"`. Si semaine < 70% objectif protéines : +0.2 aux recettes `health_tag = "proteine"`. |
+**Dimension 1 — Fraîcheur / rotation (nominal 30%) :**
+- Score 0 si < `min_days_before_repeat` jours depuis la dernière utilisation pour cette famille
+- Score 0 si < `min_days_low_rated_repeat` ET note famille < 2★
+- Score linéaire 0.3→1.0 au-delà du seuil · Score 1.0 si jamais cuisiné
 
-**score_final = Σ(score_dimension × poids)**
+**Dimension 2 — Appréciation famille (nominal 30%) :**
+- Moyenne des `Review.stars` des membres de **cette famille uniquement**. Score = note / 5
+- Score neutre 0.5 si aucun avis famille
+
+**Dimension 3 — Variété protéines (nominal 20%) :**
+- Score 0 (règle dure) si : même `protein_type` déjà 2× dans la journée, OU viande rouge (`boeuf` + `porc`) ≥ `max_red_meat_per_week` dans la semaine
+- Bonus +0.3 si ce `protein_type` absent de la semaine · Malus −0.2 si déjà présent 2× dans la semaine
+- **Bonus adéquation** +0.1 si `proteins_per_serving > 25g` (plafonné à 1.0) — récompense les plats très protéinés indépendamment du type
+
+**Dimension 4 — Saisonnalité (nominal 10%) :**
+- Compatible saison courante → 1.0 · Toutes saisons → 0.7 · Incompatible → 0.2
+
+**Dimension 5 — Adéquation protéique + équilibre (nominal 10%, jusqu'à 25%) :**
+
+*Protein Score (PS) — basé sur `proteins_per_serving` réel :*
+```
+proteins_per_serving non renseigné → PS = 0.5  (neutre)
+< 15g par portion                  → PS = 0.3  (faible)
+15 – 25g par portion               → PS = 0.6  (correct)
+> 25g par portion                  → PS = 1.0  (élevé)
+```
+
+*Weekly Protein Deficit factor (WPD) — calculé sur la semaine en cours :*
+```python
+proteins_planned = sum(
+    meal.recipe.proteins_per_serving * meal.servings_count / meal.recipe.base_servings
+    for meal in week_plan.meals if not meal.is_leftovers and meal.recipe
+)
+repas_restants = nb_creneaux_non_remplis_dans_la_semaine
+proteins_target = config.proteins_dinner_target * repas_restants
+
+deficit_ratio = proteins_planned / proteins_target  # 0 si target = 0
+
+if deficit_ratio < 0.6:   WPD = 1.5   # déficit fort
+elif deficit_ratio < 0.8: WPD = 1.2   # déficit modéré
+else:                      WPD = 1.0   # dans la cible
+```
+
+*Score dimension 5 :*
+```python
+score_nutrition = min(PS * WPD, 1.0)
+```
+
+*Poids dynamiques normalisés selon WPD :*
+
+| WPD | Fraîcheur | Appréciation | Variété | Saisonnalité | Nutrition |
+|-----|-----------|--------------|---------|--------------|-----------|
+| 1.0 (nominal) | 30% | 30% | 20% | 10% | 10% |
+| 1.2 (déficit modéré) | 27% | 27% | 18% | 9% | 19% |
+| 1.5 (déficit fort) | 25% | 25% | 17% | 8% | 25% |
+
+**score_final = Σ(score_dimension × poids_normalisé)**
 
 **Interface :**
 - Bouton "💡 Suggestions" sur chaque créneau vide du planning
-- Affiche les 5 recettes avec icônes de justification : 🔄 rotation · ⭐ avis famille · 🥩 variété · 🌿 saison · ⚖️ équilibre
+- 5 recettes proposées avec icônes de justification : 🔄 rotation · ⭐ avis famille · 🥩 variété · 🌿 saison · ⚖️ équilibre
+- Indicateur protéines sur chaque carte : `🥩 12g` / `🥩🥩 20g` / `🥩🥩🥩 32g`
+- Justification enrichie si WPD > 1.0 : `⚖️ Semaine en déficit protéique · Cette recette apporte 32g`
 - Sélection libre — le Cuisinier peut ignorer et choisir autre chose
 
 **Gestion des erreurs** :
@@ -838,7 +888,9 @@ Chaque recette candidate reçoit un score sur 5 dimensions pondérées :
 - Erreur serveur → HTTP 500 loggé + message générique
 
 **Réponse** :
-- `{"ok": true, "suggestions": [{"recipe_id": 12, "title": "...", "score": 0.82, "reasons": {"rotation": 0.9, "famille": 0.8, "variete": 1.0, "saison": 0.7, "equilibre": 0.5}}]}`
+- `{"ok": true, "wpd": 1.5, "suggestions": [{"recipe_id": 12, "title": "...", "score": 0.82, "protein_score": 1.0, "proteins_per_serving": 32, "reasons": {"rotation": 0.9, "famille": 0.8, "variete": 1.0, "saison": 0.7, "nutrition": 1.0}}]}`
+
+> [LOG 2026-04-27] Refactoring `services.suggerer_recettes` : remplacement du nudge statique par PS×WPD, poids dynamiques normalisés, bonus adéquation dim.3 (+0.1 si >25g). Réponse JSON enrichie : `wpd`, `deficit_proteique`, `protein_score`, `protein_level`. JS suggestions : indicateur protéines coloré (🥩/🥩🥩/🥩🥩🥩), bandeau déficit conditionnel, tooltip enrichi nutrition si WPD > 1.0.
 
 ---
 
@@ -970,6 +1022,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v2.8 | 2026-04-26 | Étape 23 — notifications email (planning publié → Convives, proposition → Cuisiniers) |
 | v2.9 | 2026-04-26 | Étape 24 — allergies enrichies : 16 tags EU, alertes par ingrédient, formulaire profil, page compatibilité famille |
 | v3.0 | 2026-04-26 | Revue de code — B1 WeekPlan created_by, B2 prefetch photos, B3 profil N+1, S1-S3 spec, Q1-Q2 qualité |
+| v3.1 | 2026-04-27 | Algo suggestions : PS×WPD, poids dynamiques, bonus dim.3, JSON enrichi, JS protein indicator |
+| v3.1 | 2026-04-27 | Algo suggestions affiné — PS×WPD, poids dynamiques normalisés, bonus adéquation protéique dim.3, réponse JSON enrichie |
 
 ### Détail v2.0
 
