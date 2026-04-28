@@ -761,10 +761,19 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .sug-item__main { display: flex; align-items: center; gap: .5rem; }
 .sug-item__title { flex: 1; font-weight: 600; font-size: .92rem; }
 .sug-item__score { font-size: .8rem; color: var(--color-muted); white-space: nowrap; }
+.sug-item__meta { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .sug-item__reasons { display: flex; gap: .3rem; font-size: 1rem; }
-.sug-reason { opacity: .5; }
+.sug-reason { opacity: .5; cursor: default; }
 .sug-reason--high { opacity: 1; }
 .sug-reason--low  { opacity: .25; }
+/* Indicateur protéines */
+.sug-prot { font-size: .78rem; font-weight: 600; padding: .1rem .4rem; border-radius: 99px; }
+.sug-prot--high    { background: #d1e7dd; color: #0a3622; }
+.sug-prot--mid     { background: #fff3cd; color: #664d03; }
+.sug-prot--low     { background: #f8d7da; color: #58151c; }
+.sug-prot--unknown { background: #e9ecef; color: #6c757d; }
+/* Bandeau déficit protéique */
+.sug-deficit-banner { background: #fff8e1; border: 1px solid #ffe082; border-radius: var(--radius); padding: .5rem .75rem; font-size: .82rem; color: #5d4037; margin-bottom: .5rem; }
 .btn--ghost { background: transparent; border: 1px solid var(--color-primary); color: var(--color-primary); }
 .btn--ghost:hover { background: var(--color-primary); color: #fff; }
 .btn--xs { padding: .15rem .5rem; font-size: .75rem; }

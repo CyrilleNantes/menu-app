@@ -436,8 +436,11 @@
             famille:   { icon: '⭐', label: 'Avis famille' },
             variete:   { icon: '🥩', label: 'Variété' },
             saison:    { icon: '🌿', label: 'Saison' },
-            equilibre: { icon: '⚖️', label: 'Équilibre' },
+            nutrition: { icon: '⚖️', label: 'Protéines' },
         };
+
+        // Données WPD mémorisées entre les appels (rafraîchi à chaque dialog)
+        let _lastWpd = 1.0;
 
         // Clic sur le bouton 💡 d'un créneau vide
         document.addEventListener('click', async e => {
@@ -468,17 +471,42 @@
                     return;
                 }
 
+                // Mémoriser WPD pour les tooltips enrichis
+                _lastWpd = data.wpd || 1.0;
+
+                // ── Bandeau déficit protéique ────────────────────────────────
+                const existingBanner = dlgSug.querySelector('.sug-deficit-banner');
+                if (existingBanner) existingBanner.remove();
+                if (data.deficit_proteique) {
+                    const banner = document.createElement('p');
+                    banner.className = 'sug-deficit-banner';
+                    banner.textContent = '⚖️ Semaine en déficit protéique — les recettes riches en protéines sont mises en avant';
+                    sugList.before(banner);
+                }
+
                 data.suggestions.forEach(s => {
                     const scorePercent = Math.round(s.score * 100);
 
-                    // Icônes de justification triées par score décroissant
+                    // ── Icônes de justification ──────────────────────────────
                     const reasonsHtml = Object.entries(s.reasons)
                         .sort((a, b) => b[1] - a[1])
                         .map(([key, val]) => {
                             const r = REASON_ICONS[key] || { icon: '?', label: key };
                             const opacity = val < 0.3 ? 'sug-reason--low' : val >= 0.7 ? 'sug-reason--high' : '';
-                            return `<span class="sug-reason ${opacity}" title="${r.label} : ${Math.round(val * 100)}%">${r.icon}</span>`;
+                            // Tooltip enrichi pour la dimension nutrition si WPD > 1.0
+                            let tooltip = `${r.label} : ${Math.round(val * 100)}%`;
+                            if (key === 'nutrition' && _lastWpd > 1.0 && s.proteins_per_serving) {
+                                tooltip = `⚖️ Cette recette apporte ${s.proteins_per_serving}g de protéines — utile cette semaine`;
+                            }
+                            return `<span class="sug-reason ${opacity}" title="${escHtml(tooltip)}">${r.icon}</span>`;
                         }).join('');
+
+                    // ── Indicateur protéines ─────────────────────────────────
+                    const protIcons = { élevé: '🥩🥩🥩', correct: '🥩🥩', faible: '🥩', inconnu: '🥩' };
+                    const protClass = { élevé: 'sug-prot--high', correct: 'sug-prot--mid', faible: 'sug-prot--low', inconnu: 'sug-prot--unknown' };
+                    const lvl    = s.protein_level || 'inconnu';
+                    const protGr = s.proteins_per_serving != null ? `${s.proteins_per_serving}g` : '?';
+                    const protHtml = `<span class="sug-prot ${protClass[lvl]}" title="Protéines par portion">${protIcons[lvl]} ${protGr}</span>`;
 
                     const li = document.createElement('li');
                     li.className = 'sug-item';
@@ -487,7 +515,7 @@
                             <span class="sug-item__title">${escHtml(s.title)}</span>
                             <span class="sug-item__score">${scorePercent}%</span>
                         </div>
-                        <div class="sug-item__reasons">${reasonsHtml}</div>
+                        <div class="sug-item__meta">${protHtml}<div class="sug-item__reasons">${reasonsHtml}</div></div>
                         <button type="button"
                                 class="btn btn--primary btn--sm btn-use-suggestion"
                                 data-recipe-id="${s.recipe_id}"

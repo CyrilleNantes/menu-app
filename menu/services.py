@@ -255,15 +255,95 @@ def _saison_courante() -> str:
     return "hiver"
 
 
+def calculer_protein_score(recipe) -> float:
+    """Score protéines 0.3–1.0 basé sur proteins_per_serving réel."""
+    p = recipe.proteins_per_serving
+    if p is None: return 0.5   # inconnu → neutre
+    if p < 15:    return 0.3   # faible
+    if p < 25:    return 0.6   # correct
+    return 1.0                 # élevé
+
+
+def _protein_level(ps: float) -> str:
+    """Libellé humain du Protein Score."""
+    if ps == 0.3: return "faible"
+    if ps == 0.6: return "correct"
+    if ps == 1.0: return "élevé"
+    return "inconnu"
+
+
+def calculer_wpd(week_plan, config) -> float:
+    """
+    Weekly Protein Deficit factor (WPD).
+    Compare les protéines déjà planifiées vs la cible des créneaux encore vides.
+    Retourne 1.0 (nominal) · 1.2 (déficit modéré) · 1.5 (déficit fort).
+    Les créneaux absent=True sont exclus du total et des cibles.
+    """
+    repas_planifies = list(
+        Meal.objects
+        .filter(week_plan=week_plan, absent=False, is_leftovers=False, recipe__isnull=False)
+        .select_related("recipe")
+    )
+    repas_avec_prot = [m for m in repas_planifies if m.recipe.proteins_per_serving]
+
+    proteins_planned = sum(
+        m.recipe.proteins_per_serving
+        * (m.servings_count or m.recipe.base_servings or 1)
+        / max(m.recipe.base_servings or 1, 1)
+        for m in repas_avec_prot
+    )
+
+    total_slots  = 14   # 7 jours × 2 créneaux
+    filled_count = len(repas_planifies)
+    absent_count = Meal.objects.filter(week_plan=week_plan, absent=True).count()
+    repas_restants = max(0, total_slots - filled_count - absent_count)
+
+    proteins_target = config.proteins_dinner_target * repas_restants
+    if proteins_target == 0:
+        return 1.0
+
+    deficit_ratio = proteins_planned / proteins_target
+    if deficit_ratio < 0.6:   return 1.5
+    elif deficit_ratio < 0.8: return 1.2
+    else:                      return 1.0
+
+
+def _calculer_poids(wpd: float) -> dict:
+    """
+    Poids dynamiques normalisés selon le WPD.
+    Le poids nutrition augmente proportionnellement à WPD ;
+    les autres dimensions sont réduites pour que Σ = 1.0.
+    """
+    base = {
+        "fraicheur":    0.30,
+        "appreciation": 0.30,
+        "variete":      0.20,
+        "saison":       0.10,
+        "nutrition":    0.10,
+    }
+    nutrition_weight = base["nutrition"] * wpd          # 0.10 → 0.12 → 0.15
+    autres_base  = 1.0 - base["nutrition"]              # 0.90
+    autres_cible = 1.0 - nutrition_weight
+    ratio = autres_cible / autres_base
+    return {
+        "fraicheur":    round(base["fraicheur"]    * ratio, 4),
+        "appreciation": round(base["appreciation"] * ratio, 4),
+        "variete":      round(base["variete"]      * ratio, 4),
+        "saison":       round(base["saison"]       * ratio, 4),
+        "nutrition":    round(nutrition_weight,            4),
+    }
+
+
 def suggerer_recettes(family, week_plan, target_date, meal_time: str) -> list[dict]:
     """
     Retourne les 5 meilleures recettes candidates pour un créneau (date + meal_time).
 
-    Score composite 0.0–1.0 sur 5 dimensions pondérées :
-      30% fraîcheur/rotation · 30% appréciation famille · 20% variété protéines
-      10% saisonnalité · 10% équilibre nutritionnel semaine
+    Score composite 0.0–1.0 sur 5 dimensions — poids dynamiques normalisés selon WPD :
+      fraîcheur/rotation · appréciation famille · variété protéines
+      saisonnalité · adéquation protéique (PS × WPD)
 
-    Chaque résultat : {'recipe': Recipe, 'score': float, 'reasons': dict}
+    Chaque résultat : {recipe, score, protein_score, protein_level,
+                       proteins_per_serving, reasons{…nutrition…}}
     """
     config = NutritionConfig.get()
     saison = _saison_courante()
@@ -273,13 +353,16 @@ def suggerer_recettes(family, week_plan, target_date, meal_time: str) -> list[di
     if not all_recipes:
         return []
 
+    # ── WPD et poids dynamiques ────────────────────────────────────────────────
+    wpd   = calculer_wpd(week_plan, config)
+    poids = _calculer_poids(wpd)
+
     # ── Membres de la famille ──────────────────────────────────────────────────
     family_user_ids = set(
         UserProfile.objects.filter(family=family).values_list("user_id", flat=True)
     )
 
     # ── Dernière utilisation de chaque recette pour cette famille ──────────────
-    # Parcours trié par date → la dernière écriture pour chaque recipe_id gagne
     last_used: dict[int, date_type] = {}
     for m in (
         Meal.objects
@@ -300,31 +383,24 @@ def suggerer_recettes(family, week_plan, target_date, meal_time: str) -> list[di
 
     # ── Repas déjà planifiés dans ce WeekPlan ─────────────────────────────────
     week_meals = list(
-        Meal.objects.filter(week_plan=week_plan, recipe__isnull=False)
+        Meal.objects
+        .filter(week_plan=week_plan, absent=False, recipe__isnull=False)
         .select_related("recipe")
     )
     day_meals = [m for m in week_meals if m.date == target_date]
 
-    day_protein_types   = [m.recipe.protein_type for m in day_meals  if m.recipe.protein_type]
-    week_protein_types  = [m.recipe.protein_type for m in week_meals if m.recipe.protein_type]
-    red_meat_count      = week_protein_types.count("boeuf") + week_protein_types.count("porc")
-
-    # Calories/protéines déjà planifiées (référence : 1 portion par repas)
-    week_calories = sum(m.recipe.calories_per_serving or 0 for m in week_meals)
-    week_proteins = sum(m.recipe.proteins_per_serving or 0 for m in week_meals)
-
-    # Cibles hebdomadaires (14 créneaux × cible dîner)
-    cal_week_target  = config.calories_dinner_target * 14
-    prot_week_target = config.proteins_dinner_target * 14
+    day_protein_types  = [m.recipe.protein_type for m in day_meals  if m.recipe.protein_type]
+    week_protein_types = [m.recipe.protein_type for m in week_meals if m.recipe.protein_type]
+    red_meat_count     = week_protein_types.count("boeuf") + week_protein_types.count("porc")
 
     # ── Scoring ───────────────────────────────────────────────────────────────
     results = []
 
     for recipe in all_recipes:
-        avg_fam  = _family_avg(recipe.id)
-        last     = last_used.get(recipe.id)
+        avg_fam = _family_avg(recipe.id)
+        last    = last_used.get(recipe.id)
 
-        # ── Dim 1 : Fraîcheur / rotation (30%) ────────────────────────────────
+        # ── Dim 1 : Fraîcheur / rotation ──────────────────────────────────────
         if last is None:
             rotation_score = 1.0
         else:
@@ -337,26 +413,29 @@ def suggerer_recettes(family, week_plan, target_date, meal_time: str) -> list[di
                 span = max(config.min_days_low_rated_repeat - config.min_days_before_repeat, 1)
                 rotation_score = min(1.0, 0.3 + 0.7 * (days_since - config.min_days_before_repeat) / span)
 
-        # ── Dim 2 : Appréciation famille (30%) ────────────────────────────────
+        # ── Dim 2 : Appréciation famille ──────────────────────────────────────
         famille_score = 0.5 if avg_fam is None else avg_fam / 5.0
 
-        # ── Dim 3 : Variété protéines (20%) ───────────────────────────────────
+        # ── Dim 3 : Variété protéines + bonus adéquation ──────────────────────
         pt = recipe.protein_type
         if not pt:
-            variete_score = 0.5  # neutre si non renseigné
+            variete_score = 0.5   # neutre si type non renseigné
         elif day_protein_types.count(pt) >= 2:
-            variete_score = 0.0  # règle dure : 2× même protéine dans la journée
+            variete_score = 0.0   # règle dure : 2× même protéine dans la journée
         elif pt in ("boeuf", "porc") and red_meat_count >= config.max_red_meat_per_week:
-            variete_score = 0.0  # règle dure : quota viande rouge atteint
+            variete_score = 0.0   # règle dure : quota viande rouge atteint
         else:
             variete_score = 0.5
             if pt not in week_protein_types:
                 variete_score += 0.3   # bonus : absent de la semaine
             elif week_protein_types.count(pt) >= 2:
                 variete_score -= 0.2   # malus : déjà 2× cette semaine
+            # Bonus adéquation protéique : récompense les plats très protéinés
+            if recipe.proteins_per_serving and recipe.proteins_per_serving > 25:
+                variete_score += 0.1
             variete_score = max(0.0, min(1.0, variete_score))
 
-        # ── Dim 4 : Saisonnalité (10%) ────────────────────────────────────────
+        # ── Dim 4 : Saisonnalité ──────────────────────────────────────────────
         seasons = recipe.seasons or []
         if not seasons:
             saison_score = 0.7
@@ -365,42 +444,39 @@ def suggerer_recettes(family, week_plan, target_date, meal_time: str) -> list[di
         else:
             saison_score = 0.2
 
-        # ── Dim 5 : Équilibre nutritionnel semaine (10%) ──────────────────────
-        equilibre_score = 0.5
-        if cal_week_target > 0 and week_calories > cal_week_target * 1.1:
-            if "leger" in (recipe.health_tags or []):
-                equilibre_score += 0.2
-        if prot_week_target > 0 and week_proteins < prot_week_target * 0.7:
-            if "proteine" in (recipe.health_tags or []):
-                equilibre_score += 0.2
-        equilibre_score = min(1.0, equilibre_score)
+        # ── Dim 5 : Adéquation protéique (PS × WPD, normalisé à 1.0) ─────────
+        ps = calculer_protein_score(recipe)
+        nutrition_score = min(ps * wpd, 1.0)
 
-        # ── Score final ────────────────────────────────────────────────────────
+        # ── Score final avec poids dynamiques normalisés ───────────────────────
         score = (
-            rotation_score  * 0.30 +
-            famille_score   * 0.30 +
-            variete_score   * 0.20 +
-            saison_score    * 0.10 +
-            equilibre_score * 0.10
+            rotation_score   * poids["fraicheur"]    +
+            famille_score    * poids["appreciation"] +
+            variete_score    * poids["variete"]      +
+            saison_score     * poids["saison"]       +
+            nutrition_score  * poids["nutrition"]
         )
 
         results.append({
-            "recipe": recipe,
-            "score": round(score, 3),
+            "recipe":              recipe,
+            "score":               round(score, 3),
+            "protein_score":       ps,
+            "protein_level":       _protein_level(ps),
+            "proteins_per_serving": recipe.proteins_per_serving,
             "reasons": {
-                "rotation":  round(rotation_score,  2),
-                "famille":   round(famille_score,   2),
-                "variete":   round(variete_score,   2),
-                "saison":    round(saison_score,    2),
-                "equilibre": round(equilibre_score, 2),
+                "rotation":   round(rotation_score,  2),
+                "famille":    round(famille_score,   2),
+                "variete":    round(variete_score,   2),
+                "saison":     round(saison_score,    2),
+                "nutrition":  round(nutrition_score, 2),
             },
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
     logger.debug(
-        "suggerer_recettes : famille=%s date=%s %s → %d candidats, top score=%.3f",
+        "suggerer_recettes : famille=%s date=%s %s → %d candidats, top=%.3f, wpd=%.1f",
         family.pk, target_date, meal_time,
-        len(results), results[0]["score"] if results else 0,
+        len(results), results[0]["score"] if results else 0, wpd,
     )
     return results[:5]
 
