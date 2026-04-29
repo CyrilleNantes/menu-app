@@ -38,6 +38,8 @@
             if (carbs) carbs.name = `ing_carbs_${g}_${i}`;
             const fats = row.querySelector('.ing-fats');
             if (fats) fats.name = `ing_fats_${g}_${i}`;
+            const ciqualRef = row.querySelector('.ing-ciqual-ref-id');
+            if (ciqualRef) ciqualRef.name = `ing_ciqual_ref_id_${g}_${i}`;
         });
         const ingCount = groupEl.querySelector('.ing-count');
         if (ingCount) { ingCount.name = `group_ing_count_${g}`; ingCount.value = rows.length; }
@@ -96,7 +98,8 @@
         div.dataset.ingIdx = i;
         div.innerHTML = `
             <div class="ing-name-wrap">
-                <input type="text" name="ing_name_${g}_${i}" placeholder="Ingrédient *" class="ing-name">
+                <input type="text" name="ing_name_${g}_${i}" placeholder="Ingrédient *" class="ing-name" autocomplete="off">
+                <span class="ciqual-badge" hidden></span>
             </div>
             <input type="number" name="ing_qty_${g}_${i}"      placeholder="Qté" step="any" class="ing-qty">
             <input type="text"   name="ing_qty_note_${g}_${i}" placeholder="Ex. 150–200g" class="ing-qty-note">
@@ -109,7 +112,8 @@
             <input type="hidden" name="ing_calories_${g}_${i}" value="" class="ing-calories">
             <input type="hidden" name="ing_proteins_${g}_${i}" value="" class="ing-proteins">
             <input type="hidden" name="ing_carbs_${g}_${i}"    value="" class="ing-carbs">
-            <input type="hidden" name="ing_fats_${g}_${i}"     value="" class="ing-fats">`;
+            <input type="hidden" name="ing_fats_${g}_${i}"     value="" class="ing-fats">
+            <input type="hidden" name="ing_ciqual_ref_id_${g}_${i}" value="" class="ing-ciqual-ref-id">`;
         return div;
     }
 
@@ -172,9 +176,95 @@
         return div;
     }
 
+    // ── Autocomplete Ciqual ──────────────────────────────────────────────────
+
+    async function fetchCiqual(q) {
+        try {
+            const resp = await fetch(`/api/ingredients/ciqual/?q=${encodeURIComponent(q)}`);
+            const data = await resp.json();
+            return data.ok ? data.results : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function closeCiqualDropdown(wrap) {
+        wrap.querySelector('.ciqual-dropdown')?.remove();
+    }
+
+    function showCiqualDropdown(wrap, results) {
+        closeCiqualDropdown(wrap);
+        if (!results.length) return;
+        const ul = document.createElement('ul');
+        ul.className = 'ciqual-dropdown';
+        results.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'ciqual-dropdown__item';
+            const kcal = item.kcal_100g != null ? ` — ${item.kcal_100g} kcal/100g` : '';
+            li.textContent = item.nom_fr + kcal;
+            li.dataset.ciqualId      = item.id;
+            li.dataset.cal100        = item.kcal_100g         ?? '';
+            li.dataset.prot100       = item.proteines_100g    ?? '';
+            li.dataset.carbs100      = item.glucides_100g     ?? '';
+            li.dataset.fats100       = item.lipides_100g      ?? '';
+            li.dataset.defaultWeight = item.default_weight_g  ?? '';
+            li.dataset.label         = item.nom_fr;
+            ul.appendChild(li);
+        });
+        wrap.appendChild(ul);
+    }
+
+    const debouncedCiqualSearch = debounce(async function (nameInput) {
+        const q = nameInput.value.trim();
+        const wrap = nameInput.closest('.ing-name-wrap');
+        if (!wrap) return;
+        if (q.length < 2) { closeCiqualDropdown(wrap); return; }
+        const results = await fetchCiqual(q);
+        showCiqualDropdown(wrap, results);
+    }, 350);
+
     // ── Délégation d'événements ──────────────────────────────────────────────
 
+    document.addEventListener('input', function (e) {
+        if (e.target.classList.contains('ing-name')) {
+            debouncedCiqualSearch(e.target);
+        }
+    });
+
     document.addEventListener('click', function (e) {
+
+        // Sélection d'un résultat Ciqual
+        if (e.target.classList.contains('ciqual-dropdown__item')) {
+            const li     = e.target;
+            const wrap   = li.closest('.ing-name-wrap');
+            const ingRow = li.closest('.ing-row');
+            if (!wrap || !ingRow) return;
+            ingRow.querySelector('.ing-name').value = li.dataset.label;
+            const refInput = ingRow.querySelector('.ing-ciqual-ref-id');
+            if (refInput) refInput.value = li.dataset.ciqualId;
+            // Stocker macros/100g sur la ligne pour feedback visuel futur
+            ingRow.dataset.cal100   = li.dataset.cal100;
+            ingRow.dataset.prot100  = li.dataset.prot100;
+            ingRow.dataset.carbs100 = li.dataset.carbs100;
+            ingRow.dataset.fats100  = li.dataset.fats100;
+            closeCiqualDropdown(wrap);
+            // Afficher indicateur de correspondance Ciqual
+            const badge = wrap.querySelector('.ciqual-badge');
+            if (badge) {
+                badge.textContent = li.dataset.cal100
+                    ? `${li.dataset.cal100} kcal/100g`
+                    : 'Ciqual';
+                badge.hidden = false;
+            }
+            return;
+        }
+
+        // Fermer les dropdowns ouverts si on clique ailleurs
+        document.querySelectorAll('.ciqual-dropdown').forEach(d => {
+            if (!d.contains(e.target)) d.remove();
+        });
+
+
 
         // + Groupe
         if (e.target.id === 'btn-add-group') {

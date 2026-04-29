@@ -21,6 +21,7 @@ urlpatterns = [
     path("planning/<int:plan_id>/bilan/", views.bilan_planning_ajax, name="bilan_planning_ajax"),
     path("planning/proposition/<int:proposal_id>/supprimer/", views.supprimer_proposition, name="supprimer_proposition"),
     path("api/recettes/", views.api_recettes, name="api_recettes"),
+    path("api/ingredients/ciqual/", views.recherche_ciqual, name="recherche_ciqual"),
     path("courses/<int:plan_id>/", views.liste_courses, name="liste_courses"),
     path("courses/generer/<int:plan_id>/", views.generer_courses, name="generer_courses"),
     path("courses/item/<int:id>/cocher/", views.cocher_item, name="cocher_item"),

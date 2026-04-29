@@ -25,12 +25,14 @@ from .models import Family, Ingredient, Meal, MealProposal, NutritionConfig, Rec
 from .services import (
     bilan_planning,
     calculer_alertes_planning,
+    calculer_macros_recette,
     calculer_wpd,
     exporter_backup,
     generer_liste_courses,
     importer_recette_depuis_json,
     notifier_nouvelle_proposition,
     notifier_planning_publie,
+    rechercher_ciqual,
     restaurer_backup,
     sauvegarder_recette_depuis_post,
     suggerer_recettes,
@@ -1087,6 +1089,14 @@ def _verifier_cuisinier(request):
 
 
 @login_required
+def recherche_ciqual(request):
+    """GET /api/ingredients/ciqual/?q=... — autocomplete Ciqual pour le formulaire recette."""
+    q = request.GET.get("q", "").strip()
+    results = rechercher_ciqual(q)
+    return JsonResponse({"ok": True, "results": results})
+
+
+@login_required
 def creer_recette(request):
     if not _verifier_cuisinier(request):
         messages.error(request, "Seuls les Cuisiniers peuvent créer des recettes.")
@@ -1117,6 +1127,7 @@ def creer_recette(request):
             created_by=request.user,
         )
         sauvegarder_recette_depuis_post(recipe, request.POST)
+        calculer_macros_recette(recipe)
         messages.success(request, "Recette enregistrée !")
         return redirect("menu:detail_recette", id=recipe.id)
 
@@ -1154,6 +1165,7 @@ def modifier_recette(request, id):
             recipe.protein_type = cd.get("protein_type") or None
             recipe.save()
             sauvegarder_recette_depuis_post(recipe, request.POST)
+            calculer_macros_recette(recipe)
             messages.success(request, "Recette enregistrée !")
             return redirect("menu:detail_recette", id=recipe.id)
     else:
