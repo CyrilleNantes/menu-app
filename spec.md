@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v3.1** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-04-27
+> Version courante : **v3.2** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-04-29
 
 ---
 
@@ -17,7 +17,7 @@ Permettre à des familles de planifier leurs menus hebdomadaires, gérer un cata
 - Gestion des familles et invitation des membres
 - Catalogue de recettes partagé (communauté globale)
 - Fiche recette enrichie : ingrédients groupés, étapes avec timers, notes de chef, sections libres
-- Calcul nutritionnel automatique via API Open Food Facts
+- Référentiel nutritionnel local ANSES Ciqual 2020 (3185 ingrédients, calcul hors-ligne)
 - Système de notation par étoiles (1–5) avec historique par utilisateur
 - Propositions de repas par les Convives
 - Planning hebdomadaire par famille (période paramétrable)
@@ -110,7 +110,7 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 
 | Service | Usage | Variable d'env | Fichier `integrations/` |
 |---------|-------|----------------|--------------------------|
-| Open Food Facts | Calcul nutritionnel des ingrédients | *(aucune clé requise — API publique)* | `integrations/openfoodfacts.py` |
+| Ciqual 2020 (local) | Référentiel nutritionnel ingrédients | *(aucune clé — table locale PostgreSQL)* | *(pas d'intégration externe)* |
 | Cloudinary | Stockage et redimensionnement des photos | `CLOUDINARY_URL` | `integrations/cloudinary.py` |
 | Google Calendar | Export des menus planifiés | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `integrations/google_calendar.py` |
 | Google Tasks | Export des listes de courses | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `integrations/google_tasks.py` |
@@ -133,13 +133,23 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 - `https://www.googleapis.com/auth/calendar.events` (écriture événements uniquement — moindre privilège)
 - `https://www.googleapis.com/auth/tasks` (écriture tâches)
 
-### 3.3 Open Food Facts
+### 3.3 Référentiel nutritionnel Ciqual 2020 (ANSES)
 
-API publique REST, sans clé. Interrogée lors de la saisie d'un ingrédient pour suggérer les valeurs nutritionnelles.
+Table locale PostgreSQL (`IngredientRef`), importée depuis le fichier XLS officiel ANSES Ciqual 2020.
+**Aucun appel réseau** — calcul 100% hors-ligne.
 
-Endpoint utilisé : `https://world.openfoodfacts.org/cgi/search.pl?search_terms={terme}&json=1`
+**Import initial** : `python manage.py import_ciqual --file data/Table\ Ciqual\ 2020_FR_2020\ 07\ 07.xls`
+**Matching** : `python manage.py match_ingredients` — associe chaque `Ingredient` à un `IngredientRef` via synonymes, nom normalisé, premier mot.
+**Recalcul** : `python manage.py recalculate_nutrition` — recalcule les macros par portion pour toutes les recettes.
 
-Fallback : si aucun résultat, l'utilisateur saisit les valeurs manuellement.
+**Statistiques (2026-04-29)** :
+- 3185 `IngredientRef` importés
+- Couverture matching : 74.3% (1070 matchés, 370 non-calculables, 0 non-matchés)
+- 135 recettes avec macros recalculées
+
+**Autocomplete** : à la saisie du nom d'un ingrédient dans le formulaire recette, une dropdown propose les correspondances Ciqual (debounce 350ms, `GET /api/ingredients/ciqual/`).
+
+Fallback : si aucune correspondance Ciqual, les macros restent vides (l'ingrédient est dit "non calculable").
 
 ---
 
@@ -263,12 +273,34 @@ Ingrédient d'une recette, rattaché à un groupe.
 | `unit` | `CharField(50)` | oui | — | Unité (g, ml, c. à soupe…) |
 | `is_optional` | `BooleanField` | non | `False` | Ingrédient optionnel |
 | `category` | `CharField(50)` | oui | — | Catégorie courses (viandes, légumes, épicerie…) |
-| `openfoodfacts_id` | `CharField(100)` | oui | — | ID produit Open Food Facts (si correspondance) |
-| `calories` | `FloatField` | oui | — | Kcal pour la quantité définie |
+| `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Correspondance dans le référentiel ANSES Ciqual 2020 |
+| `calories` | `FloatField` | oui | — | Kcal pour la quantité définie (calculé depuis Ciqual si ref présente) |
 | `proteins` | `FloatField` | oui | — | Protéines (g) |
 | `carbs` | `FloatField` | oui | — | Glucides (g) |
 | `fats` | `FloatField` | oui | — | Lipides (g) |
 | `order` | `PositiveIntegerField` | non | `0` | Ordre dans le groupe |
+
+---
+
+### 4.6b `IngredientRef`
+
+Référentiel nutritionnel ANSES Ciqual 2020 — table en lecture seule (importée via `import_ciqual`).
+
+| Champ | Type Django | Nullable | Défaut | Description |
+|-------|-------------|----------|--------|-------------|
+| `id` | `BigAutoField` | non | auto | Clé primaire |
+| `ciqual_code` | `CharField(10)` | non | — | Code Ciqual unique (ex. `"22000"`) |
+| `nom_fr` | `CharField(300)` | non | — | Nom officiel Ciqual (ex. "Œuf entier, cru") |
+| `nom_normalise` | `CharField(300)` | non | — | Nom normalisé pour recherche (ascii, minuscules) |
+| `groupe` | `CharField(100)` | oui | — | Groupe alimentaire Ciqual |
+| `sous_groupe` | `CharField(100)` | oui | — | Sous-groupe Ciqual |
+| `kcal_100g` | `FloatField` | oui | — | Énergie (kcal/100g) |
+| `proteines_100g` | `FloatField` | oui | — | Protéines (g/100g) |
+| `glucides_100g` | `FloatField` | oui | — | Glucides (g/100g) |
+| `lipides_100g` | `FloatField` | oui | — | Lipides (g/100g) |
+| `default_weight_g` | `FloatField` | oui | — | Poids par défaut pour unités dénombrables (ex. 1 œuf = 60g) |
+| `protein_type` | `CharField(20)` | oui | — | Type de protéine (`boeuf`, `volaille`, `poisson`, etc.) |
+| `shopping_category` | `CharField(50)` | oui | — | Catégorie liste de courses |
 
 ---
 
@@ -495,14 +527,15 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 
 **Règles de gestion** :
 1. La photo est uploadée vers Cloudinary via `integrations/cloudinary.py` → l'URL retournée est stockée dans `photo_url`
-2. À la saisie de chaque ingrédient, une requête AJAX interroge `integrations/openfoodfacts.py` et retourne des suggestions de valeurs nutritionnelles
-3. Les macros de la recette (`calories_per_serving` etc.) sont recalculées et sauvegardées à chaque enregistrement via `services.py`
+2. À la saisie de chaque ingrédient, une requête AJAX interroge `services.rechercher_ciqual()` (base Ciqual locale) et propose les correspondances dans une dropdown
+3. Si un `IngredientRef` est sélectionné, les macros de l'ingrédient sont recalculées depuis Ciqual (quantité → grammes → facteur × kcal/100g)
+4. Les macros de la recette (`calories_per_serving` etc.) sont recalculées et sauvegardées à chaque enregistrement via `services.calculer_macros_recette()`
 4. Le calcul : somme des macros de tous les ingrédients / `base_servings`
 
 **Gestion des erreurs** :
 - Objet introuvable → `get_object_or_404` → HTTP 404
 - Upload photo échoué → message flash, recette sauvegardée sans photo
-- API Open Food Facts indisponible → suggestions vides, saisie manuelle
+- Ciqual sans résultat → dropdown vide, macros restent vides (ingrédient non-calculable)
 
 **Réponse** :
 - Succès POST : redirection vers `/recettes/<id>/` + message flash "Recette enregistrée"
@@ -541,18 +574,19 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 
 ---
 
-### 5.7 Recherche de valeurs nutritionnelles (AJAX)
+### 5.7 Recherche Ciqual (autocomplete ingrédients)
 
-**URL** : `GET /api/ingredients/nutrition/?q=<terme>` → `menu:recherche_nutrition`
-**Vue** : `recherche_nutrition(request)`
-**Accès** : Cuisinier uniquement
+**URL** : `GET /api/ingredients/ciqual/?q=<terme>` → `menu:recherche_ciqual`
+**Vue** : `recherche_ciqual(request)`
+**Accès** : utilisateur connecté
 
 **Règles de gestion** :
-1. Appelle `integrations/openfoodfacts.py` avec le terme
-2. Retourne les 5 meilleurs résultats avec nom, calories, protéines, glucides, lipides pour 100g
+1. Normalise le terme (minuscules, sans accents) et interroge `IngredientRef.nom_normalise__icontains`
+2. Retourne les 8 meilleurs résultats triés par `nom_fr`
+3. Aucun appel réseau — base PostgreSQL locale
 
 **Réponse** :
-- `{"ok": true, "results": [{"id": "...", "name": "...", "calories": 250, ...}]}`
+- `{"ok": true, "results": [{"id": 42, "ciqual_code": "22000", "nom_fr": "Œuf entier, cru", "kcal_100g": 147, "proteines_100g": 12.6, ...}]}`
 
 ---
 
@@ -722,10 +756,11 @@ Comportements :
 1. Bouton "Ajouter un ingrédient" : clone le dernier bloc ingrédient et incrémente les indices de nommage
 2. Bouton "Ajouter un groupe" : crée un nouveau groupe vide
 3. Bouton "Ajouter une étape" : clone la dernière étape et incrémente
-4. À la saisie du nom d'un ingrédient (debounce 400ms) : appelle `/api/ingredients/nutrition/` et affiche les suggestions dans une dropdown
+4. À la saisie du nom d'un ingrédient (debounce 350ms) : appelle `/api/ingredients/ciqual/` et affiche les suggestions Ciqual dans `.ciqual-dropdown` avec badge kcal/100g
+5. Sélection d'un résultat : remplit `.ing-ciqual-ref-id` (ID de l'`IngredientRef`), affiche le badge de confirmation
 
 **Gestion des erreurs JS** :
-- Si `/api/ingredients/nutrition/` ne répond pas → dropdown vide, saisie manuelle disponible
+- Si `/api/ingredients/ciqual/` ne répond pas → dropdown vide, saisie manuelle disponible
 
 ---
 
@@ -1002,6 +1037,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0003_intelligence_fields` | 2026-04-26 | `Recipe.protein_type` + `UserProfile.portions_factor` |
 | `0004_nutrition_config` | 2026-04-26 | Modèle `NutritionConfig` singleton PNNS |
 | `0005_recipe_photos` | 2026-04-26 | Modèle `RecipePhoto` — galerie photos recette |
+| `0006_meal_absent_field` | 2026-04-27 | `Meal.absent` BooleanField (étape 25 — créneaux sans repas) |
+| `0007_ciqual_ingredientref` | 2026-04-29 | Modèle `IngredientRef` (3185 entrées Ciqual 2020) + `Ingredient.ciqual_ref` FK |
 
 ---
 
@@ -1022,8 +1059,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v2.8 | 2026-04-26 | Étape 23 — notifications email (planning publié → Convives, proposition → Cuisiniers) |
 | v2.9 | 2026-04-26 | Étape 24 — allergies enrichies : 16 tags EU, alertes par ingrédient, formulaire profil, page compatibilité famille |
 | v3.0 | 2026-04-26 | Revue de code — B1 WeekPlan created_by, B2 prefetch photos, B3 profil N+1, S1-S3 spec, Q1-Q2 qualité |
-| v3.1 | 2026-04-27 | Algo suggestions : PS×WPD, poids dynamiques, bonus dim.3, JSON enrichi, JS protein indicator |
 | v3.1 | 2026-04-27 | Algo suggestions affiné — PS×WPD, poids dynamiques normalisés, bonus adéquation protéique dim.3, réponse JSON enrichie |
+| v3.2 | 2026-04-29 | Intégration ANSES Ciqual 2020 — IngredientRef (3185 entrées), matching 74.3%, macros recalculées, autocomplete formulaire, suppression Open Food Facts |
 
 ### Détail v2.0
 
@@ -1032,8 +1069,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 - 15 modèles, migration initiale, fixture Hachis Parmentier
 - Authentification email (inscription avec rôle, connexion, invitation famille par token)
 - Catalogue recettes : liste avec filtres/tri/recherche, fiche complète avec infos nutritionnelles et alertes allergies
-- Création/édition/suppression de recettes (Cloudinary, macros calculées, soft delete)
-- API nutritionnelle Open Food Facts (suggestions ingrédients en temps réel)
+- Création/édition/suppression de recettes (Cloudinary, macros calculées depuis Ciqual, soft delete)
+- Autocomplete ingrédients depuis référentiel local Ciqual 2020 (base PostgreSQL, hors-ligne)
 - Planning hebdomadaire : grille 7j×2, AJAX, restes, publication, indicateurs nutritionnels
 - Liste de courses : génération automatique agrégée, cochage AJAX avec optimistic UI
 - PWA installable : manifest, service worker (cache-first/network-first), icônes, offline recettes
