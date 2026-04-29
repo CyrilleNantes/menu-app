@@ -21,7 +21,6 @@ from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
-from .integrations.openfoodfacts import rechercher_ingredient
 from .models import Family, Ingredient, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
     bilan_planning,
@@ -1074,17 +1073,6 @@ def noter_recette(request, id):
             "date":    date.today().strftime("%d/%m/%Y"),
         },
     })
-
-
-# ─── API nutritionnelle ──────────────────────────────────────────────────────
-
-@login_required
-def recherche_nutrition(request):
-    q = request.GET.get("q", "").strip()
-    if not q:
-        return JsonResponse({"ok": True, "results": []})
-    results = rechercher_ingredient(q)
-    return JsonResponse({"ok": True, "results": results})
 
 
 # ─── Création / édition / suppression ────────────────────────────────────────

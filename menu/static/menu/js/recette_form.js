@@ -38,8 +38,6 @@
             if (carbs) carbs.name = `ing_carbs_${g}_${i}`;
             const fats = row.querySelector('.ing-fats');
             if (fats) fats.name = `ing_fats_${g}_${i}`;
-            const offId = row.querySelector('.ing-off-id');
-            if (offId) offId.name = `ing_off_id_${g}_${i}`;
         });
         const ingCount = groupEl.querySelector('.ing-count');
         if (ingCount) { ingCount.name = `group_ing_count_${g}`; ingCount.value = rows.length; }
@@ -111,8 +109,7 @@
             <input type="hidden" name="ing_calories_${g}_${i}" value="" class="ing-calories">
             <input type="hidden" name="ing_proteins_${g}_${i}" value="" class="ing-proteins">
             <input type="hidden" name="ing_carbs_${g}_${i}"    value="" class="ing-carbs">
-            <input type="hidden" name="ing_fats_${g}_${i}"     value="" class="ing-fats">
-            <input type="hidden" name="ing_off_id_${g}_${i}"   value="" class="ing-off-id">`;
+            <input type="hidden" name="ing_fats_${g}_${i}"     value="" class="ing-fats">`;
         return div;
     }
 
@@ -175,106 +172,9 @@
         return div;
     }
 
-    // ── Nutrition Open Food Facts ────────────────────────────────────────────
-
-    async function fetchNutrition(q) {
-        try {
-            const resp = await fetch(`/api/ingredients/nutrition/?q=${encodeURIComponent(q)}`);
-            const data = await resp.json();
-            return data.ok ? data.results : [];
-        } catch {
-            return [];
-        }
-    }
-
-    function closeNutritionDropdown(wrap) {
-        wrap.querySelector('.nutrition-dropdown')?.remove();
-    }
-
-    function showNutritionDropdown(wrap, results) {
-        closeNutritionDropdown(wrap);
-        if (!results.length) return;
-        const ul = document.createElement('ul');
-        ul.className = 'nutrition-dropdown';
-        results.forEach(item => {
-            const li = document.createElement('li');
-            li.className = 'nutrition-dropdown__item';
-            li.textContent = item.name + (item.calories ? ` — ${item.calories} kcal/100g` : '');
-            li.dataset.cal100   = item.calories  ?? '';
-            li.dataset.prot100  = item.proteins  ?? '';
-            li.dataset.carbs100 = item.carbs     ?? '';
-            li.dataset.fats100  = item.fats      ?? '';
-            li.dataset.offId    = item.id        ?? '';
-            li.dataset.label    = item.name;
-            ul.appendChild(li);
-        });
-        wrap.appendChild(ul);
-    }
-
-    function computeAndFillNutrition(ingRow) {
-        const qty      = parseFloat(ingRow.querySelector('.ing-qty')?.value) || 0;
-        const cal100   = parseFloat(ingRow.dataset.cal100)   || 0;
-        const prot100  = parseFloat(ingRow.dataset.prot100)  || 0;
-        const carbs100 = parseFloat(ingRow.dataset.carbs100) || 0;
-        const fats100  = parseFloat(ingRow.dataset.fats100)  || 0;
-        const factor   = qty / 100;
-
-        const set = (cls, val) => {
-            const el = ingRow.querySelector(cls);
-            if (el) el.value = (val && factor) ? (Math.round(val * factor * 10) / 10) : '';
-        };
-        set('.ing-calories', cal100);
-        set('.ing-proteins', prot100);
-        set('.ing-carbs',    carbs100);
-        set('.ing-fats',     fats100);
-    }
-
-    const debouncedNutritionSearch = debounce(async function (nameInput) {
-        const q = nameInput.value.trim();
-        const wrap = nameInput.closest('.ing-name-wrap');
-        if (!wrap) return;
-        if (q.length < 2) { closeNutritionDropdown(wrap); return; }
-        const results = await fetchNutrition(q);
-        showNutritionDropdown(wrap, results);
-    }, 400);
-
     // ── Délégation d'événements ──────────────────────────────────────────────
 
-    document.addEventListener('input', function (e) {
-        if (e.target.classList.contains('ing-name')) {
-            debouncedNutritionSearch(e.target);
-        }
-        if (e.target.classList.contains('ing-qty')) {
-            const ingRow = e.target.closest('.ing-row');
-            if (ingRow && ingRow.dataset.cal100) {
-                computeAndFillNutrition(ingRow);
-            }
-        }
-    });
-
     document.addEventListener('click', function (e) {
-
-        // Sélection d'un résultat nutritionnel
-        if (e.target.classList.contains('nutrition-dropdown__item')) {
-            const li    = e.target;
-            const wrap  = li.closest('.ing-name-wrap');
-            const ingRow = li.closest('.ing-row');
-            if (!wrap || !ingRow) return;
-            ingRow.querySelector('.ing-name').value = li.dataset.label;
-            ingRow.querySelector('.ing-off-id').value = li.dataset.offId;
-            ingRow.dataset.cal100   = li.dataset.cal100;
-            ingRow.dataset.prot100  = li.dataset.prot100;
-            ingRow.dataset.carbs100 = li.dataset.carbs100;
-            ingRow.dataset.fats100  = li.dataset.fats100;
-            computeAndFillNutrition(ingRow);
-            closeNutritionDropdown(wrap);
-            return;
-        }
-
-        // Fermer les dropdowns ouverts si on clique ailleurs
-        document.querySelectorAll('.nutrition-dropdown').forEach(d => {
-            if (!d.contains(e.target)) d.remove();
-        });
 
         // + Groupe
         if (e.target.id === 'btn-add-group') {
