@@ -180,11 +180,11 @@ SYNONYMS = {
     'aneth ou ciboulette':        '11093',
     'thym':                       '11070',
     'branche de thym':            '11070',
-    'feuilles de laurier':        None,      # non calculable (quantité trop faible)
-    'feuilles de sauge':          None,
-    'bouquet garni thym laurier': None,
-    'mini bouquet garni':         None,
-    'cube bouquet garni':         None,
+    'feuilles de laurier':        'CUST008',
+    'feuilles de sauge':          'CUST007',
+    'bouquet garni thym laurier': 'CUST009',
+    'mini bouquet garni':         'CUST009',
+    'cube bouquet garni':         'CUST009',
     'pruneaux avec noyau':        '20068',
     'pruneaux':                   '20068',
     'prunes':                     '20067',
@@ -193,7 +193,7 @@ SYNONYMS = {
     'amandes':                    '15000',
     'graines de sesame':          '15010',   # Sésame, graine
     'gomasio':                    '15010',
-    'baies roses':                None,      # quantité négligeable
+    'baies roses':                'CUST021',
     'lentilles':                  '20587',
     'lentilles vertes':           '20587',
 
@@ -292,7 +292,7 @@ SYNONYMS = {
     'huile olive':                '17270',
     'vinaigre':                   '11220',
     'vinaigre de vin':            '11220',
-    'vinaigrette':                '11230',
+    'vinaigrette':                'CUST018',
     'nuoc mam':                   '11104',
     'sauce nuoc mam':             '11104',
     'sauce soja':                 '11104',
@@ -311,11 +311,11 @@ SYNONYMS = {
     'bouillon de legumes':        '25948',
     'paprika fume en poudre':     '11040',
     'paprika':                    '11040',
-    'ras el hanout':              None,
-    'epices italiennes':          None,
-    'epices mexicaines':          None,
-    'epices calabraises':         None,
-    'epices ramen':               None,
+    'ras el hanout':              'CUST016',
+    'epices italiennes':          'CUST017',
+    'epices mexicaines':          'CUST017',
+    'epices calabraises':         'CUST017',
+    'epices ramen':               'CUST017',
 
     # ── Nouveaux — protéines / viandes ──
     'poitrine de porc':           '28105',  # Porc, côte de porc
@@ -335,12 +335,13 @@ SYNONYMS = {
     'lait de coco':               '18041',  # Lait de coco ou Crème de coco
     'sucre':                      '31016',  # Sucre blanc
     'sucre en poudre':            '31016',
-    'coriandre':                  None,     # aromate — quantité négligeable
+    'coriandre':                  'CUST010',
+    'coriandre moulue':           'CUST010',
     'huile':                      '17270',  # huile sans précision → huile d'olive
     'ketchup':                    '11073',  # Ketchup allégé en sucres
     'moutarde':                   '11101',  # Sauce béchamel (approximation) → None?
     'concentre de tomates':       '20290',
-    'vinaigrette':                None,     # sauce préparée — non calculable directement
+    'vinaigrette maison':         'CUST018',
     'lait':                       '19042',  # Lait demi-écrémé, pasteurisé
     'lait entier':                '19024',
     'lait demi ecreme':           '19042',
@@ -363,9 +364,9 @@ SYNONYMS = {
     'patate douce':               '4101',   # Patate douce, crue
     'pomme':                      '13050',  # Pomme, pulpe, crue
     'pommes':                     '13050',
-    'celeri':                     None,     # très faible valeur nutritionnelle
-    'branches de celeri':         None,
-    'branche de celeri':          None,
+    'celeri':                     'CUST027',
+    'branches de celeri':         'CUST027',
+    'branche de celeri':          'CUST027',
     'manioc':                     '54031',  # Manioc, racine crue
     'petits pains':               '7001',   # Pain, baguette (approximation)
     'sucrine':                    '20031',  # Laitue, crue (salade sucrine)
@@ -373,56 +374,71 @@ SYNONYMS = {
     'cantal':                     '12722',  # Cantal entre-deux
     'poitrine fumee':             '28858',  # Pancetta ou Poitrine roulée sèche
     'mayonnaise':                 '11054',  # Mayonnaise 70% MG
-    'radis':                      None,     # faible valeur nutritionnelle
-    'radis roses':                None,
+    'radis':                      'CUST023',
+    'radis roses':                'CUST023',
 
-    # ── Non calculables (eau, sel, aromates discrets) ──
-    'eau':                        None,
-    'eau cocotte':                None,
-    'eau chaude':                 None,
-    'eau ou bouillon':            None,
-    'eau tiede':                  None,
-    'sel':                        None,
-    'sel et poivre':              None,
-    'sel fin':                    None,
-    'sel poivre':                 None,
-    'poivre':                     None,
-    'poivre noir':                None,
-    'poivre du moulin':           None,
-    'muscade':                    None,
-    'noix de muscade':            None,
-    'jus de cuisson du porc':     None,
-    'herbes de provence':         None,
-    'herbes':                     None,
-    'herbes fraiches':            None,
-    'feuille de laurier':         None,
-    'melange nordique':           None,
-    'melange de legumes':         None,
+    # ── Eau / bouillons (valeur nutritionnelle nulle) ──
+    'eau':                        'CUST001',
+    'eau cocotte':                'CUST001',
+    'eau chaude':                 'CUST001',
+    'eau ou bouillon':            'CUST001',
+    'eau tiede':                  'CUST001',
+    'bouillon ou eau':            'CUST001',
+
+    # ── Sel / poivre ──
+    'sel':                        'CUST002',
+    'sel et poivre':              'CUST002',
+    'sel fin':                    'CUST002',
+    'sel poivre':                 'CUST002',
+    'poivre':                     'CUST003',
+    'poivre noir':                'CUST003',
+    'poivre concasse':            'CUST003',
+    'poivre du moulin':           'CUST003',
+
+    # ── Herbes aromatiques ──
+    'herbes de provence':         'CUST004',
+    'herbes':                     'CUST004',
+    'herbes fraiches':            'CUST004',
+    'basilic':                    'CUST005',
+    'menthe':                     'CUST006',
+    'sauge':                      'CUST007',
+    'feuille de laurier':         'CUST008',
+    'laurier':                    'CUST008',
+
+    # ── Épices / condiments (quantité négligeable) ──
+    'muscade':                    'CUST014',
+    'noix de muscade':            'CUST014',
+    'curry':                      'CUST013',
+    'curry en poudre':            'CUST013',
+    'cumin':                      'CUST011',
+    'gingembre':                  'CUST015',
+    'gingembre en poudre':        'CUST015',
+    'puree de gingembre':         'CUST015',
+    'cannelle':                   'CUST012',
+    'ras el hanout fin':          'CUST016',
+    'melange marocain':           'CUST028',
+    'melange nordique':           'CUST028',
+    'melange epices':             'CUST017',
+    'melange d epices du moyen orient': 'CUST028',
+
+    # ── Sauces / mélanges ──
+    'sauce sucree':               'CUST020',
+    'sauce worcestershire':       'CUST019',
+    'sauce confit d oignon':      'CUST026',
+    'jus de cuisson du porc':     'CUST024',
+    'melange de legumes':         'CUST025',
+
+    # ── Vraiment non calculables (pas de référence pertinente) ──
     'legumes':                    None,
-    'sauce sucree':               None,
     'nems ou rouleaux imperiaux': None,
-    'bouillon ou eau':            None,
-    'menthe':                     None,
-    'basilic':                    None,
-    'levure seche':               None,
-    'levure de boulanger':        None,
+    'levure seche':               'CUST022',
+    'levure de boulanger':        None,       # levure fraîche — valeurs réelles mais usage ponctuel
     'matiere grasse':             None,
-    'puree de gingembre':         None,
-    'sauce worcestershire':       None,
-    'sauce confit d oignon':      None,
     'pate brisee':                None,
-    'melange marocain':           None,
-    'melange epices':             None,
-    'melange d epices du moyen orient': None,
-    'spatzle frais':              '9811',   # approximation pâtes fraîches
-    'fond de veau':               '25948',  # approximation bouillon
-    'foie gras':                  '8331',   # Foie gras, canard, bloc (aliment moyen)
-    'curry':                      None,
-    'cumin':                      None,
-    'gingembre':                  None,
-    'cannelle':                   None,
-    'laurier':                    None,
-    'sauge':                      None,
+    'pate a pizza':               None,
+    'spatzle frais':              '9811',     # approximation pâtes fraîches
+    'fond de veau':               '25948',    # approximation bouillon
+    'foie gras':                  '8331',     # Foie gras, canard, bloc (aliment moyen)
 }
 
 
