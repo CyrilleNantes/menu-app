@@ -321,7 +321,6 @@ class Ingredient(models.Model):
     unit = models.CharField(max_length=50, blank=True, null=True)
     is_optional = models.BooleanField(default=False)
     category = models.CharField(max_length=50, blank=True, null=True)
-    openfoodfacts_id = models.CharField(max_length=100, blank=True, null=True)
     calories = models.FloatField(blank=True, null=True)
     proteins = models.FloatField(blank=True, null=True)
     carbs = models.FloatField(blank=True, null=True)
