@@ -4,11 +4,11 @@
 
 {% block content %}
 <div class="audit-header">
-  <h1>🔬 Audit mapping Ciqual <span class="audit-badge audit-badge--temp">TEMPORAIRE</span></h1>
+  <h1>Audit mapping Ciqual <span class="audit-badge audit-badge--temp">TEMPORAIRE</span></h1>
 
-  <div class="audit-stats">
+  <div class="audit-stats" id="audit-stats">
     <div class="audit-stat audit-stat--ok">
-      <span class="audit-stat__val">{{ matched }}</span>
+      <span class="audit-stat__val" id="stat-matched">{{ matched }}</span>
       <span class="audit-stat__lbl">Mappés Ciqual</span>
     </div>
     <div class="audit-stat audit-stat--warn">
@@ -16,7 +16,7 @@
       <span class="audit-stat__lbl">Non calculables (eau, sel…)</span>
     </div>
     <div class="audit-stat audit-stat--err">
-      <span class="audit-stat__val">{{ non_mapped }}</span>
+      <span class="audit-stat__val" id="stat-nonmapped">{{ non_mapped }}</span>
       <span class="audit-stat__lbl">Non mappés</span>
     </div>
     <div class="audit-stat audit-stat--neutral">
@@ -42,70 +42,56 @@
         <th class="col-ingredient">Ingrédient</th>
         <th class="col-qty">Qté / Unité</th>
         <th class="col-status">Statut</th>
-        <th class="col-ciqual">Référence Ciqual</th>
+        <th class="col-ciqual">Référence Ciqual <small style="font-weight:400;opacity:.7">(cliquer pour modifier)</small></th>
         <th class="col-kcal">kcal /100g</th>
         <th class="col-prot">Prot. /100g</th>
       </tr>
     </thead>
     <tbody>
       {% for ing in ingredients %}
-      {% if ing.ciqual_ref %}
-        {% with status="ok" %}
-        <tr data-recipe="{{ ing.recipe.title|lower }}"
-            data-ing="{{ ing.name|lower }}"
-            data-status="ok">
-          <td class="col-recipe">
-            <a href="{% url 'menu:detail_recette' ing.recipe.id %}">{{ ing.recipe.title }}</a>
-          </td>
-          <td class="col-ingredient">{{ ing.name }}</td>
-          <td class="col-qty">
-            {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}
-            {% if ing.unit %} {{ ing.unit }}{% endif %}
-          </td>
-          <td class="col-status"><span class="status-badge status-badge--ok">Mappé</span></td>
-          <td class="col-ciqual">
-            <span class="ciqual-code">{{ ing.ciqual_ref.ciqual_code }}</span>
-            {{ ing.ciqual_ref.nom_fr }}
-          </td>
-          <td class="col-kcal">{{ ing.ciqual_ref.kcal_100g|default:"—" }}</td>
-          <td class="col-prot">{{ ing.ciqual_ref.proteines_100g|default:"—" }}</td>
-        </tr>
-        {% endwith %}
-      {% elif ing.calories %}
-        <tr data-recipe="{{ ing.recipe.title|lower }}"
-            data-ing="{{ ing.name|lower }}"
-            data-status="manual">
-          <td class="col-recipe">
-            <a href="{% url 'menu:detail_recette' ing.recipe.id %}">{{ ing.recipe.title }}</a>
-          </td>
-          <td class="col-ingredient">{{ ing.name }}</td>
-          <td class="col-qty">
-            {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}
-            {% if ing.unit %} {{ ing.unit }}{% endif %}
-          </td>
-          <td class="col-status"><span class="status-badge status-badge--manual">Manuel</span></td>
-          <td class="col-ciqual">—</td>
-          <td class="col-kcal">{{ ing.calories|floatformat:"0" }}</td>
-          <td class="col-prot">{{ ing.proteins|default:"—"|floatformat:"1" }}</td>
-        </tr>
-      {% else %}
-        <tr data-recipe="{{ ing.recipe.title|lower }}"
-            data-ing="{{ ing.name|lower }}"
-            data-status="none">
-          <td class="col-recipe">
-            <a href="{% url 'menu:detail_recette' ing.recipe.id %}">{{ ing.recipe.title }}</a>
-          </td>
-          <td class="col-ingredient">{{ ing.name }}</td>
-          <td class="col-qty">
-            {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}
-            {% if ing.unit %} {{ ing.unit }}{% endif %}
-          </td>
-          <td class="col-status"><span class="status-badge status-badge--none">Non mappé</span></td>
-          <td class="col-ciqual">—</td>
-          <td class="col-kcal">—</td>
-          <td class="col-prot">—</td>
-        </tr>
-      {% endif %}
+      <tr data-recipe="{{ ing.recipe.title|lower }}"
+          data-ing="{{ ing.name|lower }}"
+          data-status="{% if ing.ciqual_ref %}ok{% elif ing.calories %}manual{% else %}none{% endif %}"
+          data-ing-id="{{ ing.id }}">
+        <td class="col-recipe">
+          <a href="{% url 'menu:detail_recette' ing.recipe.id %}">{{ ing.recipe.title }}</a>
+        </td>
+        <td class="col-ingredient">{{ ing.name }}</td>
+        <td class="col-qty">
+          {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}
+          {% if ing.unit %} {{ ing.unit }}{% endif %}
+        </td>
+        <td class="col-status">
+          <span class="status-badge status-badge--{% if ing.ciqual_ref %}ok{% elif ing.calories %}manual{% else %}none{% endif %}">
+            {% if ing.ciqual_ref %}Mappé{% elif ing.calories %}Manuel{% else %}Non mappé{% endif %}
+          </span>
+        </td>
+        <td class="col-ciqual">
+          <div class="ciqual-edit-wrap" data-ing-id="{{ ing.id }}">
+            <div class="ciqual-current {% if not ing.ciqual_ref %}ciqual-current--empty{% endif %}">
+              {% if ing.ciqual_ref %}
+                <span class="ciqual-code">{{ ing.ciqual_ref.ciqual_code }}</span>
+                <span class="ciqual-label">{{ ing.ciqual_ref.nom_fr }}</span>
+              {% else %}
+                <span class="ciqual-label ciqual-label--placeholder">— cliquer pour associer</span>
+              {% endif %}
+              <button type="button" class="btn-ciqual-edit" title="Modifier le mapping">✎</button>
+              {% if ing.ciqual_ref %}<button type="button" class="btn-ciqual-clear" title="Retirer le mapping">✕</button>{% endif %}
+            </div>
+            <div class="ciqual-search-wrap" hidden>
+              <input type="text" class="ciqual-search-input" placeholder="Chercher dans Ciqual…" autocomplete="off">
+              <button type="button" class="btn-ciqual-cancel" title="Annuler">✕</button>
+            </div>
+            <div class="ciqual-save-status" hidden></div>
+          </div>
+        </td>
+        <td class="col-kcal">
+          <span class="val-kcal">{% if ing.ciqual_ref %}{{ ing.ciqual_ref.kcal_100g|default:"—" }}{% elif ing.calories %}{{ ing.calories|floatformat:"0" }}{% else %}—{% endif %}</span>
+        </td>
+        <td class="col-prot">
+          <span class="val-prot">{% if ing.ciqual_ref %}{{ ing.ciqual_ref.proteines_100g|default:"—" }}{% elif ing.proteins %}{{ ing.proteins|floatformat:"1" }}{% else %}—{% endif %}</span>
+        </td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
@@ -138,31 +124,66 @@
 .audit-table tbody tr[data-status="none"] { background: #fff5f5; }
 .audit-table tbody tr[data-status="none"]:hover { background: #ffe8e8; }
 .audit-table tbody tr[data-status="manual"] { background: #fffbf0; }
+.audit-table tbody tr.is-saving { opacity: .6; }
+.audit-table tbody tr.is-saved { animation: flash-green .6s ease; }
 .audit-table td { padding: .45rem .7rem; vertical-align: middle; }
-.col-recipe { min-width: 180px; max-width: 220px; font-weight: 500; }
+.col-recipe { min-width: 160px; max-width: 200px; font-weight: 500; }
 .col-recipe a { color: inherit; text-decoration: none; }
 .col-recipe a:hover { color: var(--color-primary, #2e7d32); text-decoration: underline; }
-.col-ingredient { min-width: 160px; }
+.col-ingredient { min-width: 140px; }
 .col-qty { min-width: 80px; color: #6c757d; }
 .col-status { min-width: 90px; }
-.col-ciqual { min-width: 280px; max-width: 380px; font-size: .8rem; }
+.col-ciqual { min-width: 300px; max-width: 420px; font-size: .8rem; }
 .col-kcal, .col-prot { min-width: 70px; text-align: right; color: #495057; }
 .ciqual-code { display: inline-block; background: #e9ecef; border-radius: 3px; padding: .05rem .3rem; font-family: monospace; font-size: .75rem; margin-right: .4rem; color: #495057; }
 .status-badge { display: inline-block; padding: .15rem .45rem; border-radius: 4px; font-size: .75rem; font-weight: 600; }
 .status-badge--ok     { background: #d4edda; color: #155724; }
 .status-badge--manual { background: #fff3cd; color: #856404; }
 .status-badge--none   { background: #f8d7da; color: #721c24; }
+
+/* Colonne Ciqual éditable */
+.ciqual-edit-wrap { position: relative; }
+.ciqual-current { display: flex; align-items: center; gap: .4rem; }
+.ciqual-current--empty .ciqual-label--placeholder { color: #adb5bd; font-style: italic; }
+.ciqual-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-ciqual-edit, .btn-ciqual-clear, .btn-ciqual-cancel {
+  flex-shrink: 0; background: none; border: none; cursor: pointer; font-size: .8rem;
+  padding: .1rem .3rem; border-radius: 3px; color: #6c757d; line-height: 1;
+}
+.btn-ciqual-edit:hover { background: #e9ecef; color: #343a40; }
+.btn-ciqual-clear:hover { background: #f8d7da; color: #721c24; }
+.btn-ciqual-cancel:hover { background: #f8d7da; color: #721c24; }
+.ciqual-search-wrap { display: flex; align-items: center; gap: .3rem; }
+.ciqual-search-input { flex: 1; padding: .3rem .5rem; border: 1.5px solid #4dabf7; border-radius: 4px; font-size: .8rem; outline: none; }
+.ciqual-search-input:focus { border-color: #228be6; box-shadow: 0 0 0 2px rgba(34,139,230,.15); }
+.ciqual-dropdown {
+  position: absolute; top: calc(100% + 2px); left: 0; z-index: 100;
+  background: #fff; border: 1px solid #ced4da; border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.15); max-height: 220px; overflow-y: auto;
+  min-width: 300px; list-style: none; margin: 0; padding: 0;
+}
+.ciqual-dropdown__item { padding: .45rem .7rem; cursor: pointer; font-size: .8rem; border-bottom: 1px solid #f0f0f0; }
+.ciqual-dropdown__item:hover { background: #e8f5e9; }
+.ciqual-save-status { font-size: .75rem; padding: .1rem .3rem; border-radius: 3px; margin-top: .2rem; }
+.ciqual-save-status--ok  { background: #d4edda; color: #155724; }
+.ciqual-save-status--err { background: #f8d7da; color: #721c24; }
+@keyframes flash-green { 0%,100% { background: inherit; } 40% { background: #d4edda; } }
 </style>
+
+{% csrf_token %}
 
 <script>
 (function () {
+  const CSRF = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+  /* ── Filtre texte ───────────────────────────────────────────────────── */
   const input      = document.getElementById('filter-input');
   const cbUnmapped = document.getElementById('filter-unmapped');
   const countEl    = document.getElementById('visible-count');
   const rows       = Array.from(document.querySelectorAll('#audit-table tbody tr'));
 
   function applyFilters() {
-    const q       = input.value.toLowerCase().trim();
+    const q         = input.value.toLowerCase().trim();
     const unmapOnly = cbUnmapped.checked;
     let visible = 0;
     rows.forEach(row => {
@@ -177,10 +198,194 @@
     });
     countEl.textContent = visible + ' ligne' + (visible > 1 ? 's' : '');
   }
-
   input.addEventListener('input', applyFilters);
   cbUnmapped.addEventListener('change', applyFilters);
   countEl.textContent = rows.length + ' lignes';
+
+  /* ── Autocomplete Ciqual ────────────────────────────────────────────── */
+  function debounce(fn, delay) {
+    let t;
+    return function (...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), delay); };
+  }
+
+  async function fetchCiqual(q) {
+    try {
+      const r = await fetch('/api/ingredients/ciqual/?q=' + encodeURIComponent(q));
+      const d = await r.json();
+      return d.ok ? d.results : [];
+    } catch { return []; }
+  }
+
+  function closeDropdown(wrap) { wrap.querySelector('.ciqual-dropdown')?.remove(); }
+
+  function showDropdown(wrap, results) {
+    closeDropdown(wrap);
+    if (!results.length) return;
+    const ul = document.createElement('ul');
+    ul.className = 'ciqual-dropdown';
+    results.forEach(item => {
+      const li = document.createElement('li');
+      li.className = 'ciqual-dropdown__item';
+      const kcal = item.kcal_100g != null ? ` — ${item.kcal_100g} kcal/100g` : '';
+      li.textContent = item.nom_fr + kcal;
+      li.dataset.ciqualId  = item.id;
+      li.dataset.code      = item.ciqual_code || '';
+      li.dataset.nomFr     = item.nom_fr;
+      li.dataset.kcal      = item.kcal_100g   ?? '';
+      li.dataset.prot      = item.proteines_100g ?? '';
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+  }
+
+  /* ── Sauvegarder via AJAX ────────────────────────────────────────────── */
+  async function saveCiqual(ingId, ciqualRefId) {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', CSRF);
+    if (ciqualRefId) fd.append('ciqual_ref_id', ciqualRefId);
+    const r = await fetch('/api/ingredients/' + ingId + '/set-ciqual/', { method: 'POST', body: fd });
+    return r.json();
+  }
+
+  function updateRow(tr, data) {
+    // Statut
+    const newStatus = data.status; // 'ok' ou 'none'
+    tr.dataset.status = newStatus;
+    const badge = tr.querySelector('.status-badge');
+    badge.className = 'status-badge status-badge--' + (newStatus === 'ok' ? 'ok' : 'none');
+    badge.textContent = newStatus === 'ok' ? 'Mappé' : 'Non mappé';
+    // Kcal / prot
+    tr.querySelector('.val-kcal').textContent = data.kcal_100g != null ? data.kcal_100g : '—';
+    tr.querySelector('.val-prot').textContent = data.prot_100g != null ? data.prot_100g : '—';
+    // Compteurs globaux (approximatif côté client)
+    if (newStatus === 'ok') {
+      const m = document.getElementById('stat-matched');
+      const n = document.getElementById('stat-nonmapped');
+      if (m) m.textContent = parseInt(m.textContent, 10) + 1;
+      if (n) n.textContent = Math.max(0, parseInt(n.textContent, 10) - 1);
+    }
+  }
+
+  function setCiqualDisplay(wrap, data) {
+    const current = wrap.querySelector('.ciqual-current');
+    if (data.status === 'ok') {
+      current.className = 'ciqual-current';
+      current.innerHTML =
+        '<span class="ciqual-code">' + data.ciqual_code + '</span>' +
+        '<span class="ciqual-label">' + data.nom_fr + '</span>' +
+        '<button type="button" class="btn-ciqual-edit" title="Modifier le mapping">✎</button>' +
+        '<button type="button" class="btn-ciqual-clear" title="Retirer le mapping">✕</button>';
+    } else {
+      current.className = 'ciqual-current ciqual-current--empty';
+      current.innerHTML =
+        '<span class="ciqual-label ciqual-label--placeholder">— cliquer pour associer</span>' +
+        '<button type="button" class="btn-ciqual-edit" title="Modifier le mapping">✎</button>';
+    }
+  }
+
+  function showSearchMode(wrap) {
+    wrap.querySelector('.ciqual-current').hidden = true;
+    const sw = wrap.querySelector('.ciqual-search-wrap');
+    sw.hidden = false;
+    sw.querySelector('.ciqual-search-input').value = '';
+    sw.querySelector('.ciqual-search-input').focus();
+  }
+
+  function hideSearchMode(wrap) {
+    wrap.querySelector('.ciqual-search-wrap').hidden = true;
+    wrap.querySelector('.ciqual-current').hidden = false;
+    closeDropdown(wrap);
+  }
+
+  const debouncedSearch = debounce(async function (searchInput) {
+    const q = searchInput.value.trim();
+    const wrap = searchInput.closest('.ciqual-edit-wrap');
+    if (q.length < 2) { closeDropdown(wrap); return; }
+    const results = await fetchCiqual(q);
+    showDropdown(wrap, results);
+  }, 350);
+
+  /* ── Délégation d'événements ─────────────────────────────────────────── */
+  document.addEventListener('click', async function (e) {
+
+    // Ouvrir le mode recherche
+    if (e.target.classList.contains('btn-ciqual-edit')) {
+      const wrap = e.target.closest('.ciqual-edit-wrap');
+      showSearchMode(wrap);
+      return;
+    }
+
+    // Annuler la recherche
+    if (e.target.classList.contains('btn-ciqual-cancel')) {
+      hideSearchMode(e.target.closest('.ciqual-edit-wrap'));
+      return;
+    }
+
+    // Retirer le mapping
+    if (e.target.classList.contains('btn-ciqual-clear')) {
+      const wrap = e.target.closest('.ciqual-edit-wrap');
+      const tr   = wrap.closest('tr');
+      const ingId = wrap.dataset.ingId;
+      tr.classList.add('is-saving');
+      try {
+        const data = await saveCiqual(ingId, null);
+        if (data.ok) {
+          setCiqualDisplay(wrap, data);
+          updateRow(tr, data);
+          tr.classList.add('is-saved');
+          setTimeout(() => tr.classList.remove('is-saved'), 700);
+        }
+      } finally {
+        tr.classList.remove('is-saving');
+      }
+      return;
+    }
+
+    // Sélectionner un résultat Ciqual
+    if (e.target.classList.contains('ciqual-dropdown__item')) {
+      const li   = e.target;
+      const wrap = li.closest('.ciqual-edit-wrap');
+      const tr   = wrap.closest('tr');
+      const ingId = wrap.dataset.ingId;
+      closeDropdown(wrap);
+      hideSearchMode(wrap);
+      tr.classList.add('is-saving');
+      try {
+        const data = await saveCiqual(ingId, li.dataset.ciqualId);
+        if (data.ok) {
+          setCiqualDisplay(wrap, data);
+          updateRow(tr, data);
+          tr.classList.add('is-saved');
+          setTimeout(() => tr.classList.remove('is-saved'), 700);
+          // Re-appliquer filtre "non mappés" si actif
+          if (cbUnmapped.checked) applyFilters();
+        }
+      } finally {
+        tr.classList.remove('is-saving');
+      }
+      return;
+    }
+
+    // Fermer les dropdowns si clic ailleurs
+    document.querySelectorAll('.ciqual-dropdown').forEach(d => {
+      if (!d.contains(e.target)) d.remove();
+    });
+  });
+
+  document.addEventListener('input', function (e) {
+    if (e.target.classList.contains('ciqual-search-input')) {
+      debouncedSearch(e.target);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.ciqual-search-wrap:not([hidden])').forEach(sw => {
+        hideSearchMode(sw.closest('.ciqual-edit-wrap'));
+      });
+    }
+  });
+
 })();
 </script>
 {% endblock %}

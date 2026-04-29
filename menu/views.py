@@ -21,12 +21,13 @@ from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
-from .models import Family, Ingredient, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, IngredientRef, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
     bilan_planning,
     calculer_alertes_planning,
     calculer_macros_recette,
     calculer_wpd,
+    compute_ingredient_macros_from_ciqual,
     exporter_backup,
     generer_liste_courses,
     importer_recette_depuis_json,
@@ -937,6 +938,49 @@ def audit_ciqual(request):
         "non_calc":    non_calc,
         "non_mapped":  non_mapped,
     })
+
+
+@require_POST
+@login_required
+def set_ciqual_ingredient(request, ingredient_id):
+    """
+    AJAX — Associe (ou retire) une référence Ciqual à un ingrédient individuel.
+    Utilisé par la page d'audit pour corriger le mapping sans ouvrir la recette.
+    """
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return JsonResponse({"ok": False, "error": "Permission refusée"}, status=403)
+
+    ingr = get_object_or_404(Ingredient, id=ingredient_id)
+    ciqual_id_raw = request.POST.get("ciqual_ref_id", "").strip()
+
+    if ciqual_id_raw:
+        try:
+            ref = IngredientRef.objects.get(pk=int(ciqual_id_raw))
+        except (IngredientRef.DoesNotExist, ValueError):
+            return JsonResponse({"ok": False, "error": "Référence Ciqual inconnue"}, status=400)
+        ingr.ciqual_ref = ref
+        ingr.save(update_fields=["ciqual_ref"])
+        # Recalculer les macros depuis Ciqual
+        macros = compute_ingredient_macros_from_ciqual(ingr)
+        if macros:
+            ingr.calories = macros["calories"]
+            ingr.proteins = macros["proteins"]
+            ingr.carbs    = macros["carbs"]
+            ingr.fats     = macros["fats"]
+            ingr.save(update_fields=["calories", "proteins", "carbs", "fats"])
+        return JsonResponse({
+            "ok":         True,
+            "status":     "ok",
+            "ciqual_code": ref.ciqual_code,
+            "nom_fr":      ref.nom_fr,
+            "kcal_100g":   ref.kcal_100g,
+            "prot_100g":   ref.proteines_100g,
+        })
+    else:
+        # Retrait du mapping
+        ingr.ciqual_ref = None
+        ingr.save(update_fields=["ciqual_ref"])
+        return JsonResponse({"ok": True, "status": "none"})
 
 
 @login_required

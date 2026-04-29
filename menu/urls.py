@@ -22,6 +22,7 @@ urlpatterns = [
     path("planning/proposition/<int:proposal_id>/supprimer/", views.supprimer_proposition, name="supprimer_proposition"),
     path("api/recettes/", views.api_recettes, name="api_recettes"),
     path("api/ingredients/ciqual/", views.recherche_ciqual, name="recherche_ciqual"),
+    path("api/ingredients/<int:ingredient_id>/set-ciqual/", views.set_ciqual_ingredient, name="set_ciqual_ingredient"),
     path("courses/<int:plan_id>/", views.liste_courses, name="liste_courses"),
     path("courses/generer/<int:plan_id>/", views.generer_courses, name="generer_courses"),
     path("courses/item/<int:id>/cocher/", views.cocher_item, name="cocher_item"),
