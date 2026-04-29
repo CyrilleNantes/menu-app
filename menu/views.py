@@ -21,17 +21,19 @@ from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
-from .integrations.openfoodfacts import rechercher_ingredient
-from .models import Family, Ingredient, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, IngredientRef, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
     bilan_planning,
     calculer_alertes_planning,
+    calculer_macros_recette,
     calculer_wpd,
+    compute_ingredient_macros_from_ciqual,
     exporter_backup,
     generer_liste_courses,
     importer_recette_depuis_json,
     notifier_nouvelle_proposition,
     notifier_planning_publie,
+    rechercher_ciqual,
     restaurer_backup,
     sauvegarder_recette_depuis_post,
     suggerer_recettes,
@@ -909,6 +911,79 @@ def mode_cuisine(request, id):
 
 
 @login_required
+def audit_ciqual(request):
+    """
+    Page temporaire d'audit du mapping ingrédients ↔ IngredientRef Ciqual.
+    Accessible aux Cuisiniers et staff uniquement.
+    """
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return redirect("menu:liste_recettes")
+
+    ingredients = (
+        Ingredient.objects
+        .select_related("recipe", "ciqual_ref")
+        .filter(recipe__actif=True)
+        .order_by("recipe__title", "name")
+    )
+
+    total      = ingredients.count()
+    matched    = ingredients.filter(ciqual_ref__isnull=False).count()
+    non_calc   = ingredients.filter(ciqual_ref__isnull=True, calories__isnull=True).count()
+    non_mapped = total - matched - non_calc
+
+    return render(request, "menu/recettes/ciqual_audit.html", {
+        "ingredients": ingredients,
+        "total":       total,
+        "matched":     matched,
+        "non_calc":    non_calc,
+        "non_mapped":  non_mapped,
+    })
+
+
+@require_POST
+@login_required
+def set_ciqual_ingredient(request, ingredient_id):
+    """
+    AJAX — Associe (ou retire) une référence Ciqual à un ingrédient individuel.
+    Utilisé par la page d'audit pour corriger le mapping sans ouvrir la recette.
+    """
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return JsonResponse({"ok": False, "error": "Permission refusée"}, status=403)
+
+    ingr = get_object_or_404(Ingredient, id=ingredient_id)
+    ciqual_id_raw = request.POST.get("ciqual_ref_id", "").strip()
+
+    if ciqual_id_raw:
+        try:
+            ref = IngredientRef.objects.get(pk=int(ciqual_id_raw))
+        except (IngredientRef.DoesNotExist, ValueError):
+            return JsonResponse({"ok": False, "error": "Référence Ciqual inconnue"}, status=400)
+        ingr.ciqual_ref = ref
+        ingr.save(update_fields=["ciqual_ref"])
+        # Recalculer les macros depuis Ciqual
+        macros = compute_ingredient_macros_from_ciqual(ingr)
+        if macros:
+            ingr.calories = macros["calories"]
+            ingr.proteins = macros["proteins"]
+            ingr.carbs    = macros["carbs"]
+            ingr.fats     = macros["fats"]
+            ingr.save(update_fields=["calories", "proteins", "carbs", "fats"])
+        return JsonResponse({
+            "ok":         True,
+            "status":     "ok",
+            "ciqual_code": ref.ciqual_code,
+            "nom_fr":      ref.nom_fr,
+            "kcal_100g":   ref.kcal_100g,
+            "prot_100g":   ref.proteines_100g,
+        })
+    else:
+        # Retrait du mapping
+        ingr.ciqual_ref = None
+        ingr.save(update_fields=["ciqual_ref"])
+        return JsonResponse({"ok": True, "status": "none"})
+
+
+@login_required
 def liste_recettes(request):
     qs = Recipe.objects.filter(actif=True).select_related("created_by").annotate(
         note_moyenne=Avg("reviews__stars"),
@@ -1076,17 +1151,6 @@ def noter_recette(request, id):
     })
 
 
-# ─── API nutritionnelle ──────────────────────────────────────────────────────
-
-@login_required
-def recherche_nutrition(request):
-    q = request.GET.get("q", "").strip()
-    if not q:
-        return JsonResponse({"ok": True, "results": []})
-    results = rechercher_ingredient(q)
-    return JsonResponse({"ok": True, "results": results})
-
-
 # ─── Création / édition / suppression ────────────────────────────────────────
 
 def _verifier_cuisinier(request):
@@ -1096,6 +1160,14 @@ def _verifier_cuisinier(request):
         return profile if profile.role in ("cuisinier", "chef_etoile") else None
     except UserProfile.DoesNotExist:
         return None
+
+
+@login_required
+def recherche_ciqual(request):
+    """GET /api/ingredients/ciqual/?q=... — autocomplete Ciqual pour le formulaire recette."""
+    q = request.GET.get("q", "").strip()
+    results = rechercher_ciqual(q)
+    return JsonResponse({"ok": True, "results": results})
 
 
 @login_required
@@ -1129,6 +1201,7 @@ def creer_recette(request):
             created_by=request.user,
         )
         sauvegarder_recette_depuis_post(recipe, request.POST)
+        calculer_macros_recette(recipe)
         messages.success(request, "Recette enregistrée !")
         return redirect("menu:detail_recette", id=recipe.id)
 
@@ -1166,6 +1239,7 @@ def modifier_recette(request, id):
             recipe.protein_type = cd.get("protein_type") or None
             recipe.save()
             sauvegarder_recette_depuis_post(recipe, request.POST)
+            calculer_macros_recette(recipe)
             messages.success(request, "Recette enregistrée !")
             return redirect("menu:detail_recette", id=recipe.id)
     else:

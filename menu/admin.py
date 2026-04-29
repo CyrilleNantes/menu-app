@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     Family, UserProfile, TokenOAuth,
     NutritionConfig, RecipePhoto,
-    Recipe, IngredientGroup, Ingredient, RecipeStep, RecipeSection,
+    Recipe, IngredientGroup, Ingredient, IngredientRef, RecipeStep, RecipeSection,
     Review, WeekPlan, Meal, MealProposal,
     ShoppingList, ShoppingItem, NotificationPreference,
 )
@@ -95,11 +95,20 @@ class IngredientGroupAdmin(admin.ModelAdmin):
     inlines = [IngredientInline]
 
 
+@admin.register(IngredientRef)
+class IngredientRefAdmin(admin.ModelAdmin):
+    list_display   = ["nom_fr", "ciqual_code", "groupe", "kcal_100g", "proteines_100g", "protein_type"]
+    list_filter    = ["groupe", "protein_type", "shopping_category"]
+    search_fields  = ["nom_fr", "nom_normalise", "ciqual_code"]
+    readonly_fields = ["nom_normalise"]
+
+
 @admin.register(Ingredient)
 class IngredientAdmin(admin.ModelAdmin):
-    list_display = ("name", "recipe", "quantity", "unit", "category", "is_optional")
-    list_filter = ("category", "is_optional")
-    search_fields = ("name",)
+    list_display   = ("name", "recipe", "quantity", "unit", "category", "is_optional")
+    list_filter    = ("category", "is_optional")
+    search_fields  = ("name",)
+    raw_id_fields  = ("ciqual_ref",)
 
 
 @admin.register(RecipeStep)

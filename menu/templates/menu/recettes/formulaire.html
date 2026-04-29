@@ -1,4 +1,5 @@
 {% extends "menu/base.html" %}
+{% load l10n %}
 
 {% block title %}{% if recipe %}Modifier{% else %}Créer{% endif %} une recette — Menu Familial{% endblock %}
 
@@ -102,19 +103,20 @@
                         {% with i=forloop.counter0 %}
                         <div class="ing-row" data-ing-idx="{{ i }}">
                             <div class="ing-name-wrap">
-                                <input type="text" name="ing_name_{{ g }}_{{ i }}" value="{{ ing.name }}" placeholder="Ingrédient *" class="ing-name">
+                                <input type="text" name="ing_name_{{ g }}_{{ i }}" value="{{ ing.name }}" placeholder="Ingrédient *" class="ing-name" autocomplete="off">
+                                {% if ing.ciqual_ref %}<span class="ciqual-badge">{{ ing.ciqual_ref.kcal_100g }} kcal/100g</span>{% else %}<span class="ciqual-badge" hidden></span>{% endif %}
                             </div>
-                            <input type="number" name="ing_qty_{{ g }}_{{ i }}" value="{{ ing.quantity|default_if_none:'' }}" placeholder="Qté" step="any" class="ing-qty">
+                            <input type="number" name="ing_qty_{{ g }}_{{ i }}" value="{{ ing.quantity|default_if_none:''|unlocalize }}" placeholder="Qté" step="any" class="ing-qty">
                             <input type="text" name="ing_qty_note_{{ g }}_{{ i }}" value="{{ ing.quantity_note|default:'' }}" placeholder="Ex. 150–200g" class="ing-qty-note">
                             <input type="text" name="ing_unit_{{ g }}_{{ i }}" value="{{ ing.unit|default:'' }}" placeholder="Unité" class="ing-unit">
                             <input type="text" name="ing_category_{{ g }}_{{ i }}" value="{{ ing.category|default:'' }}" placeholder="Catégorie" class="ing-category">
                             <label class="ing-optional-label"><input type="checkbox" name="ing_optional_{{ g }}_{{ i }}" {% if ing.is_optional %}checked{% endif %}> Opt.</label>
                             <button type="button" class="btn-icon btn-remove-ing" title="Supprimer">✕</button>
-                            <input type="hidden" name="ing_calories_{{ g }}_{{ i }}" value="{{ ing.calories|default_if_none:'' }}" class="ing-calories">
-                            <input type="hidden" name="ing_proteins_{{ g }}_{{ i }}" value="{{ ing.proteins|default_if_none:'' }}" class="ing-proteins">
-                            <input type="hidden" name="ing_carbs_{{ g }}_{{ i }}" value="{{ ing.carbs|default_if_none:'' }}" class="ing-carbs">
-                            <input type="hidden" name="ing_fats_{{ g }}_{{ i }}" value="{{ ing.fats|default_if_none:'' }}" class="ing-fats">
-                            <input type="hidden" name="ing_off_id_{{ g }}_{{ i }}" value="{{ ing.openfoodfacts_id|default:'' }}" class="ing-off-id">
+                            <input type="hidden" name="ing_calories_{{ g }}_{{ i }}" value="{{ ing.calories|default_if_none:''|unlocalize }}" class="ing-calories">
+                            <input type="hidden" name="ing_proteins_{{ g }}_{{ i }}" value="{{ ing.proteins|default_if_none:''|unlocalize }}" class="ing-proteins">
+                            <input type="hidden" name="ing_carbs_{{ g }}_{{ i }}" value="{{ ing.carbs|default_if_none:''|unlocalize }}" class="ing-carbs">
+                            <input type="hidden" name="ing_fats_{{ g }}_{{ i }}" value="{{ ing.fats|default_if_none:''|unlocalize }}" class="ing-fats">
+                            <input type="hidden" name="ing_ciqual_ref_id_{{ g }}_{{ i }}" value="{{ ing.ciqual_ref_id|default:'' }}" class="ing-ciqual-ref-id">
                         </div>
                         {% endwith %}
                         {% endfor %}

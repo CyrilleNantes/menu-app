@@ -8,7 +8,7 @@ from django.contrib.auth.models import User as DjangoUser
 from django.db import connection, transaction
 
 from .models import (
-    Ingredient, IngredientGroup, Meal, MealProposal, NutritionConfig, NotificationPreference,
+    Ingredient, IngredientGroup, IngredientRef, Meal, MealProposal, NutritionConfig, NotificationPreference,
     Recipe, RecipeSection, RecipeStep, Review, ShoppingItem, ShoppingList,
     UserProfile, WeekPlan,
 )
@@ -89,6 +89,95 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
 
     logger.info("Liste de courses générée : %d articles pour plan %s", len(sorted_items), plan.pk)
     return shopping_list
+
+
+# ─── Conversions Ciqual ────────────────────────────────────────────────────────
+
+_UNIT_TO_GRAMS: dict[str | None, float | None] = {
+    'g':          1.0,
+    'kg':         1000.0,
+    'ml':         1.0,
+    'cl':         10.0,
+    'L':          1000.0,
+    'l':          1000.0,
+    'c. à soupe': 15.0,
+    'càs':        15.0,
+    'cs':         15.0,
+    'c. à café':  5.0,
+    'càc':        5.0,
+    'cc':         5.0,
+}
+
+
+def _quantity_to_grams(quantity: float | None, unit: str | None,
+                       default_weight_g: float | None) -> float | None:
+    """Convertit une quantité dans l'unité donnée en grammes."""
+    if quantity is None:
+        return None
+    if unit in _UNIT_TO_GRAMS:
+        return quantity * _UNIT_TO_GRAMS[unit]
+    if unit is None and default_weight_g is not None:
+        return quantity * default_weight_g
+    return None
+
+
+def compute_ingredient_macros_from_ciqual(ingr: Ingredient) -> dict | None:
+    """
+    Calcule les macros d'un ingrédient à partir de son ciqual_ref.
+    Retourne None si le calcul est impossible (pas de ref, pas de kcal, qté non convertible).
+    """
+    ref = ingr.ciqual_ref
+    if ref is None or ref.kcal_100g is None:
+        return None
+    qty_g = _quantity_to_grams(ingr.quantity, ingr.unit, ref.default_weight_g)
+    if qty_g is None or qty_g <= 0:
+        return None
+    factor = qty_g / 100.0
+    return {
+        'calories': round(ref.kcal_100g * factor, 2),
+        'proteins': round((ref.proteines_100g or 0) * factor, 2),
+        'carbs':    round((ref.glucides_100g or 0) * factor, 2),
+        'fats':     round((ref.lipides_100g or 0) * factor, 2),
+    }
+
+
+def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
+    """
+    Recherche dans IngredientRef par nom normalisé.
+    Retourne une liste de dicts pour le JSON de l'autocomplete.
+    """
+    import unicodedata, re
+
+    def _normalize(s: str) -> str:
+        s = s.lower().strip()
+        s = unicodedata.normalize('NFD', s)
+        s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+        s = s.replace('oe', 'oe').replace('ae', 'ae')
+        s = re.sub(r'[^\w\s]', ' ', s)
+        s = re.sub(r'\s+', ' ', s).strip()
+        return s
+
+    if not q or len(q) < 2:
+        return []
+    q_norm = _normalize(q)
+    refs = (
+        IngredientRef.objects
+        .filter(nom_normalise__icontains=q_norm)
+        .order_by('nom_fr')[:limit]
+    )
+    return [
+        {
+            'id': r.pk,
+            'ciqual_code': r.ciqual_code,
+            'nom_fr': r.nom_fr,
+            'kcal_100g': r.kcal_100g,
+            'proteines_100g': r.proteines_100g,
+            'glucides_100g': r.glucides_100g,
+            'lipides_100g': r.lipides_100g,
+            'default_weight_g': r.default_weight_g,
+        }
+        for r in refs
+    ]
 
 
 def calculer_macros_recette(recipe: Recipe) -> None:
@@ -517,22 +606,47 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
             name = post_data.get(f"ing_name_{g}_{i}", "").strip()
             if not name:
                 continue
-            Ingredient.objects.create(
+            qty       = _parse_float(post_data.get(f"ing_qty_{g}_{i}"))
+            unit      = post_data.get(f"ing_unit_{g}_{i}", "").strip() or None
+            ciqual_id_raw = post_data.get(f"ing_ciqual_ref_id_{g}_{i}", "").strip()
+            ciqual_ref = None
+            if ciqual_id_raw:
+                try:
+                    ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id_raw))
+                except (IngredientRef.DoesNotExist, ValueError):
+                    pass
+
+            ingr = Ingredient(
                 recipe=recipe,
                 group=group,
                 name=name,
-                quantity=_parse_float(post_data.get(f"ing_qty_{g}_{i}")),
+                quantity=qty,
                 quantity_note=post_data.get(f"ing_qty_note_{g}_{i}", "").strip() or None,
-                unit=post_data.get(f"ing_unit_{g}_{i}", "").strip() or None,
+                unit=unit,
                 is_optional=post_data.get(f"ing_optional_{g}_{i}") == "on",
                 category=post_data.get(f"ing_category_{g}_{i}", "").strip() or None,
-                calories=_parse_float(post_data.get(f"ing_calories_{g}_{i}")),
-                proteins=_parse_float(post_data.get(f"ing_proteins_{g}_{i}")),
-                carbs=_parse_float(post_data.get(f"ing_carbs_{g}_{i}")),
-                fats=_parse_float(post_data.get(f"ing_fats_{g}_{i}")),
-                openfoodfacts_id=post_data.get(f"ing_off_id_{g}_{i}", "").strip() or None,
+                ciqual_ref=ciqual_ref,
                 order=i,
             )
+            # Macros : préférence Ciqual si dispo, sinon valeurs saisies manuellement
+            if ciqual_ref:
+                macros = compute_ingredient_macros_from_ciqual(ingr)
+                if macros:
+                    ingr.calories = macros['calories']
+                    ingr.proteins = macros['proteins']
+                    ingr.carbs    = macros['carbs']
+                    ingr.fats     = macros['fats']
+                else:
+                    ingr.calories = _parse_float(post_data.get(f"ing_calories_{g}_{i}"))
+                    ingr.proteins = _parse_float(post_data.get(f"ing_proteins_{g}_{i}"))
+                    ingr.carbs    = _parse_float(post_data.get(f"ing_carbs_{g}_{i}"))
+                    ingr.fats     = _parse_float(post_data.get(f"ing_fats_{g}_{i}"))
+            else:
+                ingr.calories = _parse_float(post_data.get(f"ing_calories_{g}_{i}"))
+                ingr.proteins = _parse_float(post_data.get(f"ing_proteins_{g}_{i}"))
+                ingr.carbs    = _parse_float(post_data.get(f"ing_carbs_{g}_{i}"))
+                ingr.fats     = _parse_float(post_data.get(f"ing_fats_{g}_{i}"))
+            ingr.save()
 
     # ── Étapes ───────────────────────────────────────────────────────────────
     recipe.steps.all().delete()
@@ -743,7 +857,6 @@ def importer_recette_depuis_json(data: dict, user) -> tuple:
                 proteins=i_data.get("proteins") or None,
                 carbs=i_data.get("carbs") or None,
                 fats=i_data.get("fats") or None,
-                openfoodfacts_id=i_data.get("openfoodfacts_id") or None,
                 order=i_data.get("order", i_idx),
             )
 
