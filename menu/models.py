@@ -276,6 +276,42 @@ class IngredientGroup(models.Model):
         return f"{self.recipe.title} — {self.name}"
 
 
+class IngredientRef(models.Model):
+    """Référentiel nutritionnel ANSES Ciqual 2020 — 3186 entrées."""
+    ciqual_code       = models.CharField(max_length=10, unique=True, verbose_name="Code Ciqual")
+    nom_fr            = models.CharField(max_length=300, verbose_name="Nom Ciqual (officiel)")
+    nom_normalise     = models.CharField(max_length=300, db_index=True, verbose_name="Nom normalisé (recherche)")
+    groupe            = models.CharField(max_length=100, blank=True, verbose_name="Groupe alimentaire Ciqual")
+    sous_groupe       = models.CharField(max_length=100, blank=True, verbose_name="Sous-groupe Ciqual")
+    kcal_100g         = models.FloatField(null=True, blank=True, verbose_name="Énergie (kcal/100g)")
+    proteines_100g    = models.FloatField(null=True, blank=True, verbose_name="Protéines (g/100g)")
+    glucides_100g     = models.FloatField(null=True, blank=True, verbose_name="Glucides (g/100g)")
+    lipides_100g      = models.FloatField(null=True, blank=True, verbose_name="Lipides (g/100g)")
+    default_weight_g  = models.FloatField(
+        null=True, blank=True,
+        verbose_name="Poids par défaut (g)",
+        help_text="Pour les unités dénombrables : 1 œuf = 60g, 1 oignon = 80g, etc.",
+    )
+    protein_type      = models.CharField(
+        max_length=20, blank=True, null=True,
+        choices=[
+            ("boeuf", "Bœuf"), ("volaille", "Volaille"), ("porc", "Porc"),
+            ("poisson", "Poisson"), ("oeufs", "Œufs"),
+            ("legumineuses", "Légumineuses"), ("autre", "Autre"),
+        ],
+        verbose_name="Type de protéine",
+    )
+    shopping_category = models.CharField(max_length=50, blank=True, null=True, verbose_name="Catégorie liste de courses")
+
+    class Meta:
+        ordering = ["nom_fr"]
+        verbose_name = "Référentiel ingrédient (Ciqual)"
+        verbose_name_plural = "Référentiel ingrédients (Ciqual)"
+
+    def __str__(self):
+        return f"{self.nom_fr} ({self.ciqual_code})"
+
+
 class Ingredient(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="ingredients")
     group = models.ForeignKey(IngredientGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name="ingredients")
@@ -291,6 +327,14 @@ class Ingredient(models.Model):
     carbs = models.FloatField(blank=True, null=True)
     fats = models.FloatField(blank=True, null=True)
     order = models.PositiveIntegerField(default=0)
+    ciqual_ref = models.ForeignKey(
+        "IngredientRef",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="ingredients",
+        verbose_name="Référence Ciqual",
+        help_text="Correspondance dans le référentiel ANSES Ciqual 2020",
+    )
 
     class Meta:
         verbose_name = "Ingrédient"

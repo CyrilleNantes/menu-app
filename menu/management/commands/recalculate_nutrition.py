@@ -1,0 +1,187 @@
+"""
+Management command: recalculate_nutrition
+==========================================
+Usage:
+    python manage.py recalculate_nutrition
+    python manage.py recalculate_nutrition --dry-run
+    python manage.py recalculate_nutrition --recipe-id 42
+
+Recalcule les macros (calories, protéines, glucides, lipides) sur :
+1. Chaque Ingredient ayant un ciqual_ref ET une quantité convertible en grammes
+2. Chaque Recipe, en agrégeant ses ingrédients et en divisant par base_servings
+
+Conversions d'unités supportées :
+  g, kg, ml, cl, L → grammes directs
+  c. à soupe, càs, cs → 15 g
+  c. à café, càc, cc → 5 g
+  (aucune unité + default_weight_g sur ciqual_ref) → dénombrable
+"""
+
+from django.core.management.base import BaseCommand
+from django.db import transaction
+
+from menu.models import Ingredient, Recipe
+
+
+# ─── Conversions vers grammes ────────────────────────────────────────────────
+
+UNIT_TO_GRAMS: dict[str | None, float | None] = {
+    'g':         1.0,
+    'kg':        1000.0,
+    'ml':        1.0,     # densité ≈ 1 pour liquides cuisiniers
+    'cl':        10.0,
+    'L':         1000.0,
+    'l':         1000.0,
+    'c. à soupe': 15.0,
+    'càs':       15.0,
+    'cs':        15.0,
+    'c. à café': 5.0,
+    'càc':       5.0,
+    'cc':        5.0,
+}
+
+
+def quantity_to_grams(quantity: float | None, unit: str | None,
+                      default_weight_g: float | None) -> float | None:
+    """Convertit une quantité dans l'unité donnée en grammes."""
+    if quantity is None:
+        return None
+
+    if unit in UNIT_TO_GRAMS:
+        factor = UNIT_TO_GRAMS[unit]
+        return quantity * factor
+
+    # Unité nulle = élément dénombrable (ex: 2 oignons)
+    if unit is None and default_weight_g is not None:
+        return quantity * default_weight_g
+
+    return None  # Unité inconnue ou manque de données
+
+
+def compute_ingredient_macros(ingr: Ingredient) -> dict | None:
+    """
+    Calcule les macros d'un ingrédient à partir de son ciqual_ref.
+    Retourne None si le calcul est impossible.
+    """
+    ref = ingr.ciqual_ref
+    if ref is None:
+        return None
+    if ref.kcal_100g is None:
+        return None
+
+    qty_g = quantity_to_grams(ingr.quantity, ingr.unit, ref.default_weight_g)
+    if qty_g is None or qty_g <= 0:
+        return None
+
+    factor = qty_g / 100.0
+    return {
+        'calories': round(ref.kcal_100g * factor, 2),
+        'proteins': round((ref.proteines_100g or 0) * factor, 2),
+        'carbs':    round((ref.glucides_100g or 0) * factor, 2),
+        'fats':     round((ref.lipides_100g or 0) * factor, 2),
+    }
+
+
+# ─── Command ────────────────────────────────────────────────────────────────
+
+class Command(BaseCommand):
+    help = 'Recalcule les macros sur tous les Ingredient et Recipe'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--dry-run', action='store_true')
+        parser.add_argument('--recipe-id', type=int, default=None,
+                            help='Limiter à une seule recette')
+
+    @transaction.atomic
+    def handle(self, *args, **options):
+        dry_run   = options['dry_run']
+        recipe_id = options['recipe_id']
+
+        recipe_qs = Recipe.objects.filter(actif=True)
+        if recipe_id:
+            recipe_qs = recipe_qs.filter(pk=recipe_id)
+
+        ingr_updated = 0
+        ingr_no_ref  = 0
+        ingr_no_qty  = 0
+        recipe_updated = 0
+        recipe_partial = 0
+
+        for recipe in recipe_qs:
+            recipe_kcal = recipe_prot = recipe_gluc = recipe_lip = 0.0
+            has_any = False
+            all_calculable = True
+
+            # ── 1. Recalculer chaque ingrédient ──────────────────────────
+            all_ingrs = Ingredient.objects.filter(recipe=recipe).select_related('ciqual_ref')
+
+            for ingr in all_ingrs:
+                if ingr.is_optional:
+                    continue  # on exclut les ingrédients optionnels du calcul
+
+                if ingr.ciqual_ref is None:
+                    ingr_no_ref += 1
+                    all_calculable = False
+                    continue
+
+                macros = compute_ingredient_macros(ingr)
+                if macros is None:
+                    ingr_no_qty += 1
+                    all_calculable = False
+                    continue
+
+                if not dry_run:
+                    ingr.calories = macros['calories']
+                    ingr.proteins = macros['proteins']
+                    ingr.carbs    = macros['carbs']
+                    ingr.fats     = macros['fats']
+                    ingr.save(update_fields=['calories', 'proteins', 'carbs', 'fats'])
+
+                recipe_kcal += macros['calories']
+                recipe_prot += macros['proteins']
+                recipe_gluc += macros['carbs']
+                recipe_lip  += macros['fats']
+                has_any = True
+                ingr_updated += 1
+
+            # ── 2. Agréger sur la recette ─────────────────────────────────
+            if has_any and recipe.base_servings and recipe.base_servings > 0:
+                bs = recipe.base_servings
+                kcal_per = round(recipe_kcal / bs, 1)
+                prot_per = round(recipe_prot / bs, 2)
+                gluc_per = round(recipe_gluc / bs, 2)
+                lip_per  = round(recipe_lip / bs, 2)
+
+                if dry_run:
+                    self.stdout.write(
+                        f'  [DRY] {recipe.title[:40]:40s} | '
+                        f'{kcal_per:>6.0f} kcal | {prot_per:>5.1f} g prot | '
+                        f'{"OK" if all_calculable else "partiel"}'
+                    )
+                else:
+                    recipe.calories_per_serving = kcal_per
+                    recipe.proteins_per_serving  = prot_per
+                    recipe.carbs_per_serving     = gluc_per
+                    recipe.fats_per_serving      = lip_per
+                    recipe.save(update_fields=[
+                        'calories_per_serving', 'proteins_per_serving',
+                        'carbs_per_serving', 'fats_per_serving'
+                    ])
+
+                recipe_updated += 1
+                if not all_calculable:
+                    recipe_partial += 1
+            else:
+                self.stdout.write(
+                    f'  ATTENTION  {recipe.title[:50]} - aucune macro calculable'
+                )
+
+        self.stdout.write(self.style.SUCCESS(
+            f'Recalcul termine :\n'
+            f'   Ingredients mis a jour  : {ingr_updated}\n'
+            f'   Ingredients sans ref    : {ingr_no_ref}\n'
+            f'   Ingredients sans qte   : {ingr_no_qty}\n'
+            f'   Recettes mises a jour   : {recipe_updated}\n'
+            f'   Recettes partielles     : {recipe_partial}\n'
+            + ('   [MODE DRY-RUN - rien n\'a ete sauvegarde]' if dry_run else '')
+        ))
