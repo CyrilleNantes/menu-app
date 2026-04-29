@@ -1,0 +1,186 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Audit Ciqual — Mapping ingrédients{% endblock %}
+
+{% block content %}
+<div class="audit-header">
+  <h1>🔬 Audit mapping Ciqual <span class="audit-badge audit-badge--temp">TEMPORAIRE</span></h1>
+
+  <div class="audit-stats">
+    <div class="audit-stat audit-stat--ok">
+      <span class="audit-stat__val">{{ matched }}</span>
+      <span class="audit-stat__lbl">Mappés Ciqual</span>
+    </div>
+    <div class="audit-stat audit-stat--warn">
+      <span class="audit-stat__val">{{ non_calc }}</span>
+      <span class="audit-stat__lbl">Non calculables (eau, sel…)</span>
+    </div>
+    <div class="audit-stat audit-stat--err">
+      <span class="audit-stat__val">{{ non_mapped }}</span>
+      <span class="audit-stat__lbl">Non mappés</span>
+    </div>
+    <div class="audit-stat audit-stat--neutral">
+      <span class="audit-stat__val">{{ total }}</span>
+      <span class="audit-stat__lbl">Total ingrédients</span>
+    </div>
+  </div>
+
+  <div class="audit-filters">
+    <input type="search" id="filter-input" placeholder="Filtrer par recette ou ingrédient…" autocomplete="off">
+    <label class="audit-check">
+      <input type="checkbox" id="filter-unmapped"> Afficher seulement les non mappés
+    </label>
+    <span class="audit-count" id="visible-count">{{ total }} lignes</span>
+  </div>
+</div>
+
+<div class="audit-table-wrap">
+  <table class="audit-table" id="audit-table">
+    <thead>
+      <tr>
+        <th class="col-recipe">Recette</th>
+        <th class="col-ingredient">Ingrédient</th>
+        <th class="col-qty">Qté / Unité</th>
+        <th class="col-status">Statut</th>
+        <th class="col-ciqual">Référence Ciqual</th>
+        <th class="col-kcal">kcal /100g</th>
+        <th class="col-prot">Prot. /100g</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ing in ingredients %}
+      {% if ing.ciqual_ref %}
+        {% with status="ok" %}
+        <tr data-recipe="{{ ing.recipe.title|lower }}"
+            data-ing="{{ ing.name|lower }}"
+            data-status="ok">
+          <td class="col-recipe">
+            <a href="{% url 'menu:detail_recette' ing.recipe.id %}">{{ ing.recipe.title }}</a>
+          </td>
+          <td class="col-ingredient">{{ ing.name }}</td>
+          <td class="col-qty">
+            {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}
+            {% if ing.unit %} {{ ing.unit }}{% endif %}
+          </td>
+          <td class="col-status"><span class="status-badge status-badge--ok">Mappé</span></td>
+          <td class="col-ciqual">
+            <span class="ciqual-code">{{ ing.ciqual_ref.ciqual_code }}</span>
+            {{ ing.ciqual_ref.nom_fr }}
+          </td>
+          <td class="col-kcal">{{ ing.ciqual_ref.kcal_100g|default:"—" }}</td>
+          <td class="col-prot">{{ ing.ciqual_ref.proteines_100g|default:"—" }}</td>
+        </tr>
+        {% endwith %}
+      {% elif ing.calories %}
+        <tr data-recipe="{{ ing.recipe.title|lower }}"
+            data-ing="{{ ing.name|lower }}"
+            data-status="manual">
+          <td class="col-recipe">
+            <a href="{% url 'menu:detail_recette' ing.recipe.id %}">{{ ing.recipe.title }}</a>
+          </td>
+          <td class="col-ingredient">{{ ing.name }}</td>
+          <td class="col-qty">
+            {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}
+            {% if ing.unit %} {{ ing.unit }}{% endif %}
+          </td>
+          <td class="col-status"><span class="status-badge status-badge--manual">Manuel</span></td>
+          <td class="col-ciqual">—</td>
+          <td class="col-kcal">{{ ing.calories|floatformat:"0" }}</td>
+          <td class="col-prot">{{ ing.proteins|default:"—"|floatformat:"1" }}</td>
+        </tr>
+      {% else %}
+        <tr data-recipe="{{ ing.recipe.title|lower }}"
+            data-ing="{{ ing.name|lower }}"
+            data-status="none">
+          <td class="col-recipe">
+            <a href="{% url 'menu:detail_recette' ing.recipe.id %}">{{ ing.recipe.title }}</a>
+          </td>
+          <td class="col-ingredient">{{ ing.name }}</td>
+          <td class="col-qty">
+            {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}
+            {% if ing.unit %} {{ ing.unit }}{% endif %}
+          </td>
+          <td class="col-status"><span class="status-badge status-badge--none">Non mappé</span></td>
+          <td class="col-ciqual">—</td>
+          <td class="col-kcal">—</td>
+          <td class="col-prot">—</td>
+        </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+.audit-header { padding: 1.2rem 1.5rem 0; }
+.audit-header h1 { font-size: 1.4rem; margin-bottom: .8rem; }
+.audit-badge--temp { background: #fff3cd; color: #856404; font-size: .7rem; padding: .2rem .5rem; border-radius: 4px; vertical-align: middle; font-weight: 600; }
+.audit-stats { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.audit-stat { background: #f8f9fa; border-radius: 8px; padding: .6rem 1rem; min-width: 130px; border-left: 4px solid #ced4da; }
+.audit-stat--ok   { border-color: #28a745; }
+.audit-stat--warn { border-color: #fd7e14; }
+.audit-stat--err  { border-color: #dc3545; }
+.audit-stat--neutral { border-color: #6c757d; }
+.audit-stat__val  { display: block; font-size: 1.6rem; font-weight: 700; line-height: 1; }
+.audit-stat--ok   .audit-stat__val { color: #28a745; }
+.audit-stat--warn .audit-stat__val { color: #fd7e14; }
+.audit-stat--err  .audit-stat__val { color: #dc3545; }
+.audit-stat__lbl  { font-size: .75rem; color: #6c757d; margin-top: .2rem; }
+.audit-filters { display: flex; gap: 1rem; align-items: center; margin-bottom: .8rem; flex-wrap: wrap; }
+.audit-filters #filter-input { padding: .45rem .7rem; border: 1.5px solid #ced4da; border-radius: 6px; font-size: .9rem; width: 280px; }
+.audit-check { font-size: .85rem; display: flex; align-items: center; gap: .4rem; cursor: pointer; }
+.audit-count { font-size: .8rem; color: #6c757d; margin-left: auto; }
+.audit-table-wrap { overflow-x: auto; height: calc(100vh - 280px); overflow-y: auto; border: 1px solid #dee2e6; border-radius: 8px; margin: 0 1.5rem 1.5rem; }
+.audit-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+.audit-table thead th { position: sticky; top: 0; background: #343a40; color: #fff; padding: .6rem .7rem; text-align: left; white-space: nowrap; z-index: 2; }
+.audit-table tbody tr { border-bottom: 1px solid #f0f0f0; }
+.audit-table tbody tr:hover { background: #f8f9fa; }
+.audit-table tbody tr[data-status="none"] { background: #fff5f5; }
+.audit-table tbody tr[data-status="none"]:hover { background: #ffe8e8; }
+.audit-table tbody tr[data-status="manual"] { background: #fffbf0; }
+.audit-table td { padding: .45rem .7rem; vertical-align: middle; }
+.col-recipe { min-width: 180px; max-width: 220px; font-weight: 500; }
+.col-recipe a { color: inherit; text-decoration: none; }
+.col-recipe a:hover { color: var(--color-primary, #2e7d32); text-decoration: underline; }
+.col-ingredient { min-width: 160px; }
+.col-qty { min-width: 80px; color: #6c757d; }
+.col-status { min-width: 90px; }
+.col-ciqual { min-width: 280px; max-width: 380px; font-size: .8rem; }
+.col-kcal, .col-prot { min-width: 70px; text-align: right; color: #495057; }
+.ciqual-code { display: inline-block; background: #e9ecef; border-radius: 3px; padding: .05rem .3rem; font-family: monospace; font-size: .75rem; margin-right: .4rem; color: #495057; }
+.status-badge { display: inline-block; padding: .15rem .45rem; border-radius: 4px; font-size: .75rem; font-weight: 600; }
+.status-badge--ok     { background: #d4edda; color: #155724; }
+.status-badge--manual { background: #fff3cd; color: #856404; }
+.status-badge--none   { background: #f8d7da; color: #721c24; }
+</style>
+
+<script>
+(function () {
+  const input      = document.getElementById('filter-input');
+  const cbUnmapped = document.getElementById('filter-unmapped');
+  const countEl    = document.getElementById('visible-count');
+  const rows       = Array.from(document.querySelectorAll('#audit-table tbody tr'));
+
+  function applyFilters() {
+    const q       = input.value.toLowerCase().trim();
+    const unmapOnly = cbUnmapped.checked;
+    let visible = 0;
+    rows.forEach(row => {
+      const recipe = row.dataset.recipe || '';
+      const ing    = row.dataset.ing    || '';
+      const status = row.dataset.status || '';
+      const matchText   = !q || recipe.includes(q) || ing.includes(q);
+      const matchStatus = !unmapOnly || status === 'none';
+      const show = matchText && matchStatus;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    countEl.textContent = visible + ' ligne' + (visible > 1 ? 's' : '');
+  }
+
+  input.addEventListener('input', applyFilters);
+  cbUnmapped.addEventListener('change', applyFilters);
+  countEl.textContent = rows.length + ' lignes';
+})();
+</script>
+{% endblock %}

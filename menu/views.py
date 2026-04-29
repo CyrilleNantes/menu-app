@@ -910,6 +910,36 @@ def mode_cuisine(request, id):
 
 
 @login_required
+def audit_ciqual(request):
+    """
+    Page temporaire d'audit du mapping ingrédients ↔ IngredientRef Ciqual.
+    Accessible aux Cuisiniers et staff uniquement.
+    """
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return redirect("menu:liste_recettes")
+
+    ingredients = (
+        Ingredient.objects
+        .select_related("recipe", "ciqual_ref")
+        .filter(recipe__actif=True)
+        .order_by("recipe__title", "name")
+    )
+
+    total      = ingredients.count()
+    matched    = ingredients.filter(ciqual_ref__isnull=False).count()
+    non_calc   = ingredients.filter(ciqual_ref__isnull=True, calories__isnull=True).count()
+    non_mapped = total - matched - non_calc
+
+    return render(request, "menu/recettes/ciqual_audit.html", {
+        "ingredients": ingredients,
+        "total":       total,
+        "matched":     matched,
+        "non_calc":    non_calc,
+        "non_mapped":  non_mapped,
+    })
+
+
+@login_required
 def liste_recettes(request):
     qs = Recipe.objects.filter(actif=True).select_related("created_by").annotate(
         note_moyenne=Avg("reviews__stars"),

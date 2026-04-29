@@ -26,6 +26,7 @@ urlpatterns = [
     path("courses/generer/<int:plan_id>/", views.generer_courses, name="generer_courses"),
     path("courses/item/<int:id>/cocher/", views.cocher_item, name="cocher_item"),
     path("recettes/", views.liste_recettes, name="liste_recettes"),
+    path("recettes/ciqual-audit/", views.audit_ciqual, name="audit_ciqual"),
     path("recettes/<int:id>/", views.detail_recette, name="detail_recette"),
     path("recettes/<int:id>/cuisine/", views.mode_cuisine, name="mode_cuisine"),
     path("recettes/<int:id>/noter/", views.noter_recette, name="noter_recette"),
