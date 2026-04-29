@@ -71,7 +71,6 @@ class Command(BaseCommand):
                     unit=ing.get("unit"),
                     is_optional=ing.get("is_optional", False),
                     category=ing.get("category"),
-                    openfoodfacts_id=ing.get("openfoodfacts_id"),
                     order=ing["order"],
                 )
 
