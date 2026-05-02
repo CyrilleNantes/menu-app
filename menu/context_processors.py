@@ -4,8 +4,11 @@ def environment(request):
 
     if request.user.is_authenticated:
         try:
-            ctx["user_rank"] = request.user.profile.rank
+            profile = request.user.profile
+            ctx["user_rank"] = profile.rank
+            ctx["user_is_cuisinier"] = profile.role in ("cuisinier", "chef_etoile")
         except Exception:
             ctx["user_rank"] = (0, "")
+            ctx["user_is_cuisinier"] = False
 
     return ctx

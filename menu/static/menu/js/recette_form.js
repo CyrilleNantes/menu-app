@@ -176,11 +176,11 @@
         return div;
     }
 
-    // ── Autocomplete Ciqual ──────────────────────────────────────────────────
+    // ── Autocomplete base de connaissance ───────────────────────────────────
 
-    async function fetchCiqual(q) {
+    async function fetchConnus(q) {
         try {
-            const resp = await fetch(`/api/ingredients/ciqual/?q=${encodeURIComponent(q)}`);
+            const resp = await fetch(`/api/ingredients/connus/?q=${encodeURIComponent(q)}`);
             const data = await resp.json();
             return data.ok ? data.results : [];
         } catch {
@@ -200,15 +200,15 @@
         results.forEach(item => {
             const li = document.createElement('li');
             li.className = 'ciqual-dropdown__item';
-            const kcal = item.kcal_100g != null ? ` — ${item.kcal_100g} kcal/100g` : '';
-            li.textContent = item.nom_fr + kcal;
-            li.dataset.ciqualId      = item.id;
-            li.dataset.cal100        = item.kcal_100g         ?? '';
-            li.dataset.prot100       = item.proteines_100g    ?? '';
-            li.dataset.carbs100      = item.glucides_100g     ?? '';
-            li.dataset.fats100       = item.lipides_100g      ?? '';
-            li.dataset.defaultWeight = item.default_weight_g  ?? '';
-            li.dataset.label         = item.nom_fr;
+            const kcal = item.kcal_100g != null ? ` — ${Math.round(item.kcal_100g)} kcal/100g` : '';
+            li.textContent = item.name + kcal;
+            li.dataset.ciqualId      = item.ciqual_ref_id   ?? '';
+            li.dataset.cal100        = item.kcal_100g        ?? '';
+            li.dataset.prot100       = item.proteines_100g   ?? '';
+            li.dataset.carbs100      = item.glucides_100g    ?? '';
+            li.dataset.fats100       = item.lipides_100g     ?? '';
+            li.dataset.defaultWeight = item.default_weight_g ?? '';
+            li.dataset.label         = item.name;
             ul.appendChild(li);
         });
         wrap.appendChild(ul);
@@ -219,7 +219,7 @@
         const wrap = nameInput.closest('.ing-name-wrap');
         if (!wrap) return;
         if (q.length < 2) { closeCiqualDropdown(wrap); return; }
-        const results = await fetchCiqual(q);
+        const results = await fetchConnus(q);
         showCiqualDropdown(wrap, results);
     }, 350);
 

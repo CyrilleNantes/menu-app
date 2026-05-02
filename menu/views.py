@@ -21,7 +21,7 @@ from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
-from .models import Family, Ingredient, IngredientRef, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, IngredientRef, KnownIngredient, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
     bilan_planning,
     calculer_alertes_planning,
@@ -34,6 +34,7 @@ from .services import (
     notifier_nouvelle_proposition,
     notifier_planning_publie,
     rechercher_ciqual,
+    rechercher_connus,
     restaurer_backup,
     sauvegarder_recette_depuis_post,
     suggerer_recettes,
@@ -1409,10 +1410,117 @@ def _verifier_staff(request):
 
 @login_required
 def backup_page(request):
-    if not _verifier_staff(request):
-        messages.error(request, "Accès réservé aux administrateurs.")
+    return redirect("menu:management_page")
+
+
+@login_required
+def management_page(request):
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
         return redirect("menu:home")
-    return render(request, "menu/admin/backup.html")
+
+    q = request.GET.get('q', '').strip()
+    filtre = request.GET.get('filtre', 'tous')
+
+    ings = KnownIngredient.objects.select_related('ciqual_ref').annotate(
+        nb_recettes=Count('ciqual_ref__ingredients__recipe', distinct=True)
+    )
+    if q:
+        ings = ings.filter(Q(name__icontains=q) | Q(synonymes__icontains=q))
+    if filtre == 'sans_ciqual':
+        ings = ings.filter(ciqual_ref__isnull=True)
+    elif filtre == 'avec_ciqual':
+        ings = ings.filter(ciqual_ref__isnull=False)
+
+    ings = ings.order_by('name')
+
+    return render(request, "menu/admin/management.html", {
+        'ingredients': ings,
+        'q': q,
+        'filtre': filtre,
+        'total': ings.count(),
+        'is_staff': _verifier_staff(request),
+    })
+
+
+@login_required
+def api_connus(request):
+    """Autocomplete ingrédients depuis la base de connaissance."""
+    q = request.GET.get('q', '').strip()
+    results = rechercher_connus(q)
+    return JsonResponse({'ok': True, 'results': results})
+
+
+@require_POST
+@login_required
+def ajouter_known_ingredient(request):
+    """Ajoute un ingrédient dans la base de connaissance."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Accès refusé'}, status=403)
+
+    name = request.POST.get('name', '').strip()
+    ciqual_id = request.POST.get('ciqual_ref_id', '').strip()
+    if not name:
+        return JsonResponse({'ok': False, 'error': 'Nom requis'})
+
+    ciqual_ref = None
+    if ciqual_id:
+        try:
+            ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id))
+        except (IngredientRef.DoesNotExist, ValueError):
+            pass
+
+    from .models import _normaliser_nom
+    nom_norm = _normaliser_nom(name)
+    if KnownIngredient.objects.filter(nom_normalise=nom_norm).exists():
+        return JsonResponse({'ok': False, 'error': 'Ingrédient déjà dans la base'})
+
+    ki = KnownIngredient.objects.create(name=name, ciqual_ref=ciqual_ref)
+    return JsonResponse({
+        'ok': True,
+        'id': ki.pk,
+        'name': ki.name,
+        'ciqual_nom': ciqual_ref.nom_fr if ciqual_ref else None,
+        'kcal_100g': ciqual_ref.kcal_100g if ciqual_ref else None,
+    })
+
+
+@require_POST
+@login_required
+def maj_known_ingredient(request, ki_id):
+    """Met à jour synonymes et/ou ciqual_ref d'un KnownIngredient (AJAX)."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Accès refusé'}, status=403)
+
+    ki = get_object_or_404(KnownIngredient, pk=ki_id)
+    fields = []
+
+    if 'synonymes' in request.POST:
+        ki.synonymes = request.POST.get('synonymes', '').strip()
+        fields.append('synonymes')
+
+    if 'ciqual_ref_id' in request.POST:
+        ciqual_id = request.POST.get('ciqual_ref_id', '').strip()
+        if ciqual_id:
+            try:
+                ki.ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id))
+            except (IngredientRef.DoesNotExist, ValueError):
+                ki.ciqual_ref = None
+        else:
+            ki.ciqual_ref = None
+        fields.append('ciqual_ref')
+
+    if fields:
+        ki.save(update_fields=fields)
+
+    ref = ki.ciqual_ref
+    return JsonResponse({
+        'ok': True,
+        'synonymes': ki.synonymes,
+        'ciqual_nom': ref.nom_fr if ref else None,
+        'kcal_100g': ref.kcal_100g if ref else None,
+        'proteines_100g': ref.proteines_100g if ref else None,
+    })
 
 
 @login_required

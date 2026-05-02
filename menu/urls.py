@@ -22,6 +22,7 @@ urlpatterns = [
     path("planning/proposition/<int:proposal_id>/supprimer/", views.supprimer_proposition, name="supprimer_proposition"),
     path("api/recettes/", views.api_recettes, name="api_recettes"),
     path("api/ingredients/ciqual/", views.recherche_ciqual, name="recherche_ciqual"),
+    path("api/ingredients/connus/", views.api_connus, name="api_connus"),
     path("api/ingredients/<int:ingredient_id>/set-ciqual/", views.set_ciqual_ingredient, name="set_ciqual_ingredient"),
     path("courses/<int:plan_id>/", views.liste_courses, name="liste_courses"),
     path("courses/generer/<int:plan_id>/", views.generer_courses, name="generer_courses"),
@@ -55,6 +56,9 @@ urlpatterns = [
     path("google/disconnect/", views.google_disconnect, name="google_disconnect"),
     # Backup / Restore / Import recettes
     path("backup/", views.backup_page, name="backup_page"),
+    path("management/", views.management_page, name="management_page"),
+    path("management/ingredients/ajouter/", views.ajouter_known_ingredient, name="ajouter_known_ingredient"),
+    path("management/ingredients/<int:ki_id>/", views.maj_known_ingredient, name="maj_known_ingredient"),
     path("backup/export/", views.export_backup, name="export_backup"),
     path("backup/importer/", views.import_backup, name="import_backup"),
     path("backup/recettes/importer/", views.import_recettes, name="import_recettes"),

@@ -141,6 +141,48 @@ def compute_ingredient_macros_from_ciqual(ingr: Ingredient) -> dict | None:
     }
 
 
+def rechercher_connus(q: str, limit: int = 10) -> list[dict]:
+    """
+    Recherche dans la base de connaissance ingrédients (KnownIngredient).
+    Insensible à la casse et aux accents. Priorité aux correspondances synonymes.
+    """
+    from .models import KnownIngredient, _normaliser_nom
+    if not q or len(q) < 2:
+        return []
+    q_norm = _normaliser_nom(q)
+    from django.db.models import Q, Case, When, IntegerField, Count
+    qs = (
+        KnownIngredient.objects
+        .select_related('ciqual_ref')
+        .annotate(nb_recettes=Count('ciqual_ref__ingredients__recipe', distinct=True))
+        .filter(Q(nom_normalise__icontains=q_norm) | Q(synonymes__icontains=q_norm))
+        .annotate(
+            pertinence=Case(
+                When(nom_normalise__startswith=q_norm, then=0),
+                When(nom_normalise__icontains=q_norm, then=1),
+                default=2,
+                output_field=IntegerField(),
+            )
+        )
+        .order_by('pertinence', 'name')[:limit]
+    )
+    results = []
+    for ki in qs:
+        ref = ki.ciqual_ref
+        results.append({
+            'id':            ki.pk,
+            'name':          ki.name,
+            'ciqual_ref_id': ref.pk if ref else None,
+            'nom_ciqual':    ref.nom_fr if ref else None,
+            'kcal_100g':     ref.kcal_100g if ref else None,
+            'proteines_100g': ref.proteines_100g if ref else None,
+            'glucides_100g': ref.glucides_100g if ref else None,
+            'lipides_100g':  ref.lipides_100g if ref else None,
+            'default_weight_g': ref.default_weight_g if ref else None,
+        })
+    return results
+
+
 def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
     """
     Recherche dans IngredientRef par nom normalisé.
@@ -594,6 +636,19 @@ def _parse_int(val: str):
         return None
 
 
+def _sync_known_ingredient(name: str, ciqual_ref) -> None:
+    """Ajoute ou enrichit la base de connaissance lors de la sauvegarde d'une recette."""
+    from .models import KnownIngredient, _normaliser_nom
+    nom_norm = _normaliser_nom(name)
+    try:
+        ki = KnownIngredient.objects.get(nom_normalise=nom_norm)
+        if ciqual_ref and ki.ciqual_ref is None:
+            ki.ciqual_ref = ciqual_ref
+            ki.save(update_fields=['ciqual_ref'])
+    except KnownIngredient.DoesNotExist:
+        KnownIngredient.objects.create(name=name, ciqual_ref=ciqual_ref)
+
+
 @transaction.atomic
 def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
     """
@@ -657,6 +712,7 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
                 ingr.carbs    = _parse_float(post_data.get(f"ing_carbs_{g}_{i}"))
                 ingr.fats     = _parse_float(post_data.get(f"ing_fats_{g}_{i}"))
             ingr.save()
+            _sync_known_ingredient(name, ciqual_ref)
 
     # ── Étapes ───────────────────────────────────────────────────────────────
     recipe.steps.all().delete()

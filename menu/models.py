@@ -1,9 +1,20 @@
+import re
+import unicodedata
 import uuid
 from datetime import time as datetime_time
 
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
+
+
+def _normaliser_nom(s: str) -> str:
+    """Normalise un nom : minuscules, sans accents, sans ponctuation."""
+    s = s.lower().strip()
+    s = unicodedata.normalize('NFD', s)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    s = re.sub(r'[^\w\s]', ' ', s)
+    return re.sub(r'\s+', ' ', s).strip()
 
 
 class Family(models.Model):
@@ -528,3 +539,40 @@ class NotificationPreference(models.Model):
 
     def __str__(self):
         return f"{self.user.username} — {self.get_channel_display()}"
+
+
+class KnownIngredient(models.Model):
+    """Base de connaissance des ingrédients utilisés dans les recettes."""
+    name          = models.CharField(max_length=200, unique=True, verbose_name="Nom")
+    nom_normalise = models.CharField(max_length=200, db_index=True, editable=False, verbose_name="Nom normalisé")
+    synonymes     = models.TextField(
+        blank=True, default="",
+        verbose_name="Synonymes",
+        help_text="Noms alternatifs séparés par des virgules (insensible à la casse et aux accents)",
+    )
+    ciqual_ref    = models.ForeignKey(
+        'IngredientRef', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='known_ingredients',
+        verbose_name="Référence Ciqual",
+    )
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Ingrédient connu"
+        verbose_name_plural = "Ingrédients connus"
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.nom_normalise = _normaliser_nom(self.name)
+        super().save(*args, **kwargs)
+
+    @property
+    def kcal_100g(self):
+        return self.ciqual_ref.kcal_100g if self.ciqual_ref else None
+
+    @property
+    def proteines_100g(self):
+        return self.ciqual_ref.proteines_100g if self.ciqual_ref else None
