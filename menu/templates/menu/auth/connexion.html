@@ -27,6 +27,6 @@
         <button type="submit" class="btn btn--primary btn--full">Se connecter</button>
     </form>
 
-    <p class="form-page__alt">Pas encore de compte ? <a href="{% url 'menu:inscription' %}">Créer un compte</a></p>
+    <p class="form-page__alt">Pas encore de compte ? <a href="{% url 'menu:inscription' %}{% if request.GET.next %}?next={{ request.GET.next }}{% endif %}">Créer un compte</a></p>
 </div>
 {% endblock %}

@@ -156,7 +156,8 @@ def inscription(request):
         login(request, user, backend="django.contrib.auth.backends.ModelBackend")
         messages.success(request, "Bienvenue !")
         logger.info("Nouvel utilisateur inscrit : %s (rôle : %s)", user.email, cd["role"])
-        return redirect("menu:home")
+        next_url = request.GET.get("next", "")
+        return redirect(next_url if next_url.startswith("/") else "menu:home")
 
     return render(request, "menu/auth/inscription.html", {"form": form})
 
