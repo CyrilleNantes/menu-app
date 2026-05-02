@@ -210,6 +210,13 @@ def rejoindre_famille(request, token):
 
 @login_required
 def rejoindre_famille_page(request):
+    if request.method == "POST":
+        import re
+        invite_link = request.POST.get("invite_link", "").strip()
+        match = re.search(r"famille/inviter/([0-9a-f-]{36})", invite_link)
+        if not match:
+            return render(request, "menu/auth/rejoindre.html", {"error": "Lien invalide. Vérifiez l'URL copiée."})
+        return redirect("menu:rejoindre_famille", token=match.group(1))
     return render(request, "menu/auth/rejoindre.html")
 
 
