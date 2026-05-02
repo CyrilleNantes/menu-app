@@ -950,6 +950,50 @@ def audit_ciqual(request):
     })
 
 
+@login_required
+def gestion_synonymes(request):
+    """Page de gestion des synonymes Ciqual — Cuisinier/staff uniquement."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return redirect("menu:liste_recettes")
+
+    q = request.GET.get('q', '').strip()
+    filtre = request.GET.get('filtre', 'tous')
+
+    refs = IngredientRef.objects.annotate(
+        nb_ingredients=Count('ingredients', distinct=True)
+    )
+    if q:
+        refs = refs.filter(
+            Q(nom_fr__icontains=q) | Q(synonymes__icontains=q)
+        )
+    if filtre == 'avec_synonymes':
+        refs = refs.exclude(synonymes='')
+    elif filtre == 'sans_synonymes':
+        refs = refs.filter(synonymes='', nb_ingredients__gt=0)
+
+    refs = refs.order_by('nom_fr')[:200]
+
+    return render(request, "menu/recettes/ciqual_synonymes.html", {
+        'refs': refs,
+        'q': q,
+        'filtre': filtre,
+    })
+
+
+@require_POST
+@login_required
+def maj_synonymes(request, ref_id):
+    """AJAX — Met à jour les synonymes d'un IngredientRef."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Accès refusé'}, status=403)
+
+    ref = get_object_or_404(IngredientRef, pk=ref_id)
+    synonymes = request.POST.get('synonymes', '').strip()
+    ref.synonymes = synonymes
+    ref.save(update_fields=['synonymes'])
+    return JsonResponse({'ok': True, 'synonymes': ref.synonymes})
+
+
 @require_POST
 @login_required
 def set_ciqual_ingredient(request, ingredient_id):

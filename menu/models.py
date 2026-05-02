@@ -302,6 +302,11 @@ class IngredientRef(models.Model):
         verbose_name="Type de protéine",
     )
     shopping_category = models.CharField(max_length=50, blank=True, null=True, verbose_name="Catégorie liste de courses")
+    synonymes = models.TextField(
+        blank=True, default="",
+        verbose_name="Synonymes",
+        help_text="Noms courants séparés par des virgules (ex: spaghetti, tagliatelles, penne). Utilisés pour l'autocomplete.",
+    )
 
     class Meta:
         ordering = ["nom_fr"]

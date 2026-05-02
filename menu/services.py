@@ -160,10 +160,20 @@ def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
     if not q or len(q) < 2:
         return []
     q_norm = _normalize(q)
+    from django.db.models import Q, Case, When, IntegerField
     refs = (
         IngredientRef.objects
-        .filter(nom_normalise__icontains=q_norm)
-        .order_by('nom_fr')[:limit]
+        .filter(Q(nom_normalise__icontains=q_norm) | Q(synonymes__icontains=q_norm))
+        .annotate(
+            # Priorité : correspond au synonyme (nom courant) > correspond au nom Ciqual
+            pertinence=Case(
+                When(synonymes__icontains=q_norm, then=0),
+                default=1,
+                output_field=IntegerField(),
+            )
+        )
+        .order_by('pertinence', 'nom_fr')
+        .distinct()[:limit]
     )
     return [
         {
