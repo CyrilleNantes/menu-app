@@ -119,7 +119,7 @@ class Command(BaseCommand):
 
             for ingr in all_ingrs:
                 if ingr.is_optional:
-                    continue  # on exclut les ingrédients optionnels du calcul
+                    continue
 
                 # Priorité : ciqual_ref dérivé de known_ingredient, sinon ciqual_ref direct
                 if ingr.known_ingredient and ingr.known_ingredient.ciqual_ref:
@@ -128,15 +128,22 @@ class Command(BaseCommand):
                         if not dry_run:
                             ingr.save(update_fields=['ciqual_ref'])
 
-                if ingr.ciqual_ref is None:
-                    ingr_no_ref += 1
-                    all_calculable = False
-                    continue
+                macros = compute_ingredient_macros(ingr) if ingr.ciqual_ref else None
 
-                macros = compute_ingredient_macros(ingr)
                 if macros is None:
-                    ingr_no_qty += 1
+                    # Pas de ref ou quantité non convertible → on efface les valeurs
+                    # obsolètes plutôt que de les laisser polluer le calcul.
+                    if ingr.ciqual_ref is None:
+                        ingr_no_ref += 1
+                    else:
+                        ingr_no_qty += 1
                     all_calculable = False
+                    if not dry_run and (ingr.calories is not None or ingr.proteins is not None):
+                        ingr.calories = None
+                        ingr.proteins = None
+                        ingr.carbs    = None
+                        ingr.fats     = None
+                        ingr.save(update_fields=['calories', 'proteins', 'carbs', 'fats'])
                     continue
 
                 if not dry_run:
@@ -153,14 +160,13 @@ class Command(BaseCommand):
                 has_any = True
                 ingr_updated += 1
 
-            # ── 2. Agréger sur la recette ─────────────────────────────────
-            if has_any and recipe.base_servings and recipe.base_servings > 0:
-                bs = recipe.base_servings
+            # ── 2. Agréger sur la recette — toujours écrire (même None) ──────
+            bs = recipe.base_servings or 1
+            if has_any:
                 kcal_per = round(recipe_kcal / bs, 1)
                 prot_per = round(recipe_prot / bs, 2)
                 gluc_per = round(recipe_gluc / bs, 2)
-                lip_per  = round(recipe_lip / bs, 2)
-
+                lip_per  = round(recipe_lip  / bs, 2)
                 if dry_run:
                     self.stdout.write(
                         f'  [DRY] {recipe.title[:40]:40s} | '
@@ -176,14 +182,20 @@ class Command(BaseCommand):
                         'calories_per_serving', 'proteins_per_serving',
                         'carbs_per_serving', 'fats_per_serving'
                     ])
-
                 recipe_updated += 1
                 if not all_calculable:
                     recipe_partial += 1
             else:
-                self.stdout.write(
-                    f'  ATTENTION  {recipe.title[:50]} - aucune macro calculable'
-                )
+                # Aucun ingrédient calculable → effacer les macros de la recette
+                if not dry_run:
+                    recipe.calories_per_serving = None
+                    recipe.proteins_per_serving  = None
+                    recipe.carbs_per_serving     = None
+                    recipe.fats_per_serving      = None
+                    recipe.save(update_fields=[
+                        'calories_per_serving', 'proteins_per_serving',
+                        'carbs_per_serving', 'fats_per_serving'
+                    ])
 
         self.stdout.write(self.style.SUCCESS(
             f'Recalcul termine :\n'
