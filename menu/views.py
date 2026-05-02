@@ -249,6 +249,8 @@ def profil(request):
         "famille_members":      famille_members,
         "google_connected":     google_connected,
         "dietary_tag_choices":  DIETARY_TAG_CHOICES,
+        "rank_cuisinier":       UserProfile._RANK_CUISINIER,
+        "rank_convive":         UserProfile._RANK_CONVIVE,
     }
     return render(request, "menu/profil.html", ctx)
 

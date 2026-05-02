@@ -75,7 +75,7 @@
         <h2 class="profil-section__title">Progression</h2>
         {% if profile.role in "cuisinier,chef_etoile" %}
         <ol class="rank-ladder">
-            {% for t, lvl, name, emoji in profile._RANK_CUISINIER %}
+            {% for t, lvl, name, emoji in rank_cuisinier %}
             <li class="rank-ladder__item {% if rank_info.level >= lvl %}rank-ladder__item--reached{% endif %}">
                 <span class="rank-ladder__emoji">{{ emoji }}</span>
                 <span class="rank-ladder__name">{{ name }}</span>
@@ -85,7 +85,7 @@
         </ol>
         {% elif profile.role == "convive" %}
         <ol class="rank-ladder">
-            {% for t, lvl, name, emoji in profile._RANK_CONVIVE %}
+            {% for t, lvl, name, emoji in rank_convive %}
             <li class="rank-ladder__item {% if rank_info.level >= lvl %}rank-ladder__item--reached{% endif %}">
                 <span class="rank-ladder__emoji">{{ emoji }}</span>
                 <span class="rank-ladder__name">{{ name }}</span>
