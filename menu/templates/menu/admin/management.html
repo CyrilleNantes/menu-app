@@ -64,7 +64,25 @@
     {% if q or filtre != 'tous' %}<a href="{% url 'menu:management_page' %}" class="btn btn--secondary btn--sm">Réinitialiser</a>{% endif %}
   </form>
 
-  <p style="color:#888;font-size:.85rem;margin-bottom:.75rem">{{ total }} ingrédient{{ total|pluralize }}</p>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+    <p style="color:#888;font-size:.85rem;margin:0">{{ total }} ingrédient{{ total|pluralize }}</p>
+    <div style="display:flex;gap:.5rem">
+      <form method="post" action="{% url 'menu:link_known_ingredients' %}" style="margin:0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm"
+                title="Relie automatiquement les recettes existantes à la base de connaissance">
+          🔗 Lier les recettes existantes
+        </button>
+      </form>
+      <form method="post" action="{% url 'menu:recalculate_nutrition_view' %}" style="margin:0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm"
+                title="Recalcule les calories/protéines de toutes les recettes depuis les mappings Ciqual actuels">
+          🔄 Recalculer les macros
+        </button>
+      </form>
+    </div>
+  </div>
 
   <div style="overflow-x:auto">
   <table style="width:100%;border-collapse:collapse;font-size:.88rem;min-width:700px">

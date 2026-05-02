@@ -1420,6 +1420,43 @@ def backup_page(request):
     return redirect("menu:management_page")
 
 
+@require_POST
+@login_required
+def link_known_ingredients_view(request):
+    """Lance la commande link_known_ingredients via l'UI Management."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('link_known_ingredients', stdout=out)
+    result = out.getvalue()
+    # Extraire les totaux du résultat pour le message flash
+    lines = [l.strip() for l in result.splitlines() if l.strip()]
+    summary = ' · '.join(lines[-4:]) if len(lines) >= 4 else result.strip()
+    messages.success(request, f"🔗 Liaison terminée — {summary}")
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
+def recalculate_nutrition_view(request):
+    """Lance la commande recalculate_nutrition via l'UI Management."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('recalculate_nutrition', stdout=out)
+    result = out.getvalue()
+    lines = [l.strip() for l in result.splitlines() if l.strip()]
+    summary = ' · '.join(lines[-4:]) if len(lines) >= 4 else result.strip()
+    messages.success(request, f"🔄 Recalcul terminé — {summary}")
+    return redirect("menu:management_page")
+
+
 @login_required
 def management_page(request):
     if not (_verifier_staff(request) or _verifier_cuisinier(request)):
