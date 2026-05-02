@@ -73,6 +73,7 @@
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Ingrédient</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:70px;text-align:center">Recettes</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Synonymes</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:80px">Unité déf.</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Mapping Ciqual</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px;text-align:right">kcal/100g</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px;text-align:right">prot./100g</th>
@@ -94,6 +95,13 @@
             <button class="btn btn--secondary btn--sm ki-save-syno" style="white-space:nowrap">✓</button>
             <span class="ki-syno-status" style="display:none;color:#2e7d32;font-size:.8rem">✓</span>
           </div>
+        </td>
+        <td style="padding:.6rem .8rem">
+          <input type="text" class="ki-default-unit" value="{{ ki.default_unit|default:'g' }}"
+                 maxlength="20"
+                 style="width:60px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
+                 title="Unité par défaut (g, ml, kg, unité…)">
+          <span class="ki-unit-status" style="display:none;color:#2e7d32;font-size:.8rem;margin-left:.2rem">✓</span>
         </td>
         <td style="padding:.6rem .8rem">
           <div class="ki-ciqual-cell">
@@ -120,6 +128,7 @@
         <td style="padding:.6rem .8rem;text-align:right;color:#555">
           <span class="ki-prot">{% if ki.proteines_100g %}{{ ki.proteines_100g|floatformat:1 }}{% else %}—{% endif %}</span>
         </td>
+        <td style="display:none">{{ ki.pk }}</td>
       </tr>
       {% empty %}
       <tr><td colspan="6" style="padding:2rem;text-align:center;color:#888">Aucun ingrédient trouvé</td></tr>
@@ -276,6 +285,16 @@ document.querySelectorAll('.ki-row').forEach(row => {
     synoBtn.disabled = false;
   });
   synoInput?.addEventListener('keydown', e => { if (e.key === 'Enter') synoBtn.click(); });
+
+  // Unité par défaut
+  const unitInput  = row.querySelector('.ki-default-unit');
+  const unitStatus = row.querySelector('.ki-unit-status');
+  const saveUnit = async () => {
+    const d = await saveField({ default_unit: unitInput.value.trim() || 'g' });
+    if (d.ok) { unitStatus.style.display = 'inline'; setTimeout(() => unitStatus.style.display = 'none', 2000); }
+  };
+  unitInput?.addEventListener('change', saveUnit);
+  unitInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveUnit(); });
 
   // Mapping Ciqual — afficher éditeur
   const editBtn    = row.querySelector('.ki-edit-ciqual');

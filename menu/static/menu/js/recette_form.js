@@ -30,8 +30,8 @@
             row.querySelector('.ing-category').name     = `ing_category_${g}_${i}`;
             const optCb = row.querySelector('input[type=checkbox]');
             if (optCb) optCb.name = `ing_optional_${g}_${i}`;
-            const ciqualRef = row.querySelector('.ing-ciqual-ref-id');
-            if (ciqualRef) ciqualRef.name = `ing_ciqual_ref_id_${g}_${i}`;
+            const ciqualRef = row.querySelector('.ing-known-id');
+            if (ciqualRef) ciqualRef.name = `ing_known_id_${g}_${i}`;
         });
         const ingCount = groupEl.querySelector('.ing-count');
         if (ingCount) { ingCount.name = `group_ing_count_${g}`; ingCount.value = rows.length; }
@@ -101,7 +101,7 @@
                 <input type="checkbox" name="ing_optional_${g}_${i}"> Opt.
             </label>
             <button type="button" class="btn-icon btn-remove-ing" title="Supprimer">✕</button>
-            <input type="hidden" name="ing_ciqual_ref_id_${g}_${i}" value="" class="ing-ciqual-ref-id">`;
+            <input type="hidden" name="ing_known_id_${g}_${i}" value="" class="ing-known-id">`;
         return div;
     }
 
@@ -190,7 +190,7 @@
             li.className = 'ciqual-dropdown__item';
             const kcal = item.kcal_100g != null ? ` — ${Math.round(item.kcal_100g)} kcal/100g` : '';
             li.textContent = item.name + kcal;
-            li.dataset.ciqualId      = item.ciqual_ref_id   ?? '';
+            li.dataset.knownId       = item.id               ?? '';
             li.dataset.cal100        = item.kcal_100g        ?? '';
             li.dataset.prot100       = item.proteines_100g   ?? '';
             li.dataset.carbs100      = item.glucides_100g    ?? '';
@@ -229,8 +229,8 @@
             const ingRow = li.closest('.ing-row');
             if (!wrap || !ingRow) return;
             ingRow.querySelector('.ing-name').value = li.dataset.label;
-            const refInput = ingRow.querySelector('.ing-ciqual-ref-id');
-            if (refInput) refInput.value = li.dataset.ciqualId;
+            const refInput = ingRow.querySelector('.ing-known-id');
+            if (refInput) refInput.value = li.dataset.knownId;
             // Stocker macros/100g sur la ligne pour feedback visuel futur
             ingRow.dataset.cal100   = li.dataset.cal100;
             ingRow.dataset.prot100  = li.dataset.prot100;

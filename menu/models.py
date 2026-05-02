@@ -348,7 +348,15 @@ class Ingredient(models.Model):
         null=True, blank=True,
         related_name="ingredients",
         verbose_name="Référence Ciqual",
-        help_text="Correspondance dans le référentiel ANSES Ciqual 2020",
+        help_text="Dérivé automatiquement depuis known_ingredient.ciqual_ref à la sauvegarde",
+    )
+    known_ingredient = models.ForeignKey(
+        "KnownIngredient",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="usages",
+        verbose_name="Ingrédient connu",
+        help_text="Lien vers la base de connaissance ingrédients",
     )
 
     class Meta:
@@ -554,6 +562,11 @@ class KnownIngredient(models.Model):
         'IngredientRef', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='known_ingredients',
         verbose_name="Référence Ciqual",
+    )
+    default_unit  = models.CharField(
+        max_length=20, default='g', blank=True,
+        verbose_name="Unité par défaut",
+        help_text="Ex. g, ml, kg, unité — pré-remplit le champ Unité dans le formulaire recette",
     )
     created_at    = models.DateTimeField(auto_now_add=True)
 

@@ -20,7 +20,7 @@ Conversions d'unités supportées :
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from menu.models import Ingredient, Recipe
+from menu.models import Ingredient, Recipe, KnownIngredient
 
 
 # ─── Conversions vers grammes ────────────────────────────────────────────────
@@ -113,11 +113,20 @@ class Command(BaseCommand):
             all_calculable = True
 
             # ── 1. Recalculer chaque ingrédient ──────────────────────────
-            all_ingrs = Ingredient.objects.filter(recipe=recipe).select_related('ciqual_ref')
+            all_ingrs = Ingredient.objects.filter(recipe=recipe).select_related(
+                'ciqual_ref', 'known_ingredient__ciqual_ref'
+            )
 
             for ingr in all_ingrs:
                 if ingr.is_optional:
                     continue  # on exclut les ingrédients optionnels du calcul
+
+                # Priorité : ciqual_ref dérivé de known_ingredient, sinon ciqual_ref direct
+                if ingr.known_ingredient and ingr.known_ingredient.ciqual_ref:
+                    if ingr.ciqual_ref_id != ingr.known_ingredient.ciqual_ref_id:
+                        ingr.ciqual_ref = ingr.known_ingredient.ciqual_ref
+                        if not dry_run:
+                            ingr.save(update_fields=['ciqual_ref'])
 
                 if ingr.ciqual_ref is None:
                     ingr_no_ref += 1

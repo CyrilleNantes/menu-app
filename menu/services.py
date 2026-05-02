@@ -8,7 +8,8 @@ from django.contrib.auth.models import User as DjangoUser
 from django.db import connection, transaction
 
 from .models import (
-    Ingredient, IngredientGroup, IngredientRef, Meal, MealProposal, NutritionConfig, NotificationPreference,
+    Ingredient, IngredientGroup, IngredientRef, KnownIngredient,
+    Meal, MealProposal, NutritionConfig, NotificationPreference,
     Recipe, RecipeSection, RecipeStep, Review, ShoppingItem, ShoppingList,
     UserProfile, WeekPlan,
 )
@@ -146,7 +147,7 @@ def rechercher_connus(q: str, limit: int = 10) -> list[dict]:
     Recherche dans la base de connaissance ingrédients (KnownIngredient).
     Insensible à la casse et aux accents. Priorité aux correspondances synonymes.
     """
-    from .models import KnownIngredient, _normaliser_nom
+    from .models import _normaliser_nom
     if not q or len(q) < 2:
         return []
     q_norm = _normaliser_nom(q)
@@ -169,23 +170,17 @@ def rechercher_connus(q: str, limit: int = 10) -> list[dict]:
     results = []
     for ki in qs:
         ref = ki.ciqual_ref
-        # Unité par défaut : "ml" pour les boissons/liquides, "g" sinon
-        groupe = (ref.groupe or '').lower() if ref else ''
-        if any(k in groupe for k in ('boisson', 'eau', 'jus', 'lait', 'crème', 'liquide')):
-            default_unit = 'ml'
-        else:
-            default_unit = 'g'
         results.append({
-            'id':            ki.pk,
-            'name':          ki.name,
-            'ciqual_ref_id': ref.pk if ref else None,
-            'nom_ciqual':    ref.nom_fr if ref else None,
-            'kcal_100g':     ref.kcal_100g if ref else None,
+            'id':             ki.pk,
+            'name':           ki.name,
+            'ciqual_ref_id':  ref.pk if ref else None,
+            'nom_ciqual':     ref.nom_fr if ref else None,
+            'kcal_100g':      ref.kcal_100g if ref else None,
             'proteines_100g': ref.proteines_100g if ref else None,
-            'glucides_100g': ref.glucides_100g if ref else None,
-            'lipides_100g':  ref.lipides_100g if ref else None,
+            'glucides_100g':  ref.glucides_100g if ref else None,
+            'lipides_100g':   ref.lipides_100g if ref else None,
             'default_weight_g': ref.default_weight_g if ref else None,
-            'default_unit':  default_unit,
+            'default_unit':   ki.default_unit or 'g',
         })
     return results
 
@@ -645,7 +640,7 @@ def _parse_int(val: str):
 
 def _sync_known_ingredient(name: str, ciqual_ref) -> None:
     """Ajoute ou enrichit la base de connaissance lors de la sauvegarde d'une recette."""
-    from .models import KnownIngredient, _normaliser_nom
+    from .models import _normaliser_nom
     nom_norm = _normaliser_nom(name)
     try:
         ki = KnownIngredient.objects.get(nom_normalise=nom_norm)
@@ -678,15 +673,31 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
             name = post_data.get(f"ing_name_{g}_{i}", "").strip()
             if not name:
                 continue
-            qty       = _parse_float(post_data.get(f"ing_qty_{g}_{i}"))
-            unit      = post_data.get(f"ing_unit_{g}_{i}", "").strip() or None
-            ciqual_id_raw = post_data.get(f"ing_ciqual_ref_id_{g}_{i}", "").strip()
+            qty  = _parse_float(post_data.get(f"ing_qty_{g}_{i}"))
+            unit = post_data.get(f"ing_unit_{g}_{i}", "").strip() or None
+
+            # ── Résolution KnownIngredient (source primaire) ────────────────
+            # Le formulaire envoie ing_known_id (nouveau) OU ing_ciqual_ref_id
+            # (ancien, rétrocompat pour les recettes déjà en base).
+            known_ingr = None
             ciqual_ref = None
-            if ciqual_id_raw:
+            known_id_raw = post_data.get(f"ing_known_id_{g}_{i}", "").strip()
+            if known_id_raw:
                 try:
-                    ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id_raw))
-                except (IngredientRef.DoesNotExist, ValueError):
+                    known_ingr = KnownIngredient.objects.select_related('ciqual_ref').get(
+                        pk=int(known_id_raw)
+                    )
+                    ciqual_ref = known_ingr.ciqual_ref  # dérivé de la base de connaissance
+                except (KnownIngredient.DoesNotExist, ValueError):
                     pass
+            # Fallback rétrocompat : champ ing_ciqual_ref_id encore présent en base
+            if ciqual_ref is None:
+                ciqual_id_raw = post_data.get(f"ing_ciqual_ref_id_{g}_{i}", "").strip()
+                if ciqual_id_raw:
+                    try:
+                        ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id_raw))
+                    except (IngredientRef.DoesNotExist, ValueError):
+                        pass
 
             ingr = Ingredient(
                 recipe=recipe,
@@ -697,12 +708,12 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
                 unit=unit,
                 is_optional=post_data.get(f"ing_optional_{g}_{i}") == "on",
                 category=post_data.get(f"ing_category_{g}_{i}", "").strip() or None,
+                known_ingredient=known_ingr,
                 ciqual_ref=ciqual_ref,
                 order=i,
             )
-            # Macros : toujours calculées depuis Ciqual si possible, jamais depuis les
-            # champs cachés du formulaire (évite de propager des valeurs obsolètes
-            # d'un ingrédient précédent lors d'une modification de recette).
+            # Macros : calculées depuis Ciqual (dérivé de KnownIngredient).
+            # Jamais depuis des champs cachés pour éviter les valeurs obsolètes.
             macros = compute_ingredient_macros_from_ciqual(ingr) if ciqual_ref else None
             if macros:
                 ingr.calories = macros['calories']
@@ -715,7 +726,9 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
                 ingr.carbs    = None
                 ingr.fats     = None
             ingr.save()
-            _sync_known_ingredient(name, ciqual_ref)
+            # Enrichissement base de connaissance si ingrédient non encore référencé
+            if known_ingr is None:
+                _sync_known_ingredient(name, ciqual_ref)
 
     # ── Étapes ───────────────────────────────────────────────────────────────
     recipe.steps.all().delete()

@@ -1506,6 +1506,10 @@ def maj_known_ingredient(request, ki_id):
         ki.synonymes = request.POST.get('synonymes', '').strip()
         fields.append('synonymes')
 
+    if 'default_unit' in request.POST:
+        ki.default_unit = request.POST.get('default_unit', '').strip() or 'g'
+        fields.append('default_unit')
+
     if 'ciqual_ref_id' in request.POST:
         ciqual_id = request.POST.get('ciqual_ref_id', '').strip()
         if ciqual_id:
