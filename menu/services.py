@@ -169,6 +169,12 @@ def rechercher_connus(q: str, limit: int = 10) -> list[dict]:
     results = []
     for ki in qs:
         ref = ki.ciqual_ref
+        # Unité par défaut : "ml" pour les boissons/liquides, "g" sinon
+        groupe = (ref.groupe or '').lower() if ref else ''
+        if any(k in groupe for k in ('boisson', 'eau', 'jus', 'lait', 'crème', 'liquide')):
+            default_unit = 'ml'
+        else:
+            default_unit = 'g'
         results.append({
             'id':            ki.pk,
             'name':          ki.name,
@@ -179,6 +185,7 @@ def rechercher_connus(q: str, limit: int = 10) -> list[dict]:
             'glucides_100g': ref.glucides_100g if ref else None,
             'lipides_100g':  ref.lipides_100g if ref else None,
             'default_weight_g': ref.default_weight_g if ref else None,
+            'default_unit':  default_unit,
         })
     return results
 
@@ -693,24 +700,20 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
                 ciqual_ref=ciqual_ref,
                 order=i,
             )
-            # Macros : préférence Ciqual si dispo, sinon valeurs saisies manuellement
-            if ciqual_ref:
-                macros = compute_ingredient_macros_from_ciqual(ingr)
-                if macros:
-                    ingr.calories = macros['calories']
-                    ingr.proteins = macros['proteins']
-                    ingr.carbs    = macros['carbs']
-                    ingr.fats     = macros['fats']
-                else:
-                    ingr.calories = _parse_float(post_data.get(f"ing_calories_{g}_{i}"))
-                    ingr.proteins = _parse_float(post_data.get(f"ing_proteins_{g}_{i}"))
-                    ingr.carbs    = _parse_float(post_data.get(f"ing_carbs_{g}_{i}"))
-                    ingr.fats     = _parse_float(post_data.get(f"ing_fats_{g}_{i}"))
+            # Macros : toujours calculées depuis Ciqual si possible, jamais depuis les
+            # champs cachés du formulaire (évite de propager des valeurs obsolètes
+            # d'un ingrédient précédent lors d'une modification de recette).
+            macros = compute_ingredient_macros_from_ciqual(ingr) if ciqual_ref else None
+            if macros:
+                ingr.calories = macros['calories']
+                ingr.proteins = macros['proteins']
+                ingr.carbs    = macros['carbs']
+                ingr.fats     = macros['fats']
             else:
-                ingr.calories = _parse_float(post_data.get(f"ing_calories_{g}_{i}"))
-                ingr.proteins = _parse_float(post_data.get(f"ing_proteins_{g}_{i}"))
-                ingr.carbs    = _parse_float(post_data.get(f"ing_carbs_{g}_{i}"))
-                ingr.fats     = _parse_float(post_data.get(f"ing_fats_{g}_{i}"))
+                ingr.calories = None
+                ingr.proteins = None
+                ingr.carbs    = None
+                ingr.fats     = None
             ingr.save()
             _sync_known_ingredient(name, ciqual_ref)
 

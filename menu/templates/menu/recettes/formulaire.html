@@ -112,10 +112,6 @@
                             <input type="text" name="ing_category_{{ g }}_{{ i }}" value="{{ ing.category|default:'' }}" placeholder="Catégorie" class="ing-category">
                             <label class="ing-optional-label"><input type="checkbox" name="ing_optional_{{ g }}_{{ i }}" {% if ing.is_optional %}checked{% endif %}> Opt.</label>
                             <button type="button" class="btn-icon btn-remove-ing" title="Supprimer">✕</button>
-                            <input type="hidden" name="ing_calories_{{ g }}_{{ i }}" value="{{ ing.calories|default_if_none:''|unlocalize }}" class="ing-calories">
-                            <input type="hidden" name="ing_proteins_{{ g }}_{{ i }}" value="{{ ing.proteins|default_if_none:''|unlocalize }}" class="ing-proteins">
-                            <input type="hidden" name="ing_carbs_{{ g }}_{{ i }}" value="{{ ing.carbs|default_if_none:''|unlocalize }}" class="ing-carbs">
-                            <input type="hidden" name="ing_fats_{{ g }}_{{ i }}" value="{{ ing.fats|default_if_none:''|unlocalize }}" class="ing-fats">
                             <input type="hidden" name="ing_ciqual_ref_id_{{ g }}_{{ i }}" value="{{ ing.ciqual_ref_id|default:'' }}" class="ing-ciqual-ref-id">
                         </div>
                         {% endwith %}
@@ -143,10 +139,6 @@
                             <input type="text" name="ing_category_0_0" placeholder="Catégorie" class="ing-category">
                             <label class="ing-optional-label"><input type="checkbox" name="ing_optional_0_0"> Opt.</label>
                             <button type="button" class="btn-icon btn-remove-ing" title="Supprimer">✕</button>
-                            <input type="hidden" name="ing_calories_0_0" value="" class="ing-calories">
-                            <input type="hidden" name="ing_proteins_0_0" value="" class="ing-proteins">
-                            <input type="hidden" name="ing_carbs_0_0" value="" class="ing-carbs">
-                            <input type="hidden" name="ing_fats_0_0" value="" class="ing-fats">
                             <input type="hidden" name="ing_ciqual_ref_id_0_0" value="" class="ing-ciqual-ref-id">
                         </div>
                     </div>

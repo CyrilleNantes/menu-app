@@ -30,14 +30,6 @@
             row.querySelector('.ing-category').name     = `ing_category_${g}_${i}`;
             const optCb = row.querySelector('input[type=checkbox]');
             if (optCb) optCb.name = `ing_optional_${g}_${i}`;
-            const cal = row.querySelector('.ing-calories');
-            if (cal) cal.name = `ing_calories_${g}_${i}`;
-            const prot = row.querySelector('.ing-proteins');
-            if (prot) prot.name = `ing_proteins_${g}_${i}`;
-            const carbs = row.querySelector('.ing-carbs');
-            if (carbs) carbs.name = `ing_carbs_${g}_${i}`;
-            const fats = row.querySelector('.ing-fats');
-            if (fats) fats.name = `ing_fats_${g}_${i}`;
             const ciqualRef = row.querySelector('.ing-ciqual-ref-id');
             if (ciqualRef) ciqualRef.name = `ing_ciqual_ref_id_${g}_${i}`;
         });
@@ -109,10 +101,6 @@
                 <input type="checkbox" name="ing_optional_${g}_${i}"> Opt.
             </label>
             <button type="button" class="btn-icon btn-remove-ing" title="Supprimer">✕</button>
-            <input type="hidden" name="ing_calories_${g}_${i}" value="" class="ing-calories">
-            <input type="hidden" name="ing_proteins_${g}_${i}" value="" class="ing-proteins">
-            <input type="hidden" name="ing_carbs_${g}_${i}"    value="" class="ing-carbs">
-            <input type="hidden" name="ing_fats_${g}_${i}"     value="" class="ing-fats">
             <input type="hidden" name="ing_ciqual_ref_id_${g}_${i}" value="" class="ing-ciqual-ref-id">`;
         return div;
     }
@@ -208,6 +196,7 @@
             li.dataset.carbs100      = item.glucides_100g    ?? '';
             li.dataset.fats100       = item.lipides_100g     ?? '';
             li.dataset.defaultWeight = item.default_weight_g ?? '';
+            li.dataset.defaultUnit   = item.default_unit     ?? 'g';
             li.dataset.label         = item.name;
             ul.appendChild(li);
         });
@@ -247,13 +236,18 @@
             ingRow.dataset.prot100  = li.dataset.prot100;
             ingRow.dataset.carbs100 = li.dataset.carbs100;
             ingRow.dataset.fats100  = li.dataset.fats100;
+            // Unité par défaut : pré-rempli seulement si le champ est vide
+            const unitInput = ingRow.querySelector('.ing-unit');
+            if (unitInput && !unitInput.value.trim()) {
+                unitInput.value = li.dataset.defaultUnit || 'g';
+            }
             closeCiqualDropdown(wrap);
             // Afficher indicateur de correspondance Ciqual
             const badge = wrap.querySelector('.ciqual-badge');
             if (badge) {
                 badge.textContent = li.dataset.cal100
-                    ? `${li.dataset.cal100} kcal/100g`
-                    : 'Ciqual';
+                    ? `${Math.round(li.dataset.cal100)} kcal/100g`
+                    : 'Ciqual ✓';
                 badge.hidden = false;
             }
             return;
