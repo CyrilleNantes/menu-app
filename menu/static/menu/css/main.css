@@ -733,6 +733,9 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .nutri-day__meal-title:hover { text-decoration: underline; }
 .nutri-day__meal-macros { font-size: .78rem; }
 .nutri-day__empty { font-size: .82rem; font-style: italic; }
+/* Bloc nutrition fiche recette */
+.nutri-subtitle { font-size: .85rem; color: var(--color-muted); margin: -.25rem 0 .75rem; }
+.nutri-total { font-size: .85rem; color: var(--color-muted); margin-top: .5rem; }
 /* Bloc "Pour toi" dans la fiche recette */
 .nutri-pour-toi { margin-top: .75rem; padding: .5rem .75rem; background: #f0faf5; border-radius: var(--radius); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .88rem; }
 .nutri-pour-toi__label { font-weight: 600; }

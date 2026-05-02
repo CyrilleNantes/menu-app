@@ -57,13 +57,17 @@
     <!-- Nutrition -->
     {% if recipe.calories_per_serving or recipe.proteins_per_serving %}
     <section class="recette-section">
-        <h2>Informations nutritionnelles <small>(par portion)</small></h2>
+        <h2>Informations nutritionnelles</h2>
+        <p class="nutri-subtitle">Par portion — recette pour <strong>{{ recipe.base_servings }} personne{{ recipe.base_servings|pluralize:"s" }}</strong></p>
         <div class="nutri-grid">
-            {% if recipe.calories_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.calories_per_serving|floatformat:0 }}</span><span class="nutri-label">kcal</span></div>{% endif %}
-            {% if recipe.proteins_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.proteins_per_serving|floatformat:1 }}g</span><span class="nutri-label">Protéines</span></div>{% endif %}
-            {% if recipe.carbs_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.carbs_per_serving|floatformat:1 }}g</span><span class="nutri-label">Glucides</span></div>{% endif %}
-            {% if recipe.fats_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.fats_per_serving|floatformat:1 }}g</span><span class="nutri-label">Lipides</span></div>{% endif %}
+            {% if recipe.calories_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.calories_per_serving|floatformat:0 }}</span><span class="nutri-label">kcal / portion</span></div>{% endif %}
+            {% if recipe.proteins_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.proteins_per_serving|floatformat:1 }}g</span><span class="nutri-label">Protéines / portion</span></div>{% endif %}
+            {% if recipe.carbs_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.carbs_per_serving|floatformat:1 }}g</span><span class="nutri-label">Glucides / portion</span></div>{% endif %}
+            {% if recipe.fats_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.fats_per_serving|floatformat:1 }}g</span><span class="nutri-label">Lipides / portion</span></div>{% endif %}
         </div>
+        {% if total_recipe_cal and recipe.base_servings > 1 %}
+        <p class="nutri-total">Total recette : {{ total_recipe_cal|floatformat:0 }} kcal{% if total_recipe_prot %} · {{ total_recipe_prot|floatformat:1 }}g de protéines{% endif %}</p>
+        {% endif %}
         {% if pour_toi_cal %}
         <div class="nutri-pour-toi">
             <span class="nutri-pour-toi__label">Pour toi :</span>

@@ -1153,6 +1153,11 @@ def detail_recette(request, id):
     pour_toi_cal  = round(recipe.calories_per_serving  * portions_factor, 0) if recipe.calories_per_serving  else None
     pour_toi_prot = round(recipe.proteins_per_serving * portions_factor, 1) if recipe.proteins_per_serving else None
 
+    # Totaux pour la recette entière (utile pour comprendre le calcul par portion)
+    n_servings = recipe.base_servings or 1
+    total_recipe_cal  = round(recipe.calories_per_serving  * n_servings, 0) if recipe.calories_per_serving  else None
+    total_recipe_prot = round(recipe.proteins_per_serving * n_servings, 1) if recipe.proteins_per_serving else None
+
     # Galerie photos — utilise le prefetch filtré (B2)
     gallery_photos = recipe.active_photos
     is_cuisinier_here = bool(profile and profile.role in ("cuisinier", "chef_etoile"))
@@ -1167,6 +1172,8 @@ def detail_recette(request, id):
         "all_reviews": all_reviews_with_rank,
         "pour_toi_cal":  pour_toi_cal,
         "pour_toi_prot": pour_toi_prot,
+        "total_recipe_cal":  total_recipe_cal,
+        "total_recipe_prot": total_recipe_prot,
         "gallery_photos": gallery_photos,
         "is_cuisinier": is_cuisinier_here,
     }
