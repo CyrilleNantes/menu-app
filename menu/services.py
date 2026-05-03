@@ -235,27 +235,48 @@ def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
 
 
 def calculer_macros_recette(recipe: Recipe) -> None:
-    """Recalcule et sauvegarde les macros par portion à partir des ingrédients."""
-    ingredients = list(recipe.ingredients.all())
+    """Recalcule et sauvegarde les macros par portion + nutrition_status."""
+    ingredients = list(recipe.ingredients.select_related('ciqual_ref').all())
+
+    # ── Statut nutritionnel ──────────────────────────────────────────────────
+    non_optional = [i for i in ingredients if not i.is_optional]
+    mapped       = [i for i in non_optional if i.ciqual_ref_id is not None]
+    if not non_optional:
+        status = 'missing'
+    elif len(mapped) == len(non_optional):
+        status = 'ok'
+    elif mapped:
+        status = 'partial'
+    else:
+        status = 'missing'
+
     if not ingredients:
         recipe.calories_per_serving = None
         recipe.proteins_per_serving = None
-        recipe.carbs_per_serving = None
-        recipe.fats_per_serving = None
-        recipe.save(update_fields=["calories_per_serving", "proteins_per_serving", "carbs_per_serving", "fats_per_serving"])
+        recipe.carbs_per_serving    = None
+        recipe.fats_per_serving     = None
+        recipe.nutrition_status     = 'missing'
+        recipe.save(update_fields=[
+            "calories_per_serving", "proteins_per_serving",
+            "carbs_per_serving", "fats_per_serving", "nutrition_status",
+        ])
         return
 
-    total_cal = sum(i.calories or 0 for i in ingredients)
-    total_prot = sum(i.proteins or 0 for i in ingredients)
-    total_carbs = sum(i.carbs or 0 for i in ingredients)
-    total_fats = sum(i.fats or 0 for i in ingredients)
+    total_cal   = sum(i.calories or 0 for i in ingredients)
+    total_prot  = sum(i.proteins or 0 for i in ingredients)
+    total_carbs = sum(i.carbs    or 0 for i in ingredients)
+    total_fats  = sum(i.fats     or 0 for i in ingredients)
 
     n = max(recipe.base_servings or 1, 1)
-    recipe.calories_per_serving = round(total_cal / n, 1) if total_cal else None
-    recipe.proteins_per_serving = round(total_prot / n, 1) if total_prot else None
-    recipe.carbs_per_serving = round(total_carbs / n, 1) if total_carbs else None
-    recipe.fats_per_serving = round(total_fats / n, 1) if total_fats else None
-    recipe.save(update_fields=["calories_per_serving", "proteins_per_serving", "carbs_per_serving", "fats_per_serving"])
+    recipe.calories_per_serving = round(total_cal   / n, 1) if total_cal  else None
+    recipe.proteins_per_serving = round(total_prot  / n, 1) if total_prot else None
+    recipe.carbs_per_serving    = round(total_carbs / n, 1) if total_carbs else None
+    recipe.fats_per_serving     = round(total_fats  / n, 1) if total_fats else None
+    recipe.nutrition_status     = status
+    recipe.save(update_fields=[
+        "calories_per_serving", "proteins_per_serving",
+        "carbs_per_serving", "fats_per_serving", "nutrition_status",
+    ])
 
 
 def calculer_alertes_planning(week_plan, family) -> list[dict]:
