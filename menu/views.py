@@ -952,6 +952,102 @@ def audit_ciqual(request):
 
 
 @login_required
+def gestion_ciqual_ref(request):
+    """Liste paginée + recherche du référentiel Ciqual (IngredientRef)."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return redirect("menu:liste_recettes")
+
+    q      = request.GET.get('q', '').strip()
+    groupe = request.GET.get('groupe', '').strip()
+
+    qs = IngredientRef.objects.all().order_by('nom_fr')
+    if q:
+        qs = qs.filter(Q(nom_fr__icontains=q) | Q(nom_normalise__icontains=q))
+    if groupe:
+        qs = qs.filter(groupe=groupe)
+
+    groupes = (IngredientRef.objects.values_list('groupe', flat=True)
+               .distinct().order_by('groupe'))
+
+    from django.core.paginator import Paginator
+    paginator = Paginator(qs, 50)
+    page      = paginator.get_page(request.GET.get('page', 1))
+
+    return render(request, 'menu/admin/ciqual_ref.html', {
+        'page_obj': page,
+        'q':        q,
+        'groupe':   groupe,
+        'groupes':  groupes,
+        'total':    qs.count(),
+    })
+
+
+@require_POST
+@login_required
+def maj_ciqual_ref(request, ref_id):
+    """AJAX — Crée (ref_id=0) ou met à jour un IngredientRef."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Non autorisé'}, status=403)
+
+    FLOAT_FIELDS = [
+        'kcal_100g', 'proteines_100g', 'glucides_100g', 'lipides_100g',
+        'sucres_100g', 'fibres_100g', 'ag_satures_100g', 'sel_100g',
+    ]
+
+    if ref_id == 0:
+        # Création
+        nom_fr = request.POST.get('nom_fr', '').strip()
+        if not nom_fr:
+            return JsonResponse({'ok': False, 'error': 'Nom requis'}, status=400)
+        from .models import _normaliser_nom
+        ref = IngredientRef(
+            ciqual_code=f'CUSTOM-{IngredientRef.objects.count() + 1:04d}',
+            nom_fr=nom_fr,
+            nom_normalise=_normaliser_nom(nom_fr),
+            groupe=request.POST.get('groupe', 'aides culinaires et ingrédients divers').strip(),
+        )
+    else:
+        ref = get_object_or_404(IngredientRef, pk=ref_id)
+        nom_fr = request.POST.get('nom_fr', '').strip()
+        if nom_fr:
+            from .models import _normaliser_nom
+            ref.nom_fr        = nom_fr
+            ref.nom_normalise = _normaliser_nom(nom_fr)
+        groupe = request.POST.get('groupe', '').strip()
+        if groupe:
+            ref.groupe = groupe
+
+    for field in FLOAT_FIELDS:
+        raw = request.POST.get(field, '').strip()
+        if raw == '':
+            setattr(ref, field, None)
+        else:
+            try:
+                setattr(ref, field, float(raw.replace(',', '.')))
+            except ValueError:
+                pass
+
+    ref.save()
+    return JsonResponse({
+        'ok':   True,
+        'id':   ref.pk,
+        'nom_fr': ref.nom_fr,
+        'kcal': ref.kcal_100g,
+    })
+
+
+@require_POST
+@login_required
+def supprimer_ciqual_ref(request, ref_id):
+    """Supprime un IngredientRef (les KnownIngredient liés passent à ciqual_ref=NULL)."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Non autorisé'}, status=403)
+    ref = get_object_or_404(IngredientRef, pk=ref_id)
+    ref.delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
 def gestion_synonymes(request):
     """Page de gestion des synonymes Ciqual — Cuisinier/staff uniquement."""
     if not (request.user.is_staff or _verifier_cuisinier(request)):

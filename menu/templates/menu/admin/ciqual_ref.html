@@ -1,0 +1,304 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Référentiel Ciqual{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <span class="page-header__label">ADMINISTRATION</span>
+  <h1>Référentiel Ciqual</h1>
+</div>
+
+{% if messages %}
+<div class="messages">
+  {% for message in messages %}
+  <div class="message message--{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Ajouter un aliment ────────────────────────────────────────────── -->
+<details style="margin-bottom:1.5rem">
+  <summary class="btn btn--primary btn--sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem">
+    + Ajouter un aliment
+  </summary>
+  <div style="margin-top:1rem;padding:1rem;background:#f9f9f9;border-radius:8px;border:1px solid #e0e0e0">
+    <form id="form-creer" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem;align-items:end">
+      <div>
+        <label style="font-size:.8rem;color:#666">Nom <span style="color:red">*</span></label>
+        <input type="text" name="nom_fr" placeholder="ex. Lait de coco" required
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem">
+      </div>
+      <div>
+        <label style="font-size:.8rem;color:#666">Groupe</label>
+        <select name="groupe" style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem">
+          {% for g in groupes %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><label style="font-size:.8rem;color:#666">kcal/100g</label>
+        <input type="number" name="kcal_100g" step="0.1" placeholder="—"
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem"></div>
+      <div><label style="font-size:.8rem;color:#666">Protéines g</label>
+        <input type="number" name="proteines_100g" step="0.01" placeholder="—"
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem"></div>
+      <div><label style="font-size:.8rem;color:#666">Glucides g</label>
+        <input type="number" name="glucides_100g" step="0.01" placeholder="—"
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem"></div>
+      <div><label style="font-size:.8rem;color:#666">Lipides g</label>
+        <input type="number" name="lipides_100g" step="0.01" placeholder="—"
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem"></div>
+      <div><label style="font-size:.8rem;color:#666">Sucres g</label>
+        <input type="number" name="sucres_100g" step="0.01" placeholder="—"
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem"></div>
+      <div><label style="font-size:.8rem;color:#666">Fibres g</label>
+        <input type="number" name="fibres_100g" step="0.01" placeholder="—"
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem"></div>
+      <div><label style="font-size:.8rem;color:#666">AG saturés g</label>
+        <input type="number" name="ag_satures_100g" step="0.01" placeholder="—"
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem"></div>
+      <div><label style="font-size:.8rem;color:#666">Sel g</label>
+        <input type="number" name="sel_100g" step="0.001" placeholder="—"
+               style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem"></div>
+      <div style="display:flex;align-items:flex-end">
+        <button type="submit" class="btn btn--primary btn--sm">Créer</button>
+      </div>
+    </form>
+    <p id="msg-creer" style="margin-top:.5rem;font-size:.85rem;display:none"></p>
+  </div>
+</details>
+
+<!-- ── Filtres ────────────────────────────────────────────────────────── -->
+<form method="get" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center">
+  <input type="search" name="q" value="{{ q }}" placeholder="Rechercher un aliment…"
+         style="padding:.4rem .7rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem;min-width:220px">
+  <select name="groupe" style="padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.88rem">
+    <option value="">Tous les groupes</option>
+    {% for g in groupes %}<option value="{{ g }}" {% if g == groupe %}selected{% endif %}>{{ g }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn--primary btn--sm">Filtrer</button>
+  {% if q or groupe %}<a href="{% url 'menu:gestion_ciqual_ref' %}" class="btn btn--secondary btn--sm">Réinitialiser</a>{% endif %}
+  <span style="color:#888;font-size:.85rem;margin-left:.5rem">{{ total }} entrée{{ total|pluralize }}</span>
+</form>
+
+<!-- ── Tableau ────────────────────────────────────────────────────────── -->
+<div style="overflow-x:auto">
+<table id="tbl-ciqual" style="width:100%;border-collapse:collapse;font-size:.85rem;min-width:900px">
+  <thead>
+    <tr style="background:#f5f5f5;text-align:left">
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;min-width:220px">Aliment</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd">Groupe</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;text-align:right;width:70px">kcal</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;text-align:right;width:60px">Prot.</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;text-align:right;width:60px">Gluc.</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;text-align:right;width:60px">Lip.</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;text-align:right;width:60px">Sucres</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;text-align:right;width:60px">Fibres</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;text-align:right;width:60px">AG sat.</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;text-align:right;width:60px">Sel</th>
+      <th style="padding:.5rem .7rem;border-bottom:2px solid #ddd;width:80px"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ref in page_obj %}
+    <!-- Ligne affichage -->
+    <tr class="ciqual-row" data-id="{{ ref.pk }}"
+        style="border-bottom:1px solid #f0f0f0;{% if ref.ciqual_code|slice:':7' == 'CUSTOM-' %}background:#fafff5{% endif %}">
+      <td style="padding:.45rem .7rem">
+        <span class="ciqual-nom">{{ ref.nom_fr }}</span>
+        {% if ref.ciqual_code|slice:':7' == 'CUSTOM-' %}
+        <span style="font-size:.7rem;color:#2e7d32;background:#e8f5e9;padding:.1rem .3rem;border-radius:3px;margin-left:.4rem">perso</span>
+        {% endif %}
+      </td>
+      <td style="padding:.45rem .7rem;color:#666;font-size:.8rem">{{ ref.groupe }}</td>
+      <td style="padding:.45rem .7rem;text-align:right">{% if ref.kcal_100g is not None %}{{ ref.kcal_100g|floatformat:0 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
+      <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.proteines_100g is not None %}{{ ref.proteines_100g|floatformat:1 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
+      <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.glucides_100g is not None %}{{ ref.glucides_100g|floatformat:1 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
+      <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.lipides_100g is not None %}{{ ref.lipides_100g|floatformat:1 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
+      <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.sucres_100g is not None %}{{ ref.sucres_100g|floatformat:1 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
+      <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.fibres_100g is not None %}{{ ref.fibres_100g|floatformat:1 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
+      <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.ag_satures_100g is not None %}{{ ref.ag_satures_100g|floatformat:1 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
+      <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.sel_100g is not None %}{{ ref.sel_100g|floatformat:2 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
+      <td style="padding:.45rem .7rem;text-align:right">
+        <button class="btn btn--secondary btn--sm btn-edit-ciqual" style="font-size:.75rem;padding:.2rem .5rem">✏️</button>
+      </td>
+    </tr>
+    <!-- Ligne édition (masquée par défaut) -->
+    <tr class="ciqual-edit-row" data-id="{{ ref.pk }}" style="display:none;background:#f9fafb">
+      <td colspan="11" style="padding:.75rem 1rem">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;align-items:end">
+          <div>
+            <label style="font-size:.75rem;color:#666">Nom</label>
+            <input class="ef-nom_fr" type="text" value="{{ ref.nom_fr }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem">
+          </div>
+          <div>
+            <label style="font-size:.75rem;color:#666">Groupe</label>
+            <select class="ef-groupe"
+                    style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem">
+              {% for g in groupes %}<option value="{{ g }}" {% if g == ref.groupe %}selected{% endif %}>{{ g }}</option>{% endfor %}
+            </select>
+          </div>
+          {% for field, label, step in field_defs %}{% endfor %}
+          <div><label style="font-size:.75rem;color:#666">kcal</label>
+            <input class="ef-kcal_100g" type="number" step="0.1" value="{{ ref.kcal_100g|default:'' }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem"></div>
+          <div><label style="font-size:.75rem;color:#666">Protéines g</label>
+            <input class="ef-proteines_100g" type="number" step="0.01" value="{{ ref.proteines_100g|default:'' }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem"></div>
+          <div><label style="font-size:.75rem;color:#666">Glucides g</label>
+            <input class="ef-glucides_100g" type="number" step="0.01" value="{{ ref.glucides_100g|default:'' }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem"></div>
+          <div><label style="font-size:.75rem;color:#666">Lipides g</label>
+            <input class="ef-lipides_100g" type="number" step="0.01" value="{{ ref.lipides_100g|default:'' }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem"></div>
+          <div><label style="font-size:.75rem;color:#666">Sucres g</label>
+            <input class="ef-sucres_100g" type="number" step="0.01" value="{{ ref.sucres_100g|default:'' }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem"></div>
+          <div><label style="font-size:.75rem;color:#666">Fibres g</label>
+            <input class="ef-fibres_100g" type="number" step="0.01" value="{{ ref.fibres_100g|default:'' }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem"></div>
+          <div><label style="font-size:.75rem;color:#666">AG saturés g</label>
+            <input class="ef-ag_satures_100g" type="number" step="0.01" value="{{ ref.ag_satures_100g|default:'' }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem"></div>
+          <div><label style="font-size:.75rem;color:#666">Sel g</label>
+            <input class="ef-sel_100g" type="number" step="0.001" value="{{ ref.sel_100g|default:'' }}"
+                   style="width:100%;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem"></div>
+          <div style="display:flex;gap:.4rem;align-items:flex-end">
+            <button class="btn btn--primary btn--sm btn-save-ciqual" style="font-size:.8rem">💾 Sauver</button>
+            <button class="btn btn--secondary btn--sm btn-cancel-ciqual" style="font-size:.8rem">Annuler</button>
+            <button class="btn btn--danger btn--sm btn-delete-ciqual" style="font-size:.8rem">🗑</button>
+          </div>
+        </div>
+        <p class="ciqual-edit-msg" style="margin-top:.4rem;font-size:.8rem;display:none"></p>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="11" style="padding:2rem;text-align:center;color:#888">Aucune entrée trouvée</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<!-- ── Pagination ─────────────────────────────────────────────────────── -->
+{% if page_obj.has_other_pages %}
+<div style="display:flex;gap:.4rem;justify-content:center;margin-top:1.5rem;flex-wrap:wrap">
+  {% if page_obj.has_previous %}
+  <a href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}{% if groupe %}&groupe={{ groupe }}{% endif %}"
+     class="btn btn--secondary btn--sm">← Préc.</a>
+  {% endif %}
+  <span style="padding:.3rem .6rem;font-size:.85rem;color:#666">
+    Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+  </span>
+  {% if page_obj.has_next %}
+  <a href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}{% if groupe %}&groupe={{ groupe }}{% endif %}"
+     class="btn btn--secondary btn--sm">Suiv. →</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = '{{ csrf_token }}';
+
+// ── Ouvrir/fermer la ligne d'édition ────────────────────────────────────────
+document.querySelectorAll('.btn-edit-ciqual').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id       = btn.closest('tr').dataset.id;
+    const editRow  = document.querySelector(`.ciqual-edit-row[data-id="${id}"]`);
+    const isOpen   = editRow.style.display !== 'none';
+    // Fermer toutes les lignes ouvertes
+    document.querySelectorAll('.ciqual-edit-row').forEach(r => r.style.display = 'none');
+    if (!isOpen) editRow.style.display = '';
+  });
+});
+
+document.querySelectorAll('.btn-cancel-ciqual').forEach(btn => {
+  btn.addEventListener('click', () => {
+    btn.closest('.ciqual-edit-row').style.display = 'none';
+  });
+});
+
+// ── Sauvegarder ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.btn-save-ciqual').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const row = btn.closest('.ciqual-edit-row');
+    const id  = row.dataset.id;
+    const msg = row.querySelector('.ciqual-edit-msg');
+
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', CSRF);
+    ['nom_fr','groupe','kcal_100g','proteines_100g','glucides_100g','lipides_100g',
+     'sucres_100g','fibres_100g','ag_satures_100g','sel_100g'].forEach(f => {
+      const el = row.querySelector(`.ef-${f}`);
+      if (el) fd.append(f, el.value);
+    });
+
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/management/ciqual/${id}/`, {method:'POST', body:fd});
+      const data = await resp.json();
+      if (data.ok) {
+        // Mettre à jour la ligne affichage
+        const dispRow = document.querySelector(`.ciqual-row[data-id="${id}"]`);
+        dispRow.querySelector('.ciqual-nom').textContent = data.nom_fr;
+        msg.textContent = '✔ Sauvegardé';
+        msg.style.color = '#2e7d32';
+        msg.style.display = '';
+        setTimeout(() => { msg.style.display = 'none'; row.style.display = 'none'; }, 900);
+      } else {
+        msg.textContent = data.error || 'Erreur';
+        msg.style.color = '#c62828';
+        msg.style.display = '';
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+});
+
+// ── Supprimer ────────────────────────────────────────────────────────────────
+document.querySelectorAll('.btn-delete-ciqual').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const row = btn.closest('.ciqual-edit-row');
+    const id  = row.dataset.id;
+    const nom = document.querySelector(`.ciqual-row[data-id="${id}"] .ciqual-nom`)?.textContent || id;
+    if (!confirm(`Supprimer "${nom}" du référentiel Ciqual ?\nLes mappings liés seront effacés.`)) return;
+
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', CSRF);
+    const resp = await fetch(`/management/ciqual/${id}/supprimer/`, {method:'POST', body:fd});
+    const data = await resp.json();
+    if (data.ok) {
+      document.querySelector(`.ciqual-row[data-id="${id}"]`).remove();
+      row.remove();
+    }
+  });
+});
+
+// ── Créer un nouvel aliment ──────────────────────────────────────────────────
+document.getElementById('form-creer').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('msg-creer');
+  const fd  = new FormData(e.target);
+  fd.append('csrfmiddlewaretoken', CSRF);
+
+  try {
+    const resp = await fetch('/management/ciqual/0/', {method:'POST', body:fd});
+    const data = await resp.json();
+    if (data.ok) {
+      msg.textContent = `✔ "${data.nom_fr}" créé (ID ${data.id}) — rechargez pour le voir dans la liste.`;
+      msg.style.color = '#2e7d32';
+      e.target.reset();
+    } else {
+      msg.textContent = data.error || 'Erreur';
+      msg.style.color = '#c62828';
+    }
+  } catch {
+    msg.textContent = 'Erreur réseau';
+    msg.style.color = '#c62828';
+  }
+  msg.style.display = '';
+});
+</script>
+{% endblock %}
