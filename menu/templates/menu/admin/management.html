@@ -67,17 +67,24 @@
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
     <p style="color:#888;font-size:.85rem;margin:0">{{ total }} ingrédient{{ total|pluralize }}</p>
     <div style="display:flex;gap:.5rem">
+      <form method="post" action="{% url 'menu:build_known_ingredients_view' %}" style="margin:0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm"
+                title="Étape 2 — Construit la base d'ingrédients connus à partir des recettes importées">
+          🏗️ Construire la base
+        </button>
+      </form>
       <form method="post" action="{% url 'menu:link_known_ingredients' %}" style="margin:0">
         {% csrf_token %}
         <button type="submit" class="btn btn--secondary btn--sm"
-                title="Relie automatiquement les recettes existantes à la base de connaissance">
-          🔗 Lier les recettes existantes
+                title="Étape 3 (après mapping Ciqual) — Relie les recettes à la base de connaissance">
+          🔗 Lier les recettes
         </button>
       </form>
       <form method="post" action="{% url 'menu:recalculate_nutrition_view' %}" style="margin:0">
         {% csrf_token %}
         <button type="submit" class="btn btn--secondary btn--sm"
-                title="Recalcule les calories/protéines de toutes les recettes depuis les mappings Ciqual actuels">
+                title="Étape 4 — Recalcule les macros de toutes les recettes depuis les mappings Ciqual actuels">
           🔄 Recalculer les macros
         </button>
       </form>
@@ -198,6 +205,55 @@
     </div>
   </div>
 </section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 3 — Réinitialisation (staff uniquement)
+══════════════════════════════════════════════════════════════════ -->
+<section style="margin-top:2rem">
+  <h2 style="font-size:1.2rem;margin-bottom:1rem">🗑️ Réinitialisation</h2>
+  <div class="backup-card backup-card--danger">
+    <div class="backup-card__label">RESET</div>
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+
+      <div>
+        <p style="margin:.25rem 0 .5rem"><strong>Recettes uniquement</strong><br>
+        <small style="color:#888">Garde les plannings et la base d'ingrédients connus</small></p>
+        <button type="button" class="btn btn--danger btn--sm"
+                onclick="ouvrirDialogReset('recipes')">
+          🗑️ Vider les recettes
+        </button>
+      </div>
+
+      <div>
+        <p style="margin:.25rem 0 .5rem"><strong>Reset complet</strong><br>
+        <small style="color:#888">Recettes + ingrédients connus + plannings — repart de zéro</small></p>
+        <button type="button" class="btn btn--danger btn--sm"
+                onclick="ouvrirDialogReset('full')">
+          ⚠️ Reset complet
+        </button>
+      </div>
+
+    </div>
+    <p style="margin-top:.75rem;font-size:.8rem;color:#888">
+      La table Ciqual (référentiel nutritionnel ANSES) est toujours conservée.
+      Les utilisateurs et familles ne sont pas touchés.
+    </p>
+  </div>
+</section>
+
+<!-- Dialog reset -->
+<dialog id="dialog-reset-recipes" class="confirm-dialog">
+  <p id="dialog-reset-text"></p>
+  <form method="post" action="{% url 'menu:reset_recipes_view' %}" id="form-reset-recipes">
+    {% csrf_token %}
+    <input type="hidden" name="reset_mode" id="reset-mode" value="recipes">
+    <div class="confirm-dialog__actions">
+      <button type="submit" class="btn btn--danger">Oui, supprimer</button>
+      <button type="button" class="btn btn--secondary"
+              onclick="document.getElementById('dialog-reset-recipes').close()">Annuler</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="dialog-restore" class="confirm-dialog">
   <p>⚠️ <strong>Confirmer la restauration ?</strong><br><br>
@@ -361,5 +417,30 @@ document.getElementById('btn-cancel-restore')?.addEventListener('click', () => d
 document.getElementById('btn-confirm-restore')?.addEventListener('click', () => {
   dlg?.close(); document.getElementById('form-restore')?.submit();
 });
+
+// ── Dialog reset ──────────────────────────────────────────────────────────────
+function ouvrirDialogReset(mode) {
+  const dlgReset = document.getElementById('dialog-reset-recipes');
+  const txt      = document.getElementById('dialog-reset-text');
+  const modeInput = document.getElementById('reset-mode');
+  if (mode === 'full') {
+    txt.innerHTML =
+      '⚠️ <strong>Reset complet — êtes-vous sûr ?</strong><br><br>' +
+      'Seront supprimés :<br>' +
+      '&nbsp;• Toutes les recettes (ingrédients, étapes, photos, avis)<br>' +
+      '&nbsp;• Tous les ingrédients connus et leurs mappings Ciqual<br>' +
+      '&nbsp;• Tous les plannings<br><br>' +
+      'Conservés : utilisateurs, familles, table Ciqual ANSES.<br>' +
+      '<strong>Action irréversible.</strong>';
+  } else {
+    txt.innerHTML =
+      '⚠️ <strong>Vider toutes les recettes ?</strong><br><br>' +
+      'Seront supprimés : recettes, ingrédients, étapes, photos, avis.<br>' +
+      'Les plannings et ingrédients connus sont conservés.<br>' +
+      '<strong>Action irréversible.</strong>';
+  }
+  modeInput.value = mode;
+  dlgReset.showModal();
+}
 </script>
 {% endblock %}

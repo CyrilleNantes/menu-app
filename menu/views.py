@@ -1457,6 +1457,46 @@ def recalculate_nutrition_view(request):
     return redirect("menu:management_page")
 
 
+@require_POST
+@login_required
+def build_known_ingredients_view(request):
+    """Lance la commande build_known_ingredients via l'UI Management."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('build_known_ingredients', stdout=out)
+    result = out.getvalue()
+    lines = [l.strip() for l in result.splitlines() if l.strip()]
+    summary = ' · '.join(lines[-3:]) if len(lines) >= 3 else result.strip()
+    messages.success(request, f"🏗️ Base construite — {summary}")
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
+def reset_recipes_view(request):
+    """Supprime les recettes et données associées selon le mode choisi."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    mode = request.POST.get('reset_mode', 'recipes')  # 'recipes' | 'full'
+    out = StringIO()
+    kwargs = {'stdout': out}
+    if mode == 'full':
+        kwargs['full'] = True
+    call_command('reset_recipes', **kwargs)
+    result = out.getvalue()
+    lines = [l.strip() for l in result.splitlines() if l.strip()]
+    summary = ' · '.join(lines[-3:]) if len(lines) >= 3 else result.strip()
+    messages.success(request, f"🗑️ Reset effectué — {summary}")
+    return redirect("menu:management_page")
+
+
 @login_required
 def management_page(request):
     if not (_verifier_staff(request) or _verifier_cuisinier(request)):
