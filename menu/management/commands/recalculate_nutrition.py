@@ -96,6 +96,18 @@ class Command(BaseCommand):
         dry_run   = options['dry_run']
         recipe_id = options['recipe_id']
 
+        # ── Purge des ingrédients orphelins (group=NULL, résidu d'un bug d'accumulation) ──
+        orphan_qs = Ingredient.objects.filter(group__isnull=True)
+        if recipe_id:
+            orphan_qs = orphan_qs.filter(recipe_id=recipe_id)
+        orphan_count = orphan_qs.count()
+        if orphan_count:
+            if not dry_run:
+                orphan_qs.delete()
+            self.stdout.write(
+                f'{"[DRY] " if dry_run else ""}Ingrédients orphelins supprimés : {orphan_count}'
+            )
+
         recipe_qs = Recipe.objects.filter(actif=True)
         if recipe_id:
             recipe_qs = recipe_qs.filter(pk=recipe_id)
