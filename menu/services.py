@@ -125,17 +125,18 @@ def _quantity_to_grams(quantity: float | None, unit: str | None,
 def compute_ingredient_macros_from_ciqual(ingr: Ingredient) -> dict | None:
     """
     Calcule les macros d'un ingrédient à partir de son ciqual_ref.
-    Retourne None si le calcul est impossible (pas de ref, pas de kcal, qté non convertible).
+    Retourne None si le calcul est impossible (pas de ref ou qté non convertible).
+    Un kcal_100g NULL (sel, eau…) est traité comme 0 — l'ingrédient est mappé.
     """
     ref = ingr.ciqual_ref
-    if ref is None or ref.kcal_100g is None:
+    if ref is None:
         return None
     qty_g = _quantity_to_grams(ingr.quantity, ingr.unit, ref.default_weight_g)
     if qty_g is None or qty_g <= 0:
         return None
     factor = qty_g / 100.0
     return {
-        'calories': round(ref.kcal_100g * factor, 2),
+        'calories': round((ref.kcal_100g or 0) * factor, 2),
         'proteins': round((ref.proteines_100g or 0) * factor, 2),
         'carbs':    round((ref.glucides_100g or 0) * factor, 2),
         'fats':     round((ref.lipides_100g or 0) * factor, 2),
@@ -235,12 +236,19 @@ def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
 
 
 def calculer_macros_recette(recipe: Recipe) -> None:
-    """Recalcule et sauvegarde les macros par portion + nutrition_status."""
-    ingredients = list(recipe.ingredients.select_related('ciqual_ref').all())
+    """
+    Recalcule et sauvegarde les macros par portion + nutrition_status.
+    Calcule directement depuis ciqual_ref (pas les calories stockées).
+    Les ingrédients optionnels sont exclus du calcul.
+    """
+    non_optional = list(
+        recipe.ingredients
+        .select_related('ciqual_ref')
+        .filter(is_optional=False)
+    )
 
     # ── Statut nutritionnel ──────────────────────────────────────────────────
-    non_optional = [i for i in ingredients if not i.is_optional]
-    mapped       = [i for i in non_optional if i.ciqual_ref_id is not None]
+    mapped = [i for i in non_optional if i.ciqual_ref_id is not None]
     if not non_optional:
         status = 'missing'
     elif len(mapped) == len(non_optional):
@@ -250,7 +258,7 @@ def calculer_macros_recette(recipe: Recipe) -> None:
     else:
         status = 'missing'
 
-    if not ingredients:
+    if not non_optional:
         recipe.calories_per_serving = None
         recipe.proteins_per_serving = None
         recipe.carbs_per_serving    = None
@@ -262,16 +270,22 @@ def calculer_macros_recette(recipe: Recipe) -> None:
         ])
         return
 
-    total_cal   = sum(i.calories or 0 for i in ingredients)
-    total_prot  = sum(i.proteins or 0 for i in ingredients)
-    total_carbs = sum(i.carbs    or 0 for i in ingredients)
-    total_fats  = sum(i.fats     or 0 for i in ingredients)
+    total_cal = total_prot = total_carbs = total_fats = 0.0
+    has_any = False
+    for ingr in non_optional:
+        macros = compute_ingredient_macros_from_ciqual(ingr)
+        if macros:
+            total_cal   += macros['calories']
+            total_prot  += macros['proteins']
+            total_carbs += macros['carbs']
+            total_fats  += macros['fats']
+            has_any = True
 
     n = max(recipe.base_servings or 1, 1)
-    recipe.calories_per_serving = round(total_cal   / n, 1) if total_cal  else None
-    recipe.proteins_per_serving = round(total_prot  / n, 1) if total_prot else None
-    recipe.carbs_per_serving    = round(total_carbs / n, 1) if total_carbs else None
-    recipe.fats_per_serving     = round(total_fats  / n, 1) if total_fats else None
+    recipe.calories_per_serving = round(total_cal   / n, 1) if has_any else None
+    recipe.proteins_per_serving = round(total_prot  / n, 1) if has_any else None
+    recipe.carbs_per_serving    = round(total_carbs / n, 1) if has_any else None
+    recipe.fats_per_serving     = round(total_fats  / n, 1) if has_any else None
     recipe.nutrition_status     = status
     recipe.save(update_fields=[
         "calories_per_serving", "proteins_per_serving",

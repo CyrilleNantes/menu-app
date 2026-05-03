@@ -21,6 +21,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from menu.models import Ingredient, Recipe, KnownIngredient
+from menu.services import calculer_macros_recette
 
 
 # ─── Conversions vers grammes ────────────────────────────────────────────────
@@ -171,47 +172,21 @@ class Command(BaseCommand):
                 has_any = True
                 ingr_updated += 1
 
-            # ── 2. Agréger sur la recette — toujours écrire (même None) ──────
+            # ── 2. Agréger sur la recette via la fonction canonique ──────────
             bs = recipe.base_servings or 1
-            if has_any:
-                kcal_per = round(recipe_kcal / bs, 1)
-                prot_per = round(recipe_prot / bs, 2)
-                gluc_per = round(recipe_gluc / bs, 2)
-                lip_per  = round(recipe_lip  / bs, 2)
-                status   = 'ok' if all_calculable else 'partial'
-                if dry_run:
-                    self.stdout.write(
-                        f'  [DRY] {recipe.title[:40]:40s} | '
-                        f'{kcal_per:>6.0f} kcal | {prot_per:>5.1f} g prot | '
-                        f'{"OK" if all_calculable else "partiel"}'
-                    )
-                else:
-                    recipe.calories_per_serving = kcal_per
-                    recipe.proteins_per_serving  = prot_per
-                    recipe.carbs_per_serving     = gluc_per
-                    recipe.fats_per_serving      = lip_per
-                    recipe.nutrition_status      = status
-                    recipe.save(update_fields=[
-                        'calories_per_serving', 'proteins_per_serving',
-                        'carbs_per_serving', 'fats_per_serving',
-                        'nutrition_status',
-                    ])
-                recipe_updated += 1
-                if not all_calculable:
-                    recipe_partial += 1
+            if dry_run:
+                kcal_per = round(recipe_kcal / bs, 1) if has_any else 0
+                prot_per = round(recipe_prot / bs, 2) if has_any else 0
+                self.stdout.write(
+                    f'  [DRY] {recipe.title[:40]:40s} | '
+                    f'{kcal_per:>6.0f} kcal | {prot_per:>5.1f} g prot | '
+                    f'{"OK" if all_calculable else "partiel" if has_any else "manquant"}'
+                )
             else:
-                # Aucun ingrédient calculable → effacer les macros de la recette
-                if not dry_run:
-                    recipe.calories_per_serving = None
-                    recipe.proteins_per_serving  = None
-                    recipe.carbs_per_serving     = None
-                    recipe.fats_per_serving      = None
-                    recipe.nutrition_status      = 'missing'
-                    recipe.save(update_fields=[
-                        'calories_per_serving', 'proteins_per_serving',
-                        'carbs_per_serving', 'fats_per_serving',
-                        'nutrition_status',
-                    ])
+                calculer_macros_recette(recipe)
+            recipe_updated += 1
+            if not all_calculable and has_any:
+                recipe_partial += 1
 
         self.stdout.write(self.style.SUCCESS(
             f'Recalcul termine :\n'
