@@ -163,8 +163,11 @@
                     <span class="ingredient-item__name">{{ ing.name }}{% if ing.is_optional %} <em>(optionnel)</em>{% endif %}</span>
                     {% if ing.quantity or ing.quantity_note or ing.unit %}
                     <span class="ingredient-item__qty">
-                        {% if ing.quantity_note %}{{ ing.quantity_note }}{% elif ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}
-                        {% if ing.unit %}{{ ing.unit }}{% endif %}
+                        {% if ing.quantity_note %}
+                            {{ ing.quantity_note }}
+                        {% else %}
+                            {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% endif %}{% if ing.unit %} {{ ing.unit }}{% endif %}
+                        {% endif %}
                     </span>
                     {% endif %}
                 </li>
