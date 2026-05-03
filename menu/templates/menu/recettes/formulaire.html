@@ -104,7 +104,7 @@
                         <div class="ing-row" data-ing-idx="{{ i }}">
                             <div class="ing-name-wrap">
                                 <input type="text" name="ing_name_{{ g }}_{{ i }}" value="{{ ing.name }}" placeholder="Ingrédient *" class="ing-name" autocomplete="off">
-                                {% if ing.known_ingredient %}<span class="ciqual-badge">{% if ing.known_ingredient.kcal_100g %}{{ ing.known_ingredient.kcal_100g }} kcal/100g{% else %}Ciqual ✓{% endif %}</span>{% else %}<span class="ciqual-badge" hidden></span>{% endif %}
+                                {% if ing.known_ingredient %}<span class="ciqual-badge">{% if ing.known_ingredient.kcal_100g is not None %}{{ ing.known_ingredient.kcal_100g|floatformat:0 }} kcal/100g{% else %}Ciqual ✓{% endif %}</span>{% else %}<span class="ciqual-badge" hidden></span>{% endif %}
                             </div>
                             <input type="number" name="ing_qty_{{ g }}_{{ i }}" value="{{ ing.quantity|default_if_none:''|unlocalize }}" placeholder="Qté" step="any" class="ing-qty">
                             <input type="text" name="ing_qty_note_{{ g }}_{{ i }}" value="{{ ing.quantity_note|default:'' }}" placeholder="Ex. 150–200g" class="ing-qty-note">
