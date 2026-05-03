@@ -680,7 +680,9 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
     Appelé après la sauvegarde du modèle Recipe lui-même.
     """
     # ── Ingrédients ──────────────────────────────────────────────────────────
-    recipe.ingredient_groups.all().delete()  # cascade sur Ingredient
+    # Ingredient.group a on_delete=SET_NULL → supprimer les ingrédients en premier
+    recipe.ingredients.all().delete()
+    recipe.ingredient_groups.all().delete()
 
     group_count = _parse_int(post_data.get("group_count", "0")) or 0
     for g in range(group_count):
