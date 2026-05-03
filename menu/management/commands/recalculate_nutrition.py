@@ -61,21 +61,20 @@ def quantity_to_grams(quantity: float | None, unit: str | None,
 def compute_ingredient_macros(ingr: Ingredient) -> dict | None:
     """
     Calcule les macros d'un ingrédient à partir de son ciqual_ref.
-    Retourne None si le calcul est impossible.
+    Retourne None UNIQUEMENT si ciqual_ref est absent (non mappé) ou quantité invalide.
+    Un kcal_100g NULL (sel, eau…) est traité comme 0 — l'ingrédient est mappé et correct.
     """
     ref = ingr.ciqual_ref
     if ref is None:
-        return None
-    if ref.kcal_100g is None:
-        return None
+        return None  # Pas de mapping Ciqual → non calculable
 
     qty_g = quantity_to_grams(ingr.quantity, ingr.unit, ref.default_weight_g)
     if qty_g is None or qty_g <= 0:
-        return None
+        return None  # Quantité manquante ou unité inconnue
 
     factor = qty_g / 100.0
     return {
-        'calories': round(ref.kcal_100g * factor, 2),
+        'calories': round((ref.kcal_100g or 0) * factor, 2),
         'proteins': round((ref.proteines_100g or 0) * factor, 2),
         'carbs':    round((ref.glucides_100g or 0) * factor, 2),
         'fats':     round((ref.lipides_100g or 0) * factor, 2),

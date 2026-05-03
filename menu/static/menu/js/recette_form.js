@@ -245,8 +245,9 @@
             // Afficher indicateur de correspondance Ciqual
             const badge = wrap.querySelector('.ciqual-badge');
             if (badge) {
-                badge.textContent = li.dataset.cal100
-                    ? `${Math.round(li.dataset.cal100)} kcal/100g`
+                // Tester !== '' pour distinguer "0 kcal" (sel, eau) de "pas de donnée"
+                badge.textContent = li.dataset.cal100 !== ''
+                    ? `${Math.round(Number(li.dataset.cal100))} kcal/100g`
                     : 'Ciqual ✓';
                 badge.hidden = false;
             }
