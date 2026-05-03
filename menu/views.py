@@ -1477,6 +1477,45 @@ def build_known_ingredients_view(request):
 
 @require_POST
 @login_required
+def import_ciqual_view(request):
+    """Upload + import d'un fichier XLS Ciqual via l'UI Management."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+
+    xls_file = request.FILES.get('ciqual_xls')
+    if not xls_file:
+        messages.error(request, "Aucun fichier sélectionné.")
+        return redirect("menu:management_page")
+
+    import tempfile, os
+    from django.core.management import call_command
+    from io import StringIO
+
+    # Écrire le fichier uploadé dans un temp file pour xlrd
+    suffix = '.xls' if xls_file.name.endswith('.xls') else '.xlsx'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        for chunk in xls_file.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    try:
+        out = StringIO()
+        call_command('import_ciqual', file=tmp_path, wipe=True, stdout=out)
+        result = out.getvalue()
+        lines  = [l.strip() for l in result.splitlines() if l.strip()]
+        summary = lines[-1] if lines else result.strip()
+        messages.success(request, f"✅ Ciqual importé — {summary}")
+    except Exception as e:
+        messages.error(request, f"Erreur lors de l'import Ciqual : {e}")
+    finally:
+        os.unlink(tmp_path)
+
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
 def clean_ciqual_view(request):
     """Lance la commande clean_ciqual (nettoyage plats composés + sans kcal)."""
     if not (_verifier_staff(request) or _verifier_cuisinier(request)):

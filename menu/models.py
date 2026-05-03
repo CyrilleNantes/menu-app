@@ -309,6 +309,10 @@ class IngredientRef(models.Model):
     proteines_100g    = models.FloatField(null=True, blank=True, verbose_name="Protéines (g/100g)")
     glucides_100g     = models.FloatField(null=True, blank=True, verbose_name="Glucides (g/100g)")
     lipides_100g      = models.FloatField(null=True, blank=True, verbose_name="Lipides (g/100g)")
+    sucres_100g       = models.FloatField(null=True, blank=True, verbose_name="Sucres (g/100g)")
+    fibres_100g       = models.FloatField(null=True, blank=True, verbose_name="Fibres alimentaires (g/100g)")
+    ag_satures_100g   = models.FloatField(null=True, blank=True, verbose_name="AG saturés (g/100g)")
+    sel_100g          = models.FloatField(null=True, blank=True, verbose_name="Sel (g/100g)")
     default_weight_g  = models.FloatField(
         null=True, blank=True,
         verbose_name="Poids par défaut (g)",

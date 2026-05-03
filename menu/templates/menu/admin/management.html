@@ -211,32 +211,45 @@
 ══════════════════════════════════════════════════════════════════ -->
 <section style="margin-top:2rem">
   <h2 style="font-size:1.2rem;margin-bottom:1rem">🧹 Maintenance Ciqual</h2>
-  <div class="backup-card">
-    <div class="backup-card__label">NETTOYER LA TABLE CIQUAL</div>
-    <p>
-      Supprime les entrées inutiles de la table de référence nutritionnelle :<br>
-      • <strong>Plats composés</strong> (bœuf bourguignon industriel, pizza surgelée…)<br>
-      • <strong>Entrées sans donnée calorique</strong> (légumes crus sans mesure, etc.)<br>
-      Les eaux, bouillons et vinaigres sont conservés même sans calorie.
-    </p>
-    <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
-      <form method="post" action="{% url 'menu:clean_ciqual_view' %}" style="margin:0">
+  <div style="display:flex;gap:1rem;flex-wrap:wrap">
+
+    <div class="backup-card" style="flex:1;min-width:260px">
+      <div class="backup-card__label">IMPORTER UN FICHIER CIQUAL</div>
+      <p>Upload du fichier <code>.xls</code> retravaillé. <strong>Vide et recharge toute la table.</strong><br>
+      Les mappings KnownIngredient → Ciqual sont conservés si les codes Ciqual n'ont pas changé.</p>
+      <form method="post" action="{% url 'menu:import_ciqual_view' %}" enctype="multipart/form-data" style="margin-top:.75rem">
         {% csrf_token %}
-        <input type="hidden" name="dry_run" value="1">
-        <button type="submit" class="btn btn--secondary btn--sm"
-                title="Affiche ce qui serait supprimé sans toucher la base">
-          🔍 Simuler le nettoyage
-        </button>
-      </form>
-      <form method="post" action="{% url 'menu:clean_ciqual_view' %}" style="margin:0">
-        {% csrf_token %}
-        <input type="hidden" name="dry_run" value="0">
-        <button type="submit" class="btn btn--danger btn--sm"
-                onclick="return confirm('Supprimer les entrées Ciqual inutiles ? Les mappings liés seront effacés.')">
-          🧹 Nettoyer
+        <input type="file" name="ciqual_xls" accept=".xls,.xlsx" required class="backup-file-input">
+        <button type="submit" class="btn btn--primary btn--sm" style="margin-top:.5rem"
+                onclick="return confirm('Vider et recharger toute la table Ciqual ?')">
+          ↑ Importer et recharger
         </button>
       </form>
     </div>
+
+    <div class="backup-card" style="flex:1;min-width:260px">
+      <div class="backup-card__label">NETTOYER LA TABLE CIQUAL</div>
+      <p>Supprime les entrées inutiles :<br>
+      • <strong>Plats composés</strong><br>
+      • <strong>Entrées sans calorie</strong> (légumes crus non mesurés…)<br>
+      Eaux, bouillons et vinaigres conservés.</p>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
+        <form method="post" action="{% url 'menu:clean_ciqual_view' %}" style="margin:0">
+          {% csrf_token %}
+          <input type="hidden" name="dry_run" value="1">
+          <button type="submit" class="btn btn--secondary btn--sm">🔍 Simuler</button>
+        </form>
+        <form method="post" action="{% url 'menu:clean_ciqual_view' %}" style="margin:0">
+          {% csrf_token %}
+          <input type="hidden" name="dry_run" value="0">
+          <button type="submit" class="btn btn--danger btn--sm"
+                  onclick="return confirm('Supprimer les entrées Ciqual inutiles ?')">
+            🧹 Nettoyer
+          </button>
+        </form>
+      </div>
+    </div>
+
   </div>
 </section>
 
