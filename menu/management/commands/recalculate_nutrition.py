@@ -8,78 +8,17 @@ Usage:
 
 Recalcule les macros (calories, protéines, glucides, lipides) sur :
 1. Chaque Ingredient ayant un ciqual_ref ET une quantité convertible en grammes
-2. Chaque Recipe, en agrégeant ses ingrédients et en divisant par base_servings
-
-Conversions d'unités supportées :
-  g, kg, ml, cl, L → grammes directs
-  c. à soupe, càs, cs → 15 g
-  c. à café, càc, cc → 5 g
-  (aucune unité + default_weight_g sur ciqual_ref) → dénombrable
+2. Chaque Recipe, en agrégeant ses ingrédients via calculer_macros_recette()
 """
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from menu.models import Ingredient, Recipe, KnownIngredient
-from menu.services import calculer_macros_recette
-
-
-# ─── Conversions vers grammes ────────────────────────────────────────────────
-
-UNIT_TO_GRAMS: dict[str | None, float | None] = {
-    'g':         1.0,
-    'kg':        1000.0,
-    'ml':        1.0,     # densité ≈ 1 pour liquides cuisiniers
-    'cl':        10.0,
-    'L':         1000.0,
-    'l':         1000.0,
-    'c. à soupe': 15.0,
-    'càs':       15.0,
-    'cs':        15.0,
-    'c. à café': 5.0,
-    'càc':       5.0,
-    'cc':        5.0,
-}
-
-
-def quantity_to_grams(quantity: float | None, unit: str | None,
-                      default_weight_g: float | None) -> float | None:
-    """Convertit une quantité dans l'unité donnée en grammes."""
-    if quantity is None:
-        return None
-
-    if unit in UNIT_TO_GRAMS:
-        factor = UNIT_TO_GRAMS[unit]
-        return quantity * factor
-
-    # Unité nulle = élément dénombrable (ex: 2 oignons)
-    if unit is None and default_weight_g is not None:
-        return quantity * default_weight_g
-
-    return None  # Unité inconnue ou manque de données
-
-
-def compute_ingredient_macros(ingr: Ingredient) -> dict | None:
-    """
-    Calcule les macros d'un ingrédient à partir de son ciqual_ref.
-    Retourne None UNIQUEMENT si ciqual_ref est absent (non mappé) ou quantité invalide.
-    Un kcal_100g NULL (sel, eau…) est traité comme 0 — l'ingrédient est mappé et correct.
-    """
-    ref = ingr.ciqual_ref
-    if ref is None:
-        return None  # Pas de mapping Ciqual → non calculable
-
-    qty_g = quantity_to_grams(ingr.quantity, ingr.unit, ref.default_weight_g)
-    if qty_g is None or qty_g <= 0:
-        return None  # Quantité manquante ou unité inconnue
-
-    factor = qty_g / 100.0
-    return {
-        'calories': round((ref.kcal_100g or 0) * factor, 2),
-        'proteins': round((ref.proteines_100g or 0) * factor, 2),
-        'carbs':    round((ref.glucides_100g or 0) * factor, 2),
-        'fats':     round((ref.lipides_100g or 0) * factor, 2),
-    }
+from menu.services import (
+    calculer_macros_recette,
+    compute_ingredient_macros_from_ciqual,
+)
 
 
 # ─── Command ────────────────────────────────────────────────────────────────
@@ -140,7 +79,7 @@ class Command(BaseCommand):
                         if not dry_run:
                             ingr.save(update_fields=['ciqual_ref'])
 
-                macros = compute_ingredient_macros(ingr) if ingr.ciqual_ref else None
+                macros = compute_ingredient_macros_from_ciqual(ingr) if ingr.ciqual_ref else None
 
                 if macros is None:
                     # Pas de ref ou quantité non convertible → on efface les valeurs

@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v3.2** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-04-29
+> Version courante : **v4.0** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-05-03
 
 ---
 
@@ -133,23 +133,34 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 - `https://www.googleapis.com/auth/calendar.events` (écriture événements uniquement — moindre privilège)
 - `https://www.googleapis.com/auth/tasks` (écriture tâches)
 
-### 3.3 Référentiel nutritionnel Ciqual 2020 (ANSES)
+### 3.3 Référentiel nutritionnel Ciqual (ANSES) — version retravaillée
 
-Table locale PostgreSQL (`IngredientRef`), importée depuis le fichier XLS officiel ANSES Ciqual 2020.
+Table locale PostgreSQL (`IngredientRef`), importée depuis un fichier XLS ANSES Ciqual retravaillé.
 **Aucun appel réseau** — calcul 100% hors-ligne.
 
-**Import initial** : `python manage.py import_ciqual --file data/Table\ Ciqual\ 2020_FR_2020\ 07\ 07.xls`
-**Matching** : `python manage.py match_ingredients` — associe chaque `Ingredient` à un `IngredientRef` via synonymes, nom normalisé, premier mot.
-**Recalcul** : `python manage.py recalculate_nutrition` — recalcule les macros par portion pour toutes les recettes.
+**Import** : via l'UI Management (upload XLS → `import_ciqual --wipe`) ou :
+`python manage.py import_ciqual --file data/CIRQUAL_MENU_APP.xls --wipe`
 
-**Statistiques (2026-04-29)** :
-- 3185 `IngredientRef` importés
-- Couverture matching : 74.3% (1070 matchés, 370 non-calculables, 0 non-matchés)
-- 135 recettes avec macros recalculées
+**Construction de la base de connaissance** : `python manage.py build_known_ingredients` — construit `KnownIngredient` à partir des noms d'ingrédients déjà utilisés dans les recettes.
 
-**Autocomplete** : à la saisie du nom d'un ingrédient dans le formulaire recette, une dropdown propose les correspondances Ciqual (debounce 350ms, `GET /api/ingredients/ciqual/`).
+**Recalcul** : `python manage.py recalculate_nutrition` — purge les orphelins, resynchronise les `ciqual_ref`, recalcule les macros par portion pour toutes les recettes actives.
 
-Fallback : si aucune correspondance Ciqual, les macros restent vides (l'ingrédient est dit "non calculable").
+**Nettoyage Ciqual** : `python manage.py clean_ciqual [--dry-run]` — supprime les plats composés et les entrées sans données kcal (hors exceptions : eau, sel, bouillon…).
+
+**Architecture en deux couches** :
+- `IngredientRef` : référentiel officiel ANSES Ciqual — table en lecture seule (sauf via Management)
+- `KnownIngredient` : base de connaissance des ingrédients utilisés dans les recettes, avec lien vers `IngredientRef` et synonymes. Enrichie automatiquement à chaque sauvegarde de recette.
+
+**Autocomplete** : à la saisie dans le formulaire recette, une dropdown interroge `KnownIngredient` (debounce 350ms, `GET /api/ingredients/connus/?q=`). Priorité aux correspondances par synonymes puis par nom normalisé.
+
+Fallback : si aucune correspondance, les macros restent vides (`nutrition_status = 'missing'`).
+
+**Règle `nutrition_status`** :
+- `ok` : tous les ingrédients non-optionnels ont un `ciqual_ref`
+- `partial` : au moins un ingrédient non-optionnel non mappé
+- `missing` : aucun ingrédient non-optionnel mappé
+
+**Calcul des macros** (`calculer_macros_recette`) : calcule directement depuis `ciqual_ref` (pas les valeurs stockées), ingrédients optionnels exclus. Un `kcal_100g NULL` (sel, eau) est traité comme 0 kcal — l'ingrédient est considéré mappé.
 
 ---
 
@@ -232,16 +243,18 @@ Catalogue global partagé entre toutes les familles.
 | `health_tags` | `JSONField` | non | `[]` | Ex. `["leger", "proteine"]` |
 | `complexity` | `CharField(20)` | non | `"simple"` | `simple` / `intermediaire` / `elabore` |
 | `protein_type` | `CharField(20)` | oui | `null` | Protéine principale : `boeuf` / `volaille` / `porc` / `poisson` / `oeufs` / `legumineuses` / `autre` / `aucune`. Utilisé par l'algorithme de suggestions pour assurer la variété. |
-| `calories_per_serving` | `FloatField` | oui | — | Kcal par portion (calculé) |
+| `calories_per_serving` | `FloatField` | oui | — | Kcal par portion (calculé via Ciqual) |
 | `proteins_per_serving` | `FloatField` | oui | — | Protéines (g) par portion (calculé) |
 | `carbs_per_serving` | `FloatField` | oui | — | Glucides (g) par portion (calculé) |
 | `fats_per_serving` | `FloatField` | oui | — | Lipides (g) par portion (calculé) |
+| `nutrition_status` | `CharField(10)` | non | `'missing'` | Statut du calcul nutritionnel : `ok` / `partial` / `missing` |
 | `created_by` | `ForeignKey(User)` | non | — | Auteur |
 | `actif` | `BooleanField` | non | `True` | Soft delete |
 | `created_at` | `DateTimeField` | non | auto | Date de création |
 
 **Tri par défaut** : `["-created_at"]`
 **Soft delete** : `actif=False` masque la recette du catalogue sans suppression physique.
+**`nutrition_status`** mis à jour automatiquement à chaque sauvegarde de recette et par `recalculate_nutrition`.
 
 ---
 
@@ -265,42 +278,69 @@ Ingrédient d'une recette, rattaché à un groupe.
 | Champ | Type Django | Nullable | Défaut | Description |
 |-------|-------------|----------|--------|-------------|
 | `id` | `BigAutoField` | non | auto | Clé primaire |
-| `recipe` | `ForeignKey(Recipe)` | non | — | Recette parente |
-| `group` | `ForeignKey(IngredientGroup)` | oui | — | Groupe (optionnel) |
+| `recipe` | `ForeignKey(Recipe)` | non | — | Recette parente (`CASCADE`) |
+| `group` | `ForeignKey(IngredientGroup)` | oui | — | Groupe (`SET_NULL` — voir note) |
 | `name` | `CharField(200)` | non | — | Nom de l'ingrédient |
 | `quantity` | `FloatField` | oui | — | Quantité (relative à `base_servings`) — valeur basse si fourchette |
-| `quantity_note` | `CharField(50)` | oui | — | Précision libre sur la quantité (ex. "150–200g", "2 à 3 sachets") |
+| `quantity_note` | `CharField(50)` | oui | — | Précision libre sur la quantité (ex. "150–200g", "selon votre goût"). Affiché à la place de `quantity + unit` quand renseigné. |
 | `unit` | `CharField(50)` | oui | — | Unité (g, ml, c. à soupe…) |
-| `is_optional` | `BooleanField` | non | `False` | Ingrédient optionnel |
+| `is_optional` | `BooleanField` | non | `False` | Ingrédient optionnel — exclus du calcul nutritionnel |
 | `category` | `CharField(50)` | oui | — | Catégorie courses (viandes, légumes, épicerie…) |
-| `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Correspondance dans le référentiel ANSES Ciqual 2020 |
-| `calories` | `FloatField` | oui | — | Kcal pour la quantité définie (calculé depuis Ciqual si ref présente) |
+| `known_ingredient` | `ForeignKey(KnownIngredient)` | oui | — | Lien vers la base de connaissance (`SET_NULL`) |
+| `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Référence Ciqual dérivée de `known_ingredient.ciqual_ref` à la sauvegarde |
+| `calories` | `FloatField` | oui | — | Kcal calculés pour la quantité définie (cache — source de vérité : Ciqual) |
 | `proteins` | `FloatField` | oui | — | Protéines (g) |
 | `carbs` | `FloatField` | oui | — | Glucides (g) |
 | `fats` | `FloatField` | oui | — | Lipides (g) |
 | `order` | `PositiveIntegerField` | non | `0` | Ordre dans le groupe |
 
+> **Note `group` SET_NULL** : `Ingredient.group` utilise `on_delete=SET_NULL`. La suppression d'un groupe orphelinise les ingrédients (group=NULL) sans les supprimer. `sauvegarder_recette_depuis_post()` supprime explicitement `recipe.ingredients.all()` avant de supprimer les groupes pour éviter toute accumulation.
+
 ---
 
 ### 4.6b `IngredientRef`
 
-Référentiel nutritionnel ANSES Ciqual 2020 — table en lecture seule (importée via `import_ciqual`).
+Référentiel nutritionnel ANSES Ciqual — importé depuis le fichier XLS retravaillé `CIRQUAL_MENU_APP.xls`.
+Modifiable via la page `/management/ciqual/`. Les entrées personnalisées ont un code `CUSTOM-XXXX`.
 
 | Champ | Type Django | Nullable | Défaut | Description |
 |-------|-------------|----------|--------|-------------|
 | `id` | `BigAutoField` | non | auto | Clé primaire |
-| `ciqual_code` | `CharField(10)` | non | — | Code Ciqual unique (ex. `"22000"`) |
+| `ciqual_code` | `CharField(10)` | non | — | Code Ciqual unique (ex. `"22000"` ou `"CUSTOM-0001"`) |
 | `nom_fr` | `CharField(300)` | non | — | Nom officiel Ciqual (ex. "Œuf entier, cru") |
 | `nom_normalise` | `CharField(300)` | non | — | Nom normalisé pour recherche (ascii, minuscules) |
+| `synonymes` | `TextField` | oui | `""` | Noms courants séparés par virgules (ex. "steak,bœuf haché") — boostés dans l'autocomplete |
 | `groupe` | `CharField(100)` | oui | — | Groupe alimentaire Ciqual |
 | `sous_groupe` | `CharField(100)` | oui | — | Sous-groupe Ciqual |
-| `kcal_100g` | `FloatField` | oui | — | Énergie (kcal/100g) |
+| `kcal_100g` | `FloatField` | oui | — | Énergie (kcal/100g) — NULL pour sel, eau, etc. → traité comme 0 kcal |
 | `proteines_100g` | `FloatField` | oui | — | Protéines (g/100g) |
 | `glucides_100g` | `FloatField` | oui | — | Glucides (g/100g) |
+| `sucres_100g` | `FloatField` | oui | — | Sucres simples (g/100g) |
 | `lipides_100g` | `FloatField` | oui | — | Lipides (g/100g) |
+| `ag_satures_100g` | `FloatField` | oui | — | Acides gras saturés (g/100g) |
+| `fibres_100g` | `FloatField` | oui | — | Fibres alimentaires (g/100g) |
+| `sel_100g` | `FloatField` | oui | — | Sel (g/100g) |
 | `default_weight_g` | `FloatField` | oui | — | Poids par défaut pour unités dénombrables (ex. 1 œuf = 60g) |
 | `protein_type` | `CharField(20)` | oui | — | Type de protéine (`boeuf`, `volaille`, `poisson`, etc.) |
 | `shopping_category` | `CharField(50)` | oui | — | Catégorie liste de courses |
+
+### 4.6c `KnownIngredient`
+
+Base de connaissance des ingrédients utilisés dans les recettes. Intermédiaire entre `Ingredient` et `IngredientRef`. Enrichie automatiquement à chaque sauvegarde de recette (`_sync_known_ingredient`).
+
+| Champ | Type Django | Nullable | Défaut | Description |
+|-------|-------------|----------|--------|-------------|
+| `id` | `BigAutoField` | non | auto | Clé primaire |
+| `name` | `CharField(200)` | non | — | Nom de l'ingrédient (unique) |
+| `nom_normalise` | `CharField(200)` | non | — | Calculé automatiquement via `_normaliser_nom(name)` à chaque save |
+| `synonymes` | `TextField` | oui | `""` | Noms alternatifs séparés par virgules — utilisés dans l'autocomplete |
+| `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Correspondance Ciqual (`SET_NULL`) |
+| `default_unit` | `CharField(20)` | non | `'g'` | Unité pré-remplie dans le formulaire recette |
+| `created_at` | `DateTimeField` | non | auto | Date de création |
+
+**Propriétés calculées** : `kcal_100g`, `proteines_100g` — délèguent à `ciqual_ref`.
+
+**Autocomplete** (`GET /api/ingredients/connus/?q=`) : recherche sur `nom_normalise` et `synonymes`, triée par pertinence (startswith > contains > synonyme).
 
 ---
 
@@ -527,10 +567,10 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 
 **Règles de gestion** :
 1. La photo est uploadée vers Cloudinary via `integrations/cloudinary.py` → l'URL retournée est stockée dans `photo_url`
-2. À la saisie de chaque ingrédient, une requête AJAX interroge `services.rechercher_ciqual()` (base Ciqual locale) et propose les correspondances dans une dropdown
-3. Si un `IngredientRef` est sélectionné, les macros de l'ingrédient sont recalculées depuis Ciqual (quantité → grammes → facteur × kcal/100g)
-4. Les macros de la recette (`calories_per_serving` etc.) sont recalculées et sauvegardées à chaque enregistrement via `services.calculer_macros_recette()`
-4. Le calcul : somme des macros de tous les ingrédients / `base_servings`
+2. À la saisie de chaque ingrédient (debounce 350ms), une requête AJAX interroge `services.rechercher_connus()` (base `KnownIngredient`) et propose les correspondances dans une dropdown avec badge kcal/100g. Si kcal=NULL (sel, eau), affiche "Ciqual ✓". Si kcal=0, affiche "0 kcal/100g".
+3. Si un `KnownIngredient` est sélectionné, son `ciqual_ref` est résolu et les macros sont calculées (quantité → grammes → facteur × kcal/100g)
+4. Les macros de la recette sont recalculées via `services.calculer_macros_recette()` à chaque enregistrement : calcul direct depuis `ciqual_ref`, ingrédients optionnels exclus
+5. `Recipe.nutrition_status` est mis à jour simultanément : `ok` / `partial` / `missing`
 
 **Gestion des erreurs** :
 - Objet introuvable → `get_object_or_404` → HTTP 404
@@ -1012,6 +1052,39 @@ Affichées dans la vue planning (`planning_semaine`). Jamais bloquantes, jamais 
 
 ---
 
+---
+
+## 5.22 Page Management (Chef Étoilé / Staff uniquement)
+
+**URL** : `GET /management/` → `menu:management_page`
+**Accès** : `is_staff` ou `role = chef_etoile`
+
+### Actions disponibles
+
+| Action | URL | Méthode | Description |
+|--------|-----|---------|-------------|
+| 🏗️ Construire la base | `POST /management/actions/build/` | POST | Lance `build_known_ingredients` — construit `KnownIngredient` depuis les noms d'ingrédients des recettes existantes |
+| 🔗 Lier les recettes | `POST /management/actions/link/` | POST | Lance `match_ingredients` — associe `Ingredient` aux `KnownIngredient` existants |
+| 🔄 Recalculer les macros | `POST /management/actions/recalculate/` | POST | Lance `recalculate_nutrition` — purge orphelins + recalcule toutes les macros |
+| 📥 Import Ciqual | `POST /management/actions/import-ciqual/` | POST | Upload XLS → `import_ciqual --wipe` (efface et réimporte la table) |
+| 🧹 Nettoyer Ciqual | `POST /management/actions/clean-ciqual/` | POST | Lance `clean_ciqual` — supprime plats composés et entrées sans kcal |
+| 🗑️ Vider les recettes | `POST /management/actions/reset-recipes/` | POST | `reset_mode=recipes` — supprime Recipe + WeekPlan, conserve KnownIngredient |
+| ⚠️ Reset complet | `POST /management/actions/reset-recipes/` | POST | `reset_mode=full` — supprime Recipe + KnownIngredient + WeekPlan |
+
+Toutes les actions mutantes utilisent `@require_POST` et affichent un résumé via message flash.
+
+### Référentiel Ciqual (CRUD)
+
+**URL** : `GET /management/ciqual/` → `menu:gestion_ciqual_ref`
+
+- Liste paginée (50/page) avec recherche texte et filtre par groupe alimentaire
+- Chaque ligne est éditable inline (JS + AJAX `POST /management/ciqual/<ref_id>/`)
+- Ajout d'une nouvelle entrée (formulaire collapsible, code `CUSTOM-XXXX` auto)
+- Suppression avec confirmation (`POST /management/ciqual/<ref_id>/supprimer/`) — `SET_NULL` sur `KnownIngredient.ciqual_ref`
+- Les entrées personnalisées sont distinguées par un badge "perso"
+
+---
+
 ## 8. Fixtures de référence
 
 ### 8.1 Recette exemple — Hachis Parmentier
@@ -1038,7 +1111,13 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0004_nutrition_config` | 2026-04-26 | Modèle `NutritionConfig` singleton PNNS |
 | `0005_recipe_photos` | 2026-04-26 | Modèle `RecipePhoto` — galerie photos recette |
 | `0006_meal_absent_field` | 2026-04-27 | `Meal.absent` BooleanField (étape 25 — créneaux sans repas) |
-| `0007_ciqual_ingredientref` | 2026-04-29 | Modèle `IngredientRef` (3185 entrées Ciqual 2020) + `Ingredient.ciqual_ref` FK |
+| `0007_ciqual_ingredientref` | 2026-04-29 | Modèle `IngredientRef` (Ciqual 2020) + `Ingredient.ciqual_ref` FK |
+| `0008_remove_openfoodfacts_id` | 2026-04-30 | Suppression du champ legacy Open Food Facts |
+| `0009_synonymes_ingredientref` | 2026-04-30 | `IngredientRef.synonymes` TextField |
+| `0010_known_ingredient` | 2026-05-01 | Modèle `KnownIngredient` — base de connaissance ingrédients |
+| `0011_known_ingredient_fk_and_default_unit` | 2026-05-01 | `Ingredient.known_ingredient` FK + `KnownIngredient.default_unit` |
+| `0012_recipe_nutrition_status` | 2026-05-02 | `Recipe.nutrition_status` CharField (`ok`/`partial`/`missing`) |
+| `0013_ingredientref_new_nutrition_fields` | 2026-05-02 | `IngredientRef` : `sucres_100g`, `fibres_100g`, `ag_satures_100g`, `sel_100g` |
 
 ---
 
@@ -1061,6 +1140,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v3.0 | 2026-04-26 | Revue de code — B1 WeekPlan created_by, B2 prefetch photos, B3 profil N+1, S1-S3 spec, Q1-Q2 qualité |
 | v3.1 | 2026-04-27 | Algo suggestions affiné — PS×WPD, poids dynamiques normalisés, bonus adéquation protéique dim.3, réponse JSON enrichie |
 | v3.2 | 2026-04-29 | Intégration ANSES Ciqual 2020 — IngredientRef (3185 entrées), matching 74.3%, macros recalculées, autocomplete formulaire, suppression Open Food Facts |
+| v4.0 | 2026-05-03 | Base de connaissance KnownIngredient — architecture deux couches Ciqual, badges nutrition_status, page CRUD référentiel Ciqual, page Management enrichie, refactoring nutrition unifiée, corrections bugs accumulation calories |
 
 ### Détail v2.0
 

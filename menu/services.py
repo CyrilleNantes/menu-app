@@ -191,20 +191,10 @@ def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
     Recherche dans IngredientRef par nom normalisé.
     Retourne une liste de dicts pour le JSON de l'autocomplete.
     """
-    import unicodedata, re
-
-    def _normalize(s: str) -> str:
-        s = s.lower().strip()
-        s = unicodedata.normalize('NFD', s)
-        s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
-        s = s.replace('oe', 'oe').replace('ae', 'ae')
-        s = re.sub(r'[^\w\s]', ' ', s)
-        s = re.sub(r'\s+', ' ', s).strip()
-        return s
-
+    from .models import _normaliser_nom
     if not q or len(q) < 2:
         return []
-    q_norm = _normalize(q)
+    q_norm = _normaliser_nom(q)
     from django.db.models import Q, Case, When, IntegerField
     refs = (
         IngredientRef.objects
