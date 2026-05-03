@@ -736,6 +736,16 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 /* Bloc nutrition fiche recette */
 .nutri-subtitle { font-size: .85rem; color: var(--color-muted); margin: -.25rem 0 .75rem; }
 .nutri-total { font-size: .85rem; color: var(--color-muted); margin-top: .5rem; }
+/* Badge statut nutritionnel — cartes catalogue */
+.nutri-status { font-size: .75rem; font-weight: 600; padding: .15rem .45rem; border-radius: 99px; white-space: nowrap; }
+.nutri-status--ok      { background: #d4f4e2; color: #1a6b3c; }
+.nutri-status--partial { background: #fff3cd; color: #7d5a00; }
+.nutri-status--missing { background: #fde8e8; color: #a12121; }
+/* Bandeau statut nutritionnel — fiche détail */
+.nutri-status-banner { margin: 0; padding: .55rem .9rem; border-radius: var(--radius); font-size: .85rem; }
+.nutri-status-banner--partial { background: #fff8e1; color: #7d5a00; border-left: 3px solid #f5c518; }
+.nutri-status-banner--missing { background: #fdecea; color: #a12121; border-left: 3px solid #e53935; }
+.nutri-status-banner--missing a { color: #a12121; font-weight: 600; }
 /* Bloc "Pour toi" dans la fiche recette */
 .nutri-pour-toi { margin-top: .75rem; padding: .5rem .75rem; background: #f0faf5; border-radius: var(--radius); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .88rem; }
 .nutri-pour-toi__label { font-weight: 600; }

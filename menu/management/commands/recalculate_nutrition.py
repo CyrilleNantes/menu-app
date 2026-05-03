@@ -167,6 +167,7 @@ class Command(BaseCommand):
                 prot_per = round(recipe_prot / bs, 2)
                 gluc_per = round(recipe_gluc / bs, 2)
                 lip_per  = round(recipe_lip  / bs, 2)
+                status   = 'ok' if all_calculable else 'partial'
                 if dry_run:
                     self.stdout.write(
                         f'  [DRY] {recipe.title[:40]:40s} | '
@@ -178,9 +179,11 @@ class Command(BaseCommand):
                     recipe.proteins_per_serving  = prot_per
                     recipe.carbs_per_serving     = gluc_per
                     recipe.fats_per_serving      = lip_per
+                    recipe.nutrition_status      = status
                     recipe.save(update_fields=[
                         'calories_per_serving', 'proteins_per_serving',
-                        'carbs_per_serving', 'fats_per_serving'
+                        'carbs_per_serving', 'fats_per_serving',
+                        'nutrition_status',
                     ])
                 recipe_updated += 1
                 if not all_calculable:
@@ -192,9 +195,11 @@ class Command(BaseCommand):
                     recipe.proteins_per_serving  = None
                     recipe.carbs_per_serving     = None
                     recipe.fats_per_serving      = None
+                    recipe.nutrition_status      = 'missing'
                     recipe.save(update_fields=[
                         'calories_per_serving', 'proteins_per_serving',
-                        'carbs_per_serving', 'fats_per_serving'
+                        'carbs_per_serving', 'fats_per_serving',
+                        'nutrition_status',
                     ])
 
         self.stdout.write(self.style.SUCCESS(

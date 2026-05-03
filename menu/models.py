@@ -243,6 +243,17 @@ class Recipe(models.Model):
     proteins_per_serving = models.FloatField(blank=True, null=True)
     carbs_per_serving = models.FloatField(blank=True, null=True)
     fats_per_serving = models.FloatField(blank=True, null=True)
+    NUTRITION_STATUS_CHOICES = [
+        ('ok',      'Complet — tous les ingrédients mappés'),
+        ('partial', 'Partiel — certains ingrédients non mappés'),
+        ('missing', 'Manquant — aucun ingrédient mappé'),
+    ]
+    nutrition_status = models.CharField(
+        max_length=10,
+        choices=NUTRITION_STATUS_CHOICES,
+        default='missing',
+        verbose_name="Statut nutritionnel",
+    )
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="recipes")
     PROTEIN_TYPE_CHOICES = [
         ("boeuf",        "Bœuf"),

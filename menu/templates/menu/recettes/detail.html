@@ -55,6 +55,20 @@
     </div>
 
     <!-- Nutrition -->
+    {% if recipe.nutrition_status == 'missing' %}
+    <section class="recette-section">
+        <p class="nutri-status-banner nutri-status-banner--missing">
+            ✕ Ingrédients non mappés — pas de calcul nutritionnel disponible.
+            <a href="{% url 'menu:management_page' %}">Gérer les mappings</a>
+        </p>
+    </section>
+    {% elif recipe.nutrition_status == 'partial' %}
+    <section class="recette-section">
+        <p class="nutri-status-banner nutri-status-banner--partial">
+            ⚠ Calcul partiel — certains ingrédients ne sont pas encore mappés Ciqual.
+        </p>
+    </section>
+    {% endif %}
     {% if recipe.calories_per_serving or recipe.proteins_per_serving %}
     <section class="recette-section">
         <h2>Informations nutritionnelles</h2>
