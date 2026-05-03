@@ -69,9 +69,6 @@ class Command(BaseCommand):
             )
 
             for ingr in all_ingrs:
-                if ingr.is_optional:
-                    continue
-
                 # Priorité : ciqual_ref dérivé de known_ingredient, sinon ciqual_ref direct
                 if ingr.known_ingredient and ingr.known_ingredient.ciqual_ref:
                     if ingr.ciqual_ref_id != ingr.known_ingredient.ciqual_ref_id:

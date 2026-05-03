@@ -229,15 +229,17 @@ def calculer_macros_recette(recipe: Recipe) -> None:
     """
     Recalcule et sauvegarde les macros par portion + nutrition_status.
     Calcule directement depuis ciqual_ref (pas les calories stockées).
-    Les ingrédients optionnels sont exclus du calcul.
+    Tous les ingrédients (y compris optionnels) contribuent au calcul.
+    Le nutrition_status est déterminé sur les non-optionnels uniquement.
     """
-    non_optional = list(
+    all_ingrs = list(
         recipe.ingredients
         .select_related('ciqual_ref')
-        .filter(is_optional=False)
+        .all()
     )
+    non_optional = [i for i in all_ingrs if not i.is_optional]
 
-    # ── Statut nutritionnel ──────────────────────────────────────────────────
+    # ── Statut nutritionnel (basé sur les non-optionnels) ────────────────────
     mapped = [i for i in non_optional if i.ciqual_ref_id is not None]
     if not non_optional:
         status = 'missing'
@@ -248,7 +250,7 @@ def calculer_macros_recette(recipe: Recipe) -> None:
     else:
         status = 'missing'
 
-    if not non_optional:
+    if not all_ingrs:
         recipe.calories_per_serving = None
         recipe.proteins_per_serving = None
         recipe.carbs_per_serving    = None
@@ -262,7 +264,7 @@ def calculer_macros_recette(recipe: Recipe) -> None:
 
     total_cal = total_prot = total_carbs = total_fats = 0.0
     has_any = False
-    for ingr in non_optional:
+    for ingr in all_ingrs:
         macros = compute_ingredient_macros_from_ciqual(ingr)
         if macros:
             total_cal   += macros['calories']

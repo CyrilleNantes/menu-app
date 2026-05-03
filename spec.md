@@ -160,7 +160,7 @@ Fallback : si aucune correspondance, les macros restent vides (`nutrition_status
 - `partial` : au moins un ingrédient non-optionnel non mappé
 - `missing` : aucun ingrédient non-optionnel mappé
 
-**Calcul des macros** (`calculer_macros_recette`) : calcule directement depuis `ciqual_ref` (pas les valeurs stockées), ingrédients optionnels exclus. Un `kcal_100g NULL` (sel, eau) est traité comme 0 kcal — l'ingrédient est considéré mappé.
+**Calcul des macros** (`calculer_macros_recette`) : calcule directement depuis `ciqual_ref` (pas les valeurs stockées), **tous les ingrédients contribuent au calcul (y compris les optionnels)**. Le `nutrition_status` est déterminé uniquement sur les non-optionnels. Un `kcal_100g NULL` (sel, eau) est traité comme 0 kcal — l'ingrédient est considéré mappé.
 
 ---
 
@@ -284,7 +284,7 @@ Ingrédient d'une recette, rattaché à un groupe.
 | `quantity` | `FloatField` | oui | — | Quantité (relative à `base_servings`) — valeur basse si fourchette |
 | `quantity_note` | `CharField(50)` | oui | — | Précision libre sur la quantité (ex. "150–200g", "selon votre goût"). Affiché à la place de `quantity + unit` quand renseigné. |
 | `unit` | `CharField(50)` | oui | — | Unité (g, ml, c. à soupe…) |
-| `is_optional` | `BooleanField` | non | `False` | Ingrédient optionnel — exclus du calcul nutritionnel |
+| `is_optional` | `BooleanField` | non | `False` | Ingrédient optionnel — inclus dans le calcul nutritionnel, exclu du `nutrition_status` |
 | `category` | `CharField(50)` | oui | — | Catégorie courses (viandes, légumes, épicerie…) |
 | `known_ingredient` | `ForeignKey(KnownIngredient)` | oui | — | Lien vers la base de connaissance (`SET_NULL`) |
 | `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Référence Ciqual dérivée de `known_ingredient.ciqual_ref` à la sauvegarde |
@@ -569,7 +569,7 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 1. La photo est uploadée vers Cloudinary via `integrations/cloudinary.py` → l'URL retournée est stockée dans `photo_url`
 2. À la saisie de chaque ingrédient (debounce 350ms), une requête AJAX interroge `services.rechercher_connus()` (base `KnownIngredient`) et propose les correspondances dans une dropdown avec badge kcal/100g. Si kcal=NULL (sel, eau), affiche "Ciqual ✓". Si kcal=0, affiche "0 kcal/100g".
 3. Si un `KnownIngredient` est sélectionné, son `ciqual_ref` est résolu et les macros sont calculées (quantité → grammes → facteur × kcal/100g)
-4. Les macros de la recette sont recalculées via `services.calculer_macros_recette()` à chaque enregistrement : calcul direct depuis `ciqual_ref`, ingrédients optionnels exclus
+4. Les macros de la recette sont recalculées via `services.calculer_macros_recette()` à chaque enregistrement : calcul direct depuis `ciqual_ref`, tous les ingrédients inclus (optionnels compris)
 5. `Recipe.nutrition_status` est mis à jour simultanément : `ok` / `partial` / `missing`
 
 **Gestion des erreurs** :
@@ -1141,6 +1141,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v3.1 | 2026-04-27 | Algo suggestions affiné — PS×WPD, poids dynamiques normalisés, bonus adéquation protéique dim.3, réponse JSON enrichie |
 | v3.2 | 2026-04-29 | Intégration ANSES Ciqual 2020 — IngredientRef (3185 entrées), matching 74.3%, macros recalculées, autocomplete formulaire, suppression Open Food Facts |
 | v4.0 | 2026-05-03 | Base de connaissance KnownIngredient — architecture deux couches Ciqual, badges nutrition_status, page CRUD référentiel Ciqual, page Management enrichie, refactoring nutrition unifiée, corrections bugs accumulation calories |
+| v4.1 | 2026-05-03 | Calcul nutritionnel : ingrédients optionnels inclus (ne plus minorer les calories) |
 
 ### Détail v2.0
 
