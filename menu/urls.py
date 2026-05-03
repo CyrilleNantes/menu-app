@@ -60,6 +60,7 @@ urlpatterns = [
     path("management/ingredients/ajouter/", views.ajouter_known_ingredient, name="ajouter_known_ingredient"),
     path("management/ingredients/<int:ki_id>/", views.maj_known_ingredient, name="maj_known_ingredient"),
     path("management/actions/build/", views.build_known_ingredients_view, name="build_known_ingredients_view"),
+    path("management/actions/clean-ciqual/", views.clean_ciqual_view, name="clean_ciqual_view"),
     path("management/actions/reset-recipes/", views.reset_recipes_view, name="reset_recipes_view"),
     path("management/actions/link/", views.link_known_ingredients_view, name="link_known_ingredients"),
     path("management/actions/recalculate/", views.recalculate_nutrition_view, name="recalculate_nutrition_view"),

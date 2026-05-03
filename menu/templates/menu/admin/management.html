@@ -207,7 +207,41 @@
 </section>
 
 <!-- ══════════════════════════════════════════════════════════════════
-     SECTION 3 — Réinitialisation (staff uniquement)
+     SECTION 3 — Maintenance Ciqual (staff uniquement)
+══════════════════════════════════════════════════════════════════ -->
+<section style="margin-top:2rem">
+  <h2 style="font-size:1.2rem;margin-bottom:1rem">🧹 Maintenance Ciqual</h2>
+  <div class="backup-card">
+    <div class="backup-card__label">NETTOYER LA TABLE CIQUAL</div>
+    <p>
+      Supprime les entrées inutiles de la table de référence nutritionnelle :<br>
+      • <strong>Plats composés</strong> (bœuf bourguignon industriel, pizza surgelée…)<br>
+      • <strong>Entrées sans donnée calorique</strong> (légumes crus sans mesure, etc.)<br>
+      Les eaux, bouillons et vinaigres sont conservés même sans calorie.
+    </p>
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
+      <form method="post" action="{% url 'menu:clean_ciqual_view' %}" style="margin:0">
+        {% csrf_token %}
+        <input type="hidden" name="dry_run" value="1">
+        <button type="submit" class="btn btn--secondary btn--sm"
+                title="Affiche ce qui serait supprimé sans toucher la base">
+          🔍 Simuler le nettoyage
+        </button>
+      </form>
+      <form method="post" action="{% url 'menu:clean_ciqual_view' %}" style="margin:0">
+        {% csrf_token %}
+        <input type="hidden" name="dry_run" value="0">
+        <button type="submit" class="btn btn--danger btn--sm"
+                onclick="return confirm('Supprimer les entrées Ciqual inutiles ? Les mappings liés seront effacés.')">
+          🧹 Nettoyer
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 4 — Réinitialisation (staff uniquement)
 ══════════════════════════════════════════════════════════════════ -->
 <section style="margin-top:2rem">
   <h2 style="font-size:1.2rem;margin-bottom:1rem">🗑️ Réinitialisation</h2>

@@ -1477,6 +1477,29 @@ def build_known_ingredients_view(request):
 
 @require_POST
 @login_required
+def clean_ciqual_view(request):
+    """Lance la commande clean_ciqual (nettoyage plats composés + sans kcal)."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    dry_run = request.POST.get('dry_run') == '1'
+    out = StringIO()
+    call_command('clean_ciqual', stdout=out, dry_run=dry_run)
+    result = out.getvalue()
+    if dry_run:
+        # Afficher le résultat complet en message info pour la simulation
+        messages.info(request, f"🔍 Simulation nettoyage Ciqual :\n{result}")
+    else:
+        lines = [l.strip() for l in result.splitlines() if l.strip()]
+        summary = ' · '.join(lines[-4:]) if len(lines) >= 4 else result.strip()
+        messages.success(request, f"🧹 Ciqual nettoyé — {summary}")
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
 def reset_recipes_view(request):
     """Supprime les recettes et données associées selon le mode choisi."""
     if not (_verifier_staff(request) or _verifier_cuisinier(request)):
