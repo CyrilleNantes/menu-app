@@ -478,20 +478,21 @@ def planning_semaine(request, year, week):
             total_calories += (m.recipe.calories_per_serving or 0) * n
             total_proteins += (m.recipe.proteins_per_serving or 0) * n
 
-    # Propositions visibles par le Cuisinier
+    # Backlog propositions famille — indépendant de la semaine
     proposals = []
     if is_cuisinier:
         proposals = list(
-            MealProposal.objects.filter(week_plan=plan)
+            MealProposal.objects.filter(family=profile.family, week_plan__isnull=True)
             .select_related("recipe", "proposed_by")
             .order_by("-created_at")
         )
 
-    # Propositions du Convive connecté pour cette semaine
     user_proposals = []
     if not is_cuisinier:
         user_proposals = list(
-            MealProposal.objects.filter(week_plan=plan, proposed_by=request.user)
+            MealProposal.objects.filter(
+                family=profile.family, proposed_by=request.user, week_plan__isnull=True
+            )
             .select_related("recipe")
             .order_by("-created_at")
         )
@@ -756,9 +757,8 @@ def proposer_repas(request, plan_id):
         recipe=recipe,
         proposed_by=request.user,
         message=message,
-        week_plan=plan,
+        week_plan=None,
     )
-    notifier_nouvelle_proposition(proposal)
 
     return JsonResponse({
         "ok": True,
@@ -766,6 +766,30 @@ def proposer_repas(request, plan_id):
         "recipe_title": recipe.title,
         "proposed_by": request.user.first_name or request.user.email,
     })
+
+
+@require_POST
+@login_required
+def creer_proposition_recette(request, id):
+    """Propose une recette depuis sa fiche — Convive uniquement. Alimente le backlog famille."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        messages.error(request, "Vous devez appartenir à une famille pour proposer une recette.")
+        return redirect("menu:detail_recette", id=id)
+    if profile.role in ("cuisinier", "chef_etoile"):
+        messages.info(request, "En tant que Cuisinier, ajoutez directement la recette au planning.")
+        return redirect("menu:detail_recette", id=id)
+
+    recipe = get_object_or_404(Recipe, id=id, actif=True)
+    MealProposal.objects.create(
+        family=profile.family,
+        recipe=recipe,
+        proposed_by=request.user,
+        week_plan=None,
+    )
+    messages.success(request, f"« {recipe.title} » ajouté à tes propositions !")
+    logger.info("Proposition recette '%s' par %s.", recipe.title, request.user.email)
+    return redirect("menu:detail_recette", id=id)
 
 
 @require_POST
