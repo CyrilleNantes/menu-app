@@ -449,8 +449,8 @@ def creer_periode(request):
         if jours[0] < today:
             messages.error(request, "Impossible de créer une période dans le passé.")
             return redirect("menu:creer_periode")
-        if len(jours) > 7:
-            messages.error(request, "Une période ne peut pas dépasser 7 jours.")
+        if len(jours) > 14:
+            messages.error(request, "Une période ne peut pas dépasser 14 jours.")
             return redirect("menu:creer_periode")
 
         period_start = jours[0]
@@ -489,13 +489,30 @@ def creer_periode(request):
         else:
             suggested_start = today
 
-    # Les 7 jours à partir de suggested_start
-    candidate_days = [suggested_start + timedelta(days=i) for i in range(7)]
     JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
-    candidate_days_info = [
-        {"date": d, "label": JOURS_FR[d.weekday()], "iso": d.isoformat()}
-        for d in candidate_days
-    ]
+
+    # Semaines calendaires complètes (lundi→dimanche) sur 2 semaines depuis le lundi de suggested_start
+    week_mon = suggested_start - timedelta(days=suggested_start.weekday())
+    week_sun = week_mon + timedelta(days=13)
+
+    # Jours déjà pris par des périodes existantes
+    taken_dates = set()
+    for ep in WeekPlan.objects.filter(family=profile.family):
+        for d in ep.get_active_dates():
+            taken_dates.add(d.isoformat())
+
+    candidate_days_info = []
+    d = week_mon
+    while d <= week_sun:
+        iso = d.isoformat()
+        candidate_days_info.append({
+            "date": d,
+            "label": JOURS_FR[d.weekday()],
+            "iso": iso,
+            "disabled": iso in taken_dates or d < suggested_start,
+            "precheck": d >= suggested_start and iso not in taken_dates,
+        })
+        d += timedelta(days=1)
 
     return render(request, "menu/planning/creer_periode.html", {
         "today_iso": today.isoformat(),
@@ -571,16 +588,29 @@ def planning_periode(request, plan_id):
     )
     present_member_ids = set(plan.present_members.values_list("id", flat=True))
 
-    # Sélecteur de jours : les 7 jours à partir de period_start
+    # Sélecteur de jours : semaines calendaires complètes (lundi→dimanche)
     active_dates_iso = set(plan.active_dates) if plan.active_dates else {d.isoformat() for d in active_dates}
-    periode_candidate_days = [
-        {
-            "date": plan.period_start + timedelta(days=i),
-            "label": JOURS_FR[(plan.period_start + timedelta(days=i)).weekday()],
-            "iso": (plan.period_start + timedelta(days=i)).isoformat(),
-        }
-        for i in range(7)
-    ]
+
+    week_mon = plan.period_start - timedelta(days=plan.period_start.weekday())
+    week_sun = plan.period_end + timedelta(days=6 - plan.period_end.weekday())
+
+    taken_dates = set()
+    if prev_plan:
+        taken_dates.update(d.isoformat() for d in prev_plan.get_active_dates())
+    if next_plan:
+        taken_dates.update(d.isoformat() for d in next_plan.get_active_dates())
+
+    periode_candidate_days = []
+    _d = week_mon
+    while _d <= week_sun:
+        iso = _d.isoformat()
+        periode_candidate_days.append({
+            "date": _d,
+            "label": JOURS_FR[_d.weekday()],
+            "iso": iso,
+            "disabled": iso in taken_dates,
+        })
+        _d += timedelta(days=1)
 
     ctx = {
         "plan": plan,
@@ -879,8 +909,8 @@ def modifier_jours_periode(request, plan_id):
         messages.error(request, "Dates invalides.")
         return redirect("menu:planning_periode", plan_id=plan_id)
 
-    if len(jours) > 7:
-        messages.error(request, "Maximum 7 jours par période.")
+    if len(jours) > 14:
+        messages.error(request, "Maximum 14 jours par période.")
         return redirect("menu:planning_periode", plan_id=plan_id)
 
     with transaction.atomic():

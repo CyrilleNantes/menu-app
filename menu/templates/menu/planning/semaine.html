@@ -20,7 +20,7 @@
     {% if next_plan %}
     <a href="{% url 'menu:planning_periode' next_plan.id %}" class="planning-nav__arrow" title="Période suivante">&#8594;</a>
     {% else %}
-    <a href="{% url 'menu:creer_periode' %}" class="planning-nav__arrow" title="Créer la période suivante">+</a>
+    <a href="{% url 'menu:creer_periode' %}?after={{ period_end|date:'Y-m-d' }}" class="planning-nav__arrow" title="Créer la période suivante">+</a>
     {% endif %}
 </div>
 
@@ -79,9 +79,10 @@
         {% csrf_token %}
         <div class="planning-jours__days">
             {% for day in periode_candidate_days %}
-            <label class="day-toggle {% if day.iso in active_dates_iso %}day-toggle--active{% endif %}" id="day-{{ day.iso }}">
+            <label class="day-toggle{% if day.iso in active_dates_iso %} day-toggle--active{% endif %}{% if day.disabled %} day-toggle--disabled{% endif %}" id="day-{{ day.iso }}">
                 <input type="checkbox" name="jours" value="{{ day.iso }}"
                        {% if day.iso in active_dates_iso %}checked{% endif %}
+                       {% if day.disabled %}disabled{% endif %}
                        class="day-toggle__cb" style="display:none">
                 <span class="day-toggle__label">{{ day.label }}</span>
                 <span class="day-toggle__date">{{ day.date|date:"d/m" }}</span>

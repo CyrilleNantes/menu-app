@@ -13,8 +13,10 @@
 
         <div class="periode-day-picker" id="day-picker">
             {% for day in candidate_days %}
-            <label class="day-toggle" id="toggle-{{ day.iso }}">
-                <input type="checkbox" name="jours" value="{{ day.iso }}" class="day-toggle__cb" style="display:none" checked>
+            <label class="day-toggle{% if day.precheck %} day-toggle--active{% endif %}{% if day.disabled %} day-toggle--disabled{% endif %}" id="toggle-{{ day.iso }}">
+                <input type="checkbox" name="jours" value="{{ day.iso }}" class="day-toggle__cb" style="display:none"
+                       {% if day.precheck %}checked{% endif %}
+                       {% if day.disabled %}disabled{% endif %}>
                 <span class="day-toggle__label">{{ day.label }}</span>
                 <span class="day-toggle__date">{{ day.date|date:"d/m" }}</span>
             </label>
@@ -32,17 +34,16 @@
 
 <script>
 (function () {
-    const cbs = document.querySelectorAll('.day-toggle__cb');
     const summary = document.getElementById('periode-summary');
     const btnCreer = document.getElementById('btn-creer');
 
-    function updateToggleStyle(cb) {
-        const label = cb.closest('.day-toggle');
-        label.classList.toggle('day-toggle--active', cb.checked);
+    function formatDate(iso) {
+        const [y, m, d] = iso.split('-');
+        return d + '/' + m + '/' + y;
     }
 
     function updateSummary() {
-        const checked = [...cbs].filter(cb => cb.checked);
+        const checked = [...document.querySelectorAll('.day-toggle__cb:not(:disabled):checked')];
         if (checked.length === 0) {
             summary.textContent = 'Sélectionne au moins un jour.';
             btnCreer.disabled = true;
@@ -53,17 +54,12 @@
         }
     }
 
-    function formatDate(iso) {
-        const [y, m, d] = iso.split('-');
-        return d + '/' + m + '/' + y;
-    }
-
-    cbs.forEach(cb => {
-        updateToggleStyle(cb);
-        cb.closest('.day-toggle').addEventListener('click', function (e) {
+    document.querySelectorAll('.day-toggle:not(.day-toggle--disabled)').forEach(label => {
+        const cb = label.querySelector('.day-toggle__cb');
+        label.addEventListener('click', function (e) {
             e.preventDefault();
             cb.checked = !cb.checked;
-            updateToggleStyle(cb);
+            label.classList.toggle('day-toggle--active', cb.checked);
             updateSummary();
         });
     });
