@@ -441,7 +441,7 @@ Proposition d'un Convive pour un repas à venir.
 | `id` | `BigAutoField` | non | auto | Clé primaire |
 | `family` | `ForeignKey(Family)` | non | — | Famille |
 | `recipe` | `ForeignKey(Recipe)` | non | — | Recette proposée |
-| `proposed_by` | `ForeignKey(User)` | non | — | Convive auteur |
+| `proposed_by` | `ForeignKey(User)` | non | — | Auteur de la proposition (tout membre de la famille) |
 | `message` | `TextField` | oui | — | Message optionnel |
 | `week_plan` | `ForeignKey(WeekPlan)` | oui | `null` | Lié à un planning si déjà créé |
 | `created_at` | `DateTimeField` | non | auto | Date de la proposition |
@@ -694,7 +694,7 @@ Les propositions fonctionnent comme un **backlog persistant** : elles ne sont pa
 | `POST /recettes/<id>/proposer/` | `menu:creer_proposition_recette` | Depuis la fiche recette — bouton "💡 Proposer" |
 | `POST /planning/<plan_id>/proposer/` | `menu:proposer_repas` | Depuis le planning — dialog avec recherche |
 
-**Accès** : Convive uniquement. Les Cuisiniers modifient le planning directement via `modifier_meal`.
+**Accès** : Tout membre de la famille (Cuisinier inclus).
 
 **Règles de gestion** :
 1. Crée un `MealProposal` avec `week_plan=None` — non lié à une semaine
@@ -1180,6 +1180,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v4.2 | 2026-05-04 | Sucres par portion (`sugars_per_serving`) — affiché en fiche recette sous les glucides |
 | v4.2 | 2026-05-04 | Galerie photos opérationnelle — Cloudinary configuré, filtre `cloudinary_img` (4 presets) pour optimisation bande passante à l'affichage |
 | v4.3 | 2026-05-04 | Propositions en backlog famille — persistantes (week_plan=None), visibles par tous les Convives, bouton "Proposer" sur fiche recette, sans email |
+| v4.4 | 2026-05-04 | "Mettre en avant" une photo de galerie met à jour `Recipe.photo_url` — photo visible dans la liste et l'en-tête |
+| v4.4 | 2026-05-04 | Fiche recette : Retour/Proposer/Mode Cuisine en haut, Famille/Modifier en bas — bouton Proposer ouvert à tous les membres de la famille |
 
 ### Détail v2.0
 
