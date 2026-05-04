@@ -470,17 +470,24 @@ def creer_periode(request):
         )
         return redirect("menu:planning_periode", plan_id=plan.id)
 
-    # GET — calcule la date de départ suggérée (lendemain de la dernière période ou aujourd'hui)
-    last_plan = (
-        WeekPlan.objects
-        .filter(family=profile.family)
-        .order_by("-period_end")
-        .first()
-    )
-    if last_plan and last_plan.period_end >= today:
-        suggested_start = last_plan.period_end + timedelta(days=1)
+    # GET — calcule la date de départ suggérée
+    after_str = request.GET.get("after")
+    if after_str:
+        try:
+            suggested_start = date.fromisoformat(after_str) + timedelta(days=1)
+        except ValueError:
+            suggested_start = today
     else:
-        suggested_start = today
+        last_plan = (
+            WeekPlan.objects
+            .filter(family=profile.family)
+            .order_by("-period_end")
+            .first()
+        )
+        if last_plan and last_plan.period_end >= today:
+            suggested_start = last_plan.period_end + timedelta(days=1)
+        else:
+            suggested_start = today
 
     # Les 7 jours à partir de suggested_start
     candidate_days = [suggested_start + timedelta(days=i) for i in range(7)]

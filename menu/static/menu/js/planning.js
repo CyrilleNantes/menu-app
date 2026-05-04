@@ -865,12 +865,31 @@
     const form = document.getElementById('form-jours');
     if (!form) return;
 
+    const headerDates = document.querySelector('.planning-nav__dates');
+
+    function formatDate(isoStr, withYear) {
+        const [y, m, d] = isoStr.split('-');
+        return withYear ? `${d}/${m}/${y}` : `${d}/${m}`;
+    }
+
+    function updateHeader() {
+        if (!headerDates) return;
+        const checked = [...form.querySelectorAll('.day-toggle__cb:checked')]
+            .map(cb => cb.value)
+            .sort();
+        if (checked.length === 0) return;
+        const first = checked[0];
+        const last = checked[checked.length - 1];
+        headerDates.textContent = `${formatDate(first, false)} — ${formatDate(last, true)}`;
+    }
+
     form.querySelectorAll('.day-toggle').forEach(label => {
         label.addEventListener('click', function (e) {
             e.preventDefault();
             const cb = label.querySelector('.day-toggle__cb');
             cb.checked = !cb.checked;
             label.classList.toggle('day-toggle--active', cb.checked);
+            updateHeader();
         });
     });
 })();
