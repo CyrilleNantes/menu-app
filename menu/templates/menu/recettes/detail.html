@@ -57,12 +57,6 @@
                 </form>
                 {% endif %}
                 <a href="{% url 'menu:mode_cuisine' recipe.id %}" class="btn btn--primary">👨‍🍳 Mode Cuisine</a>
-                {% if request.user.profile.family %}
-                <a href="{% url 'menu:compatibilite_recette' recipe.id %}" class="btn btn--secondary">👨‍👩‍👧 Famille</a>
-                {% endif %}
-                {% if request.user == recipe.created_by or request.user.profile.role == 'chef_etoile' %}
-                <a href="{% url 'menu:modifier_recette' recipe.id %}" class="btn btn--secondary">✏️ Modifier</a>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -294,6 +288,15 @@
     </section>
 
 
+</div>
+
+<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.5rem">
+    {% if request.user.profile.family %}
+    <a href="{% url 'menu:compatibilite_recette' recipe.id %}" class="btn btn--secondary">👨‍👩‍👧 Famille</a>
+    {% endif %}
+    {% if request.user == recipe.created_by or request.user.profile.role == 'chef_etoile' %}
+    <a href="{% url 'menu:modifier_recette' recipe.id %}" class="btn btn--secondary">✏️ Modifier</a>
+    {% endif %}
 </div>
 
 <input type="hidden" id="csrf-token" value="{{ csrf_token }}">
