@@ -295,18 +295,20 @@
 <!-- ── Mes propositions (Convive) ───────────────────────────── -->
 {% if not is_cuisinier %}
 <section class="planning-proposals" id="user-proposals-section">
-    <h2 class="planning-proposals__title">💡 Mes propositions</h2>
+    <h2 class="planning-proposals__title">💡 Propositions de la famille</h2>
     {% if user_proposals %}
     <ul class="proposals-list" id="user-proposals-list">
         {% for p in user_proposals %}
         <li class="proposals-list__item" id="user-proposal-{{ p.id }}">
             <div class="proposals-list__header">
                 <span class="proposals-list__recipe">{{ p.recipe.title }}</span>
+                <span class="proposals-list__by text-muted">par {{ p.proposed_by.first_name|default:p.proposed_by.email }}</span>
                 <span class="proposals-list__date text-muted">{{ p.created_at|date:"d/m" }}</span>
             </div>
             {% if p.message %}
             <p class="proposals-list__msg">{{ p.message }}</p>
             {% endif %}
+            {% if p.proposed_by == request.user %}
             <div class="proposals-list__actions">
                 <button type="button"
                         class="btn-cancel-my-proposal btn btn--secondary btn--sm"
@@ -314,11 +316,12 @@
                     ✕ Annuler ma proposition
                 </button>
             </div>
+            {% endif %}
         </li>
         {% endfor %}
     </ul>
     {% else %}
-    <p class="text-muted" id="user-proposals-empty">Tu n'as pas encore proposé de recette.</p>
+    <p class="text-muted" id="user-proposals-empty">Aucune proposition en attente.</p>
     {% endif %}
 </section>
 {% endif %}

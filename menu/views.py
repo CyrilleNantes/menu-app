@@ -490,10 +490,8 @@ def planning_semaine(request, year, week):
     user_proposals = []
     if not is_cuisinier:
         user_proposals = list(
-            MealProposal.objects.filter(
-                family=profile.family, proposed_by=request.user, week_plan__isnull=True
-            )
-            .select_related("recipe")
+            MealProposal.objects.filter(family=profile.family, week_plan__isnull=True)
+            .select_related("recipe", "proposed_by")
             .order_by("-created_at")
         )
 
