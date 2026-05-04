@@ -502,6 +502,8 @@ class Meal(models.Model):
     meal_time = models.CharField(max_length=10, choices=MEAL_TIME_CHOICES)
     recipe = models.ForeignKey(Recipe, on_delete=models.SET_NULL, null=True, blank=True, related_name="meals")
     servings_count = models.PositiveIntegerField(blank=True, null=True)
+    meal_members = models.ManyToManyField(User, blank=True, related_name="meal_participations")
+    guest_count = models.PositiveIntegerField(default=0)
     is_leftovers = models.BooleanField(default=False)
     absent = models.BooleanField(
         default=False,

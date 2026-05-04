@@ -2,11 +2,11 @@
 (function () {
     'use strict';
 
-    const meta        = document.getElementById('planning-meta');
-    const PLAN_ID     = meta ? meta.dataset.planId        : null;
-    const IS_COOK     = meta ? meta.dataset.isCuisinier === 'true' : false;
-    const NB_PRESENTS = meta ? parseInt(meta.dataset.nbPresents) || 1 : 1;
-    const CSRF        = document.getElementById('csrf-token')?.value || '';
+    const meta               = document.getElementById('planning-meta');
+    const PLAN_ID            = meta ? meta.dataset.planId        : null;
+    const IS_COOK            = meta ? meta.dataset.isCuisinier === 'true' : false;
+    const PRESENT_MEMBER_IDS = meta ? (JSON.parse(meta.dataset.presentMembers || '[]')) : [];
+    const CSRF               = document.getElementById('csrf-token')?.value || '';
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -71,10 +71,10 @@
     // ── Dialogue : modifier un repas (Cuisinier) ─────────────────────────────
 
     if (IS_COOK) {
-        const dlg           = document.getElementById('dialog-meal');
-        const dlgLabel      = document.getElementById('dialog-meal-label');
-        const recipeName    = document.getElementById('meal-recipe-name');
-        const servingsInput = document.getElementById('meal-servings');
+        const dlg            = document.getElementById('dialog-meal');
+        const dlgLabel       = document.getElementById('dialog-meal-label');
+        const recipeName     = document.getElementById('meal-recipe-name');
+        const guestCountInput = document.getElementById('meal-guest-count');
 
         const search = makeSearchDropdown(
             document.getElementById('meal-recipe-search'),
@@ -91,13 +91,16 @@
         document.querySelectorAll('.meal-slot[data-editable]').forEach(slot => {
             slot.addEventListener('click', function () {
                 if (this.dataset.absent === 'true') return;
+                const slotMemberIds = JSON.parse(this.dataset.members || '[]');
+                const effectiveMemberIds = slotMemberIds.length ? slotMemberIds : PRESENT_MEMBER_IDS;
                 currentSlot = {
                     date:         this.dataset.date,
                     meal_time:    this.dataset.mealTime,
                     meal_id:      this.dataset.mealId || null,
                     recipe_id:    this.dataset.recipeId || null,
                     recipe_title: this.dataset.recipeTitle || '',
-                    servings:     parseInt(this.dataset.servings) || NB_PRESENTS,
+                    member_ids:   effectiveMemberIds,
+                    guest_count:  parseInt(this.dataset.guests) || 0,
                 };
 
                 const label = currentSlot.meal_time === 'lunch' ? 'Midi' : 'Soir';
@@ -106,7 +109,12 @@
                 search.setSelected(currentSlot.recipe_id, currentSlot.recipe_title);
                 recipeName.textContent = currentSlot.recipe_title || 'Aucune recette';
                 recipeName.classList.toggle('text-muted', !currentSlot.recipe_title);
-                servingsInput.value = currentSlot.servings;
+
+                // Initialiser les checkboxes membres
+                document.querySelectorAll('.meal-member-cb').forEach(cb => {
+                    cb.checked = currentSlot.member_ids.includes(parseInt(cb.value));
+                });
+                if (guestCountInput) guestCountInput.value = currentSlot.guest_count;
 
                 dlg.showModal();
             });
@@ -121,11 +129,15 @@
         // Enregistrer
         document.getElementById('btn-save-meal')?.addEventListener('click', async () => {
             const selected = search.getSelected();
+            const memberIds = [...document.querySelectorAll('.meal-member-cb:checked')]
+                .map(cb => parseInt(cb.value));
+            const guestCount = parseInt(guestCountInput?.value || '0') || 0;
             const body = {
-                date:           currentSlot.date,
-                meal_time:      currentSlot.meal_time,
-                recipe_id:      selected.id ? parseInt(selected.id) : null,
-                servings_count: parseInt(servingsInput.value) || NB_PRESENTS,
+                date:        currentSlot.date,
+                meal_time:   currentSlot.meal_time,
+                recipe_id:   selected.id ? parseInt(selected.id) : null,
+                member_ids:  memberIds,
+                guest_count: guestCount,
             };
 
             try {
@@ -189,6 +201,8 @@
         slot.dataset.recipeId    = data.recipe_id    || '';
         slot.dataset.recipeTitle = data.recipe_title || '';
         slot.dataset.servings    = data.servings_count || '';
+        slot.dataset.members     = JSON.stringify(data.meal_member_ids || []);
+        slot.dataset.guests      = data.guest_count || 0;
         slot.classList.remove('meal-slot--absent');
 
         if (data.recipe_title) {
@@ -218,45 +232,42 @@
     // ── Bilan : refresh AJAX ──────────────────────────────────────────────────
 
     async function refreshBilan() {
-        const bilanEl = document.getElementById('planning-bilan');
-        if (!bilanEl || !PLAN_ID) return;
+        if (!PLAN_ID) return;
         try {
             const resp = await fetch(`/planning/${PLAN_ID}/bilan/`, {
                 headers: { 'X-CSRFToken': CSRF },
             });
             const data = await resp.json();
             if (!data.ok) return;
-            const b = data.bilan;
 
-            // Variété
-            _bilanSetItem(bilanEl, 'bilan-fish',     b.fish_count,     b.fish_ok,     'bilan-item--ok', 'bilan-item--warn');
-            _bilanSetItem(bilanEl, 'bilan-veg',      b.veg_count,      b.veg_ok,      'bilan-item--ok', 'bilan-item--warn');
-            _bilanSetItem(bilanEl, 'bilan-red-meat',  b.red_meat_count, b.red_meat_ok, 'bilan-item--ok', 'bilan-item--warn');
-
-            // Absent
-            const absentEl = bilanEl.querySelector('#bilan-absent');
-            if (absentEl) absentEl.textContent = b.absent_count;
-
-            // Nutrition
-            if (bilanEl.querySelector('#bilan-cal')) {
-                bilanEl.querySelector('#bilan-cal').textContent = b.cal_total;
-            }
-            if (bilanEl.querySelector('#bilan-prot')) {
-                bilanEl.querySelector('#bilan-prot').textContent = b.prot_total;
+            const bilanEl = document.getElementById('planning-bilan');
+            if (bilanEl) {
+                const b = data.bilan;
+                // Variété
+                _bilanSetItem(bilanEl, 'bilan-fish',     b.fish_count,     b.fish_ok,     'bilan-item--ok', 'bilan-item--warn');
+                _bilanSetItem(bilanEl, 'bilan-veg',      b.veg_count,      b.veg_ok,      'bilan-item--ok', 'bilan-item--warn');
+                _bilanSetItem(bilanEl, 'bilan-red-meat',  b.red_meat_count, b.red_meat_ok, 'bilan-item--ok', 'bilan-item--warn');
+                // Absent
+                const absentEl = bilanEl.querySelector('#bilan-absent');
+                if (absentEl) absentEl.textContent = b.absent_count;
             }
 
-            // Barres de progression
-            bilanEl.querySelectorAll('.bilan-progress__bar').forEach(bar => {
-                const isCalBar  = bar.closest('.bilan-item')?.querySelector('#bilan-cal');
-                const isProtBar = bar.closest('.bilan-item')?.querySelector('#bilan-prot');
-                if (isCalBar) {
-                    bar.style.width = `${Math.min(b.cal_pct, 100)}%`;
-                    bar.className = `bilan-progress__bar bilan-progress__bar--${b.cal_status}`;
-                } else if (isProtBar) {
-                    bar.style.width = `${Math.min(b.prot_pct, 100)}%`;
-                    bar.className = `bilan-progress__bar bilan-progress__bar--${b.prot_status}`;
-                }
-            });
+            // Membres
+            if (data.membres) {
+                data.membres.forEach(m => {
+                    const el = document.getElementById(`bilan-membre-${m.user_id}`);
+                    if (!el) return;
+                    el.querySelector('.bilan-membre__kcal').textContent = `${m.kcal} kcal`;
+                    el.querySelector('.bilan-membre__prot').textContent = `${m.prot}g prot.`;
+                    el.querySelector('.bilan-membre__hint').textContent = `${m.pct}% de la cible`;
+                    const bar = el.querySelector('.bilan-progress__bar');
+                    if (bar) {
+                        bar.style.width = `${m.pct}%`;
+                        bar.className = `bilan-progress__bar bilan-progress__bar--${m.status}`;
+                    }
+                    el.className = `bilan-membre bilan-membre--${m.status}`;
+                });
+            }
         } catch { /* silencieux — le bilan se mettra à jour au prochain chargement */ }
     }
 

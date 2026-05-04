@@ -300,7 +300,7 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
 
     meals = list(
         Meal.objects
-        .filter(week_plan=week_plan, absent=False, recipe__isnull=False, is_leftovers=False)
+        .filter(week_plan=week_plan, absent=False, recipe__isnull=False)
         .select_related("recipe")
     )
 
@@ -369,7 +369,7 @@ def bilan_planning(week_plan) -> dict:
 
     meals = list(
         Meal.objects
-        .filter(week_plan=week_plan, absent=False, recipe__isnull=False, is_leftovers=False)
+        .filter(week_plan=week_plan, absent=False, recipe__isnull=False)
         .select_related("recipe")
     )
 
@@ -427,6 +427,87 @@ def bilan_planning(week_plan) -> dict:
         "prot_status":        _status(total_prot, prot_target),
         "max_red_meat":       config.max_red_meat_per_week,
     }
+
+
+def bilan_par_membre(plan) -> list[dict]:
+    """
+    Calcule les kcal/prot de la période par membre présent.
+    - Repas mappé + membre présent dans meal_members → calories * portions_factor
+    - Repas absent → calories_dinner_target * portions_factor (proxy 1 repas)
+    - Repas sans recette ou membre absent du repas → 0
+    """
+    config = NutritionConfig.get()
+    active_dates = plan.get_active_dates()
+
+    present_users = list(
+        plan.present_members
+        .select_related('profile')
+        .all()
+    )
+    if not present_users:
+        return []
+
+    meals = list(
+        Meal.objects
+        .filter(week_plan=plan)
+        .select_related('recipe')
+        .prefetch_related('meal_members')
+    )
+    meal_by_slot = {(m.date, m.meal_time): m for m in meals}
+
+    result = []
+    for user in present_users:
+        try:
+            factor = user.profile.portions_factor
+        except Exception:
+            factor = 1.0
+
+        kcal_per_absent_meal = (config.calories_dinner_target or 850) * factor
+
+        kcal_total = 0.0
+        prot_total = 0.0
+
+        member_ids_in_meals = {}  # slot → frozenset of user IDs (lazy fetch)
+
+        for d in active_dates:
+            for mt in ('lunch', 'dinner'):
+                meal = meal_by_slot.get((d, mt))
+                if meal is None:
+                    continue
+                if meal.absent:
+                    kcal_total += kcal_per_absent_meal
+                elif meal.recipe:
+                    # Charger les IDs members de ce repas
+                    slot = (meal.pk,)
+                    if slot not in member_ids_in_meals:
+                        member_ids_in_meals[slot] = frozenset(
+                            meal.meal_members.values_list('id', flat=True)
+                        )
+                    if user.pk in member_ids_in_meals[slot]:
+                        kcal_total += (meal.recipe.calories_per_serving or 0) * factor
+                        prot_total += (meal.recipe.proteins_per_serving or 0) * factor
+
+        nb_jours = len(active_dates)
+        weekly_target_prorated = kcal_per_absent_meal * nb_jours * 2
+        pct = round(kcal_total / weekly_target_prorated * 100) if weekly_target_prorated else 0
+        if pct < 60 or pct > 130:
+            status = 'alert'
+        elif pct < 80 or pct > 110:
+            status = 'warning'
+        else:
+            status = 'ok'
+
+        result.append({
+            'user_id': user.pk,
+            'name': user.first_name or user.email.split('@')[0],
+            'kcal': round(kcal_total),
+            'prot': round(prot_total, 1),
+            'kcal_target': round(weekly_target_prorated),
+            'pct': min(pct, 100),
+            'status': status,
+        })
+
+    return result
 
 
 def _saison_courante() -> str:

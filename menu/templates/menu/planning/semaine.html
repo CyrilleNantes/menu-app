@@ -163,42 +163,46 @@
         </div>
         {% endif %}
 
-        <!-- Nutrition -->
-        {% if bilan.cal_total %}
-        <div class="bilan-item bilan-item--{{ bilan.cal_status }}">
-            <span class="bilan-item__emoji">🔥</span>
-            <span class="bilan-item__value" id="bilan-cal">{{ bilan.cal_total }}</span>
-            <span class="bilan-item__label">kcal / période</span>
-            <div class="bilan-progress">
-                <div class="bilan-progress__bar bilan-progress__bar--{{ bilan.cal_status }}"
-                     style="width: {% if bilan.cal_pct > 100 %}100{% else %}{{ bilan.cal_pct }}{% endif %}%"></div>
+    </div>
+    {% if bilan_membres %}
+    <div class="planning-bilan__membres" id="bilan-membres">
+        {% for m in bilan_membres %}
+        <div class="bilan-membre bilan-membre--{{ m.status }}" id="bilan-membre-{{ m.user_id }}">
+            <span class="bilan-membre__name">{{ m.name }}</span>
+            <div class="bilan-membre__values">
+                <span class="bilan-membre__kcal">{{ m.kcal }} kcal</span>
+                <span class="bilan-membre__prot">{{ m.prot }}g prot.</span>
             </div>
-            <span class="bilan-item__hint">{{ bilan.cal_pct }}% cible</span>
-        </div>
-        {% endif %}
-
-        {% if bilan.prot_total %}
-        <div class="bilan-item bilan-item--{{ bilan.prot_status }}">
-            <span class="bilan-item__emoji">💪</span>
-            <span class="bilan-item__value" id="bilan-prot">{{ bilan.prot_total }}</span>
-            <span class="bilan-item__label">g prot. / période</span>
             <div class="bilan-progress">
-                <div class="bilan-progress__bar bilan-progress__bar--{{ bilan.prot_status }}"
-                     style="width: {% if bilan.prot_pct > 100 %}100{% else %}{{ bilan.prot_pct }}{% endif %}%"></div>
+                <div class="bilan-progress__bar bilan-progress__bar--{{ m.status }}"
+                     style="width:{{ m.pct }}%"></div>
             </div>
-            <span class="bilan-item__hint">{{ bilan.prot_pct }}% cible</span>
+            <span class="bilan-membre__hint">{{ m.pct }}% de la cible</span>
         </div>
-        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 
-        {% if bilan.sugars_total %}
-        <div class="bilan-item bilan-item--neutral">
-            <span class="bilan-item__emoji">🍬</span>
-            <span class="bilan-item__value">{{ bilan.sugars_total }}</span>
-            <span class="bilan-item__label">g sucres / période</span>
-            <span class="bilan-item__hint">info</span>
+{% if not is_cuisinier and bilan_membres %}
+<div class="planning-bilan" id="planning-bilan-convive">
+    <div class="planning-bilan__title">📊 Mon apport sur la période</div>
+    <div class="planning-bilan__membres">
+        {% for m in bilan_membres %}
+        <div class="bilan-membre bilan-membre--{{ m.status }}">
+            <span class="bilan-membre__name">{{ m.name }}</span>
+            <div class="bilan-membre__values">
+                <span class="bilan-membre__kcal">{{ m.kcal }} kcal</span>
+                <span class="bilan-membre__prot">{{ m.prot }}g prot.</span>
+            </div>
+            <div class="bilan-progress">
+                <div class="bilan-progress__bar bilan-progress__bar--{{ m.status }}"
+                     style="width:{{ m.pct }}%"></div>
+            </div>
+            <span class="bilan-membre__hint">{{ m.pct }}% de la cible</span>
         </div>
-        {% endif %}
-
+        {% endfor %}
     </div>
 </div>
 {% endif %}
@@ -220,6 +224,8 @@
          data-recipe-id="{% if day.lunch and day.lunch.recipe %}{{ day.lunch.recipe.id }}{% endif %}"
          data-recipe-title="{% if day.lunch and day.lunch.recipe %}{{ day.lunch.recipe.title }}{% endif %}"
          data-servings="{% if day.lunch %}{{ day.lunch.servings_count|default:'' }}{% endif %}"
+         data-members="{{ day.lunch_member_ids }}"
+         data-guests="{{ day.lunch_guest_count }}"
          data-absent="{% if day.lunch and day.lunch.absent %}true{% else %}false{% endif %}"
          {% if is_cuisinier %}data-editable="true"{% endif %}>
         <span class="meal-slot__time">🍽️ Midi</span>
@@ -263,6 +269,8 @@
          data-recipe-id="{% if day.dinner and day.dinner.recipe %}{{ day.dinner.recipe.id }}{% endif %}"
          data-recipe-title="{% if day.dinner and day.dinner.recipe %}{{ day.dinner.recipe.title }}{% endif %}"
          data-servings="{% if day.dinner %}{{ day.dinner.servings_count|default:'' }}{% endif %}"
+         data-members="{{ day.dinner_member_ids }}"
+         data-guests="{{ day.dinner_guest_count }}"
          data-absent="{% if day.dinner and day.dinner.absent %}true{% else %}false{% endif %}"
          {% if is_cuisinier %}data-editable="true"{% endif %}>
         <span class="meal-slot__time">🌙 Soir</span>
@@ -396,7 +404,7 @@
      data-plan-id="{{ plan.id }}"
      data-presence-url="{% url 'menu:maj_presence' plan.id %}"
      data-is-cuisinier="{{ is_cuisinier|yesno:'true,false' }}"
-     data-nb-presents="{{ nb_presents }}"></div>
+     data-present-members="{{ present_member_ids_json }}"></div>
 {{ meals_avec_recette|json_script:"meals-json" }}
 
 <!-- ── Dialog : suggestions de recettes (Cuisinier) ────────── -->
@@ -440,8 +448,18 @@
 
     <div class="form-group">
         <label class="form-label">Convives</label>
-        <input type="number" id="meal-servings" min="1" max="20" value="{{ nb_presents }}"
-               class="input-short">
+        <div class="meal-members-list" id="meal-members-list">
+            {% for member in family_members %}
+            <label class="meal-member-toggle" id="meal-member-{{ member.user.id }}">
+                <input type="checkbox" class="meal-member-cb" value="{{ member.user.id }}">
+                <span>{{ member.user.first_name|default:member.user.email }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
+            <label class="form-label" style="margin:0">+ Invités</label>
+            <input type="number" id="meal-guest-count" min="0" max="20" value="0" class="input-short" style="width:4rem">
+        </div>
     </div>
 
     <div class="planning-dialog__actions">

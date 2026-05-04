@@ -23,6 +23,7 @@ from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
 from .models import Family, Ingredient, IngredientRef, KnownIngredient, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
+    bilan_par_membre,
     bilan_planning,
     calculer_alertes_planning,
     calculer_macros_recette,
@@ -515,19 +516,30 @@ def planning_periode(request, plan_id):
 
     active_dates = plan.get_active_dates()
 
-    meals_qs = (
+    meals_qs = list(
         Meal.objects.filter(week_plan=plan)
-        .select_related("recipe", "source_meal__recipe")
+        .select_related("recipe")
+        .prefetch_related("meal_members")
     )
     meal_by_slot = {(m.date, m.meal_time): m for m in meals_qs}
 
     JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+
+    def _member_ids_json(meal):
+        if meal is None:
+            return '[]'
+        return json.dumps(list(meal.meal_members.values_list('id', flat=True)))
+
     grid = [
         {
             "date": d,
             "day_name": JOURS_FR[d.weekday()],
             "lunch": meal_by_slot.get((d, "lunch")),
+            "lunch_member_ids": _member_ids_json(meal_by_slot.get((d, "lunch"))),
+            "lunch_guest_count": (meal_by_slot.get((d, "lunch")).guest_count if meal_by_slot.get((d, "lunch")) else 0),
             "dinner": meal_by_slot.get((d, "dinner")),
+            "dinner_member_ids": _member_ids_json(meal_by_slot.get((d, "dinner"))),
+            "dinner_guest_count": (meal_by_slot.get((d, "dinner")).guest_count if meal_by_slot.get((d, "dinner")) else 0),
         }
         for d in active_dates
     ]
@@ -589,7 +601,6 @@ def planning_periode(request, plan_id):
         "proposals": proposals,
         "user_proposals": user_proposals,
         "is_cuisinier": is_cuisinier,
-        "nb_presents": plan.present_members.count() or len(plan.guests) or 1,
         "meals_avec_recette": [
             {"id": m.id, "label": f"{JOURS_FR[m.date.weekday()]} {'Midi' if m.meal_time == 'lunch' else 'Soir'} — {m.recipe.title}"}
             for m in meals_qs if m.recipe
@@ -597,6 +608,8 @@ def planning_periode(request, plan_id):
         "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
         "bilan": bilan_planning(plan) if is_cuisinier else None,
+        "bilan_membres": bilan_par_membre(plan) if is_cuisinier else [m for m in bilan_par_membre(plan) if m['user_id'] == request.user.id],
+        "present_member_ids_json": json.dumps(list(present_member_ids)),
         "family_members": family_members,
         "present_member_ids": present_member_ids,
         "guests": plan.guests,
@@ -660,21 +673,26 @@ def modifier_meal(request, plan_id):
         if not recipe:
             return JsonResponse({"ok": False, "error": "Recette introuvable", "code": "NO_RECIPE"}, status=404)
 
-    try:
-        servings = int(body.get("servings_count") or 0) or plan.present_members.count() or 1
-    except (ValueError, TypeError):
-        servings = plan.present_members.count() or 1
+    member_ids = [int(i) for i in body.get("member_ids", []) if str(i).isdigit()]
+    guest_count = max(int(body.get("guest_count") or 0), 0)
+    servings = len(member_ids) + guest_count or plan.present_members.count() or 1
 
-    meal, _ = Meal.objects.update_or_create(
+    meal, created = Meal.objects.update_or_create(
         week_plan=plan,
         date=meal_date,
         meal_time=meal_time,
         defaults={
             "recipe": recipe,
             "servings_count": servings,
+            "guest_count": guest_count,
             "absent": False,
         },
     )
+    # Valider les member_ids (doivent appartenir à la famille)
+    valid_member_ids = list(
+        plan.family.members.filter(user_id__in=member_ids).values_list('user_id', flat=True)
+    )
+    meal.meal_members.set(valid_member_ids)
 
     return JsonResponse({
         "ok": True,
@@ -684,6 +702,8 @@ def modifier_meal(request, plan_id):
         "recipe_title": recipe.title if recipe else None,
         "servings_count": meal.servings_count,
         "calories_per_serving": recipe.calories_per_serving if recipe else None,
+        "meal_member_ids": list(meal.meal_members.values_list('id', flat=True)),
+        "guest_count": meal.guest_count,
     })
 
 
@@ -758,7 +778,8 @@ def bilan_planning_ajax(request, plan_id):
 
     plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
     data = bilan_planning(plan)
-    return JsonResponse({"ok": True, "bilan": data})
+    membres = bilan_par_membre(plan)
+    return JsonResponse({"ok": True, "bilan": data, "membres": membres})
 
 
 @require_POST
