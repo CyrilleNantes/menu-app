@@ -1516,13 +1516,16 @@ def promouvoir_photo_recette(request, id, photo_id):
         return redirect("menu:detail_recette", id=id)
 
     photo = get_object_or_404(RecipePhoto, id=photo_id, recipe_id=id, actif=True)
+    recipe = get_object_or_404(Recipe, id=id)
 
     with transaction.atomic():
         RecipePhoto.objects.filter(recipe_id=id).update(is_main=False)
         photo.is_main = True
         photo.save(update_fields=["is_main"])
+        recipe.photo_url = photo.photo_url
+        recipe.save(update_fields=["photo_url"])
 
-    messages.success(request, "Photo mise en avant dans la galerie.")
+    messages.success(request, "Photo principale mise à jour.")
     return redirect("menu:detail_recette", id=id)
 
 

@@ -893,7 +893,7 @@ Photos supplémentaires d'une recette (galerie). La photo principale reste `Reci
 | `recipe` | `ForeignKey(Recipe)` | non | — | Recette parente |
 | `photo_url` | `URLField` | non | — | URL Cloudinary |
 | `caption` | `CharField(100)` | oui | — | Légende optionnelle |
-| `is_main` | `BooleanField` | non | `False` | Photo mise en avant dans la galerie (≠ `Recipe.photo_url`) |
+| `is_main` | `BooleanField` | non | `False` | Photo principale : quand promue, met aussi à jour `Recipe.photo_url` |
 | `order` | `PositiveIntegerField` | non | `0` | Ordre d'affichage |
 | `uploaded_by` | `ForeignKey(User)` | oui | `null` | Auteur de l'upload — `SET_NULL` si l'utilisateur est supprimé (préserve la photo) |
 | `actif` | `BooleanField` | non | `True` | Soft delete — retrait par le Cuisinier |
@@ -1061,7 +1061,7 @@ Affichées dans la vue planning (`planning_semaine`). Jamais bloquantes, jamais 
 **URL** : `POST /recettes/<id>/photos/<photo_id>/promouvoir/` → `menu:promouvoir_photo_recette`
 
 - Retirer : passe `actif=False` (soft delete)
-- Promouvoir : passe `is_main=True` sur cette photo, `False` sur les autres
+- Promouvoir : passe `is_main=True` sur cette photo, `False` sur les autres **ET** met à jour `Recipe.photo_url` avec l'URL de cette photo → la photo devient la photo principale visible dans la liste des recettes et l'en-tête de la fiche
 
 **Affichage dans `detail_recette` :**
 - Carousel vanilla JS sous la photo principale (`menu/js/galerie.js`)
