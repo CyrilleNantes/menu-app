@@ -881,11 +881,32 @@ def modifier_jours_periode(request, plan_id):
         return redirect("menu:planning_periode", plan_id=plan_id)
 
     with transaction.atomic():
+        old_end = plan.period_end
         plan.active_dates = [d.isoformat() for d in jours]
         plan.period_end = jours[-1]
         plan.save(update_fields=["active_dates", "period_end"])
-        # Supprimer les repas hors des nouvelles dates actives
         Meal.objects.filter(week_plan=plan).exclude(date__in=jours).delete()
+
+        # Si la fin a changé, recaler la période suivante (brouillon sans repas)
+        new_end = jours[-1]
+        if new_end != old_end:
+            next_plan = (
+                WeekPlan.objects
+                .filter(family=profile.family, period_start__gt=plan.period_start)
+                .order_by("period_start")
+                .first()
+            )
+            expected_start = new_end + timedelta(days=1)
+            if (next_plan
+                    and next_plan.period_start != expected_start
+                    and next_plan.status == "draft"
+                    and not Meal.objects.filter(week_plan=next_plan).exists()):
+                delta = expected_start - next_plan.period_start
+                shifted = [d + delta for d in next_plan.get_active_dates()]
+                next_plan.period_start = expected_start
+                next_plan.period_end = shifted[-1]
+                next_plan.active_dates = [d.isoformat() for d in shifted]
+                next_plan.save(update_fields=["period_start", "period_end", "active_dates"])
 
     return redirect("menu:planning_periode", plan_id=plan_id)
 
