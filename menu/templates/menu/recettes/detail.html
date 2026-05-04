@@ -42,10 +42,10 @@
             <div class="recette-detail__note" id="note-display">
                 {% if note_moyenne %}
                 <span class="stars" id="note-stars">{% for i in "12345" %}{% if forloop.counter <= note_moyenne|floatformat:"0"|add:"0" %}★{% else %}☆{% endif %}{% endfor %}</span>
-                <span id="note-text">{{ note_moyenne|floatformat:1 }}/5 — <span id="nb-avis">{{ nb_avis }}</span> avis</span>
+                <span id="note-text">{{ note_moyenne|floatformat:1 }}/5 — <a href="#tous-les-avis" class="link-discrete"><span id="nb-avis">{{ nb_avis }}</span> avis</a></span>
                 {% else %}
                 <span class="stars" id="note-stars">☆☆☆☆☆</span>
-                <span id="note-text">Pas encore d'avis — <span id="nb-avis">0</span></span>
+                <span id="note-text"><a href="#section-noter" class="link-discrete">Pas encore d'avis — <span id="nb-avis">0</span></a></span>
                 {% endif %}
             </div>
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem">
@@ -272,7 +272,7 @@
     {% endif %}
 
     <!-- ── Tous les avis ─────────────────────────────────────── -->
-    <section class="recette-section">
+    <section class="recette-section" id="tous-les-avis">
         <h2>Tous les avis <span class="text-muted" style="font-size:.85rem">(<span id="nb-avis-titre">{{ nb_avis }}</span>)</span></h2>
         <ul class="avis-list" id="avis-list">
             {% for avis, avis_rank in all_reviews %}

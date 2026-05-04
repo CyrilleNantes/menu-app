@@ -146,6 +146,8 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .recette-detail__tags { display: flex; flex-wrap: wrap; gap: .4rem; }
 .recette-detail__infos { display: flex; flex-wrap: wrap; gap: 1rem; font-size: .9rem; color: var(--color-muted); }
 .recette-detail__note { display: flex; align-items: center; gap: .5rem; }
+.link-discrete { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.link-discrete:hover { text-decoration: underline; }
 .stars { color: #e67e22; font-size: 1.1rem; letter-spacing: .05em; }
 .recette-detail__actions { padding-top: 1rem; border-top: 1px solid #dee2e6; }
 
