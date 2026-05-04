@@ -682,18 +682,39 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 
 ---
 
-### 5.11 Propositions de repas
+### 5.11 Propositions de repas (backlog famille)
 
-**URL** : `POST /planning/<id>/proposer/` → `menu:proposer_repas`
-**Vue** : `proposer_repas(request, plan_id)`
-**Accès** : Convive uniquement (les Cuisiniers modifient le planning directement)
+Les propositions fonctionnent comme un **backlog persistant** : elles ne sont pas liées à une semaine spécifique et restent visibles jusqu'à ce que le Cuisinier les place ou les ignore.
+
+**Deux points d'entrée pour proposer :**
+
+| URL | Nom | Description |
+|-----|-----|-------------|
+| `POST /recettes/<id>/proposer/` | `menu:creer_proposition_recette` | Depuis la fiche recette — bouton "💡 Proposer" |
+| `POST /planning/<plan_id>/proposer/` | `menu:proposer_repas` | Depuis le planning — dialog avec recherche |
+
+**Accès** : Convive uniquement. Les Cuisiniers modifient le planning directement via `modifier_meal`.
 
 **Règles de gestion** :
-1. Crée un `MealProposal` lié à la famille et au planning
-2. Un Cuisinier qui tente de proposer reçoit une erreur 403 — il doit utiliser `modifier_meal` directement
+1. Crée un `MealProposal` avec `week_plan=None` — non lié à une semaine
+2. Pas de notification email
+3. Tous les Convives de la famille voient toutes les propositions en attente (pas uniquement les leurs)
+4. Chaque Convive ne peut annuler que ses propres propositions
+
+**Vue planning — section "Propositions de la famille" (Convive) :**
+- Affiche toutes les propositions en attente de la famille avec le prénom du proposant
+- Bouton "✕ Annuler" visible uniquement sur les propositions de l'utilisateur connecté
+
+**Vue planning — section "💡 Propositions" (Cuisinier) :**
+- Affiche tout le backlog famille (`week_plan__isnull=True`)
+- Sélecteur de créneau + bouton "✓ Placer" → appelle `modifier_meal` puis supprime la proposition
+- Bouton "✕ Ignorer" → supprime la proposition du backlog
+
+**URL suppression** : `POST /planning/proposition/<id>/supprimer/` → `menu:supprimer_proposition`
+Accessible au Cuisinier (ignorer) et au Convive proposant (annuler). Vérifié côté serveur.
 
 **Réponse** :
-- Succès : `{"ok": true}` + mise à jour de l'UI
+- Succès : `{"ok": true}` + mise à jour de l'UI sans rechargement
 
 ---
 
@@ -1155,6 +1176,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v4.0 | 2026-05-03 | Base de connaissance KnownIngredient — architecture deux couches Ciqual, badges nutrition_status, page CRUD référentiel Ciqual, page Management enrichie, refactoring nutrition unifiée, corrections bugs accumulation calories |
 | v4.1 | 2026-05-03 | Calcul nutritionnel : ingrédients optionnels inclus (ne plus minorer les calories) |
 | v4.2 | 2026-05-04 | Galerie photos opérationnelle — Cloudinary configuré, filtre `cloudinary_img` (4 presets) pour optimisation bande passante à l'affichage |
+| v4.3 | 2026-05-04 | Propositions en backlog famille — persistantes (week_plan=None), visibles par tous les Convives, bouton "Proposer" sur fiche recette, sans email |
 
 ### Détail v2.0
 
