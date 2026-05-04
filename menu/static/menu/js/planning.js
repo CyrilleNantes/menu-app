@@ -786,3 +786,76 @@
     }
 
 })();
+
+// ── Présence ────────────────────────────────────────────────────────────────
+(function () {
+    const meta = document.getElementById('planning-meta');
+    if (!meta) return;
+    const presenceUrl = meta.dataset.presenceUrl;
+    if (!presenceUrl) return;
+
+    const csrf = document.getElementById('csrf-token')?.value || '';
+
+    function getMemberIds() {
+        return [...document.querySelectorAll('.presence-member-cb:checked')]
+            .map(cb => parseInt(cb.dataset.userId, 10));
+    }
+
+    function getGuests() {
+        return [...document.querySelectorAll('.presence-guest-tag')]
+            .map(tag => tag.childNodes[0].textContent.trim())
+            .filter(Boolean);
+    }
+
+    function savePresence() {
+        fetch(presenceUrl, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ member_ids: getMemberIds(), guests: getGuests() }),
+        }).catch(() => {});
+    }
+
+    // Membres famille
+    document.querySelectorAll('.presence-toggle').forEach(label => {
+        label.addEventListener('click', function (e) {
+            e.preventDefault();
+            const cb = label.querySelector('.presence-member-cb');
+            cb.checked = !cb.checked;
+            label.classList.toggle('presence-toggle--active', cb.checked);
+            savePresence();
+        });
+    });
+
+    // Invités — ajout via Entrée
+    const guestInput = document.getElementById('presence-guest-input');
+    const guestContainer = document.getElementById('presence-guests');
+
+    function addGuestTag(name) {
+        const span = document.createElement('span');
+        span.className = 'presence-guest-tag';
+        span.innerHTML = `${name} <button type="button" class="presence-guest-remove" data-name="${name}" aria-label="Supprimer">✕</button>`;
+        span.querySelector('.presence-guest-remove').addEventListener('click', function () {
+            span.remove();
+            savePresence();
+        });
+        guestContainer.insertBefore(span, guestInput);
+    }
+
+    if (guestInput) {
+        guestInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                const name = guestInput.value.trim();
+                if (name) { addGuestTag(name); guestInput.value = ''; savePresence(); }
+            }
+        });
+    }
+
+    // Suppression invités existants (rendu serveur)
+    document.querySelectorAll('.presence-guest-remove').forEach(btn => {
+        btn.addEventListener('click', function () {
+            btn.closest('.presence-guest-tag').remove();
+            savePresence();
+        });
+    });
+})();

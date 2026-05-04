@@ -1,0 +1,74 @@
+{% extends "menu/base.html" %}
+{% load static %}
+
+{% block title %}Nouvelle période — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="creer-periode">
+    <h1 class="creer-periode__title">Nouvelle période de menus</h1>
+    <p class="creer-periode__hint text-muted">Sélectionne les jours que tu veux planifier (max 7, à partir d'aujourd'hui).</p>
+
+    <form method="post" id="form-creer-periode">
+        {% csrf_token %}
+
+        <div class="periode-day-picker" id="day-picker">
+            {% for day in candidate_days %}
+            <label class="day-toggle" id="toggle-{{ day.iso }}">
+                <input type="checkbox" name="jours" value="{{ day.iso }}" class="day-toggle__cb" style="display:none" checked>
+                <span class="day-toggle__label">{{ day.label }}</span>
+                <span class="day-toggle__date">{{ day.date|date:"d/m" }}</span>
+            </label>
+            {% endfor %}
+        </div>
+
+        <p class="periode-summary text-muted" id="periode-summary"></p>
+
+        <div class="creer-periode__actions">
+            <button type="submit" class="btn btn--primary" id="btn-creer">Créer la période</button>
+            <a href="{% url 'menu:planning' %}" class="btn btn--secondary">Annuler</a>
+        </div>
+    </form>
+</div>
+
+<script>
+(function () {
+    const cbs = document.querySelectorAll('.day-toggle__cb');
+    const summary = document.getElementById('periode-summary');
+    const btnCreer = document.getElementById('btn-creer');
+
+    function updateToggleStyle(cb) {
+        const label = cb.closest('.day-toggle');
+        label.classList.toggle('day-toggle--active', cb.checked);
+    }
+
+    function updateSummary() {
+        const checked = [...cbs].filter(cb => cb.checked);
+        if (checked.length === 0) {
+            summary.textContent = 'Sélectionne au moins un jour.';
+            btnCreer.disabled = true;
+        } else {
+            const dates = checked.map(cb => cb.value).sort();
+            summary.textContent = checked.length + ' jour' + (checked.length > 1 ? 's' : '') + ' sélectionné' + (checked.length > 1 ? 's' : '') + ' — du ' + formatDate(dates[0]) + ' au ' + formatDate(dates[dates.length - 1]);
+            btnCreer.disabled = false;
+        }
+    }
+
+    function formatDate(iso) {
+        const [y, m, d] = iso.split('-');
+        return d + '/' + m + '/' + y;
+    }
+
+    cbs.forEach(cb => {
+        updateToggleStyle(cb);
+        cb.closest('.day-toggle').addEventListener('click', function (e) {
+            e.preventDefault();
+            cb.checked = !cb.checked;
+            updateToggleStyle(cb);
+            updateSummary();
+        });
+    });
+
+    updateSummary();
+})();
+</script>
+{% endblock %}

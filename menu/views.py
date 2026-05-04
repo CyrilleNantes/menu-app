@@ -395,140 +395,196 @@ def _get_profile(request):
         return None
 
 
-# ─── Planning hebdomadaire ────────────────────────────────────────────────────
+# ─── Planning par période ─────────────────────────────────────────────────────
 
 @login_required
 def planning(request):
-    """Redirige vers le planning de la semaine courante."""
+    """Redirige vers la période en cours ou la création si aucune n'existe."""
     profile = _get_profile(request)
-    if not profile:
+    if not profile or not profile.family:
         return redirect("menu:rejoindre_famille_page")
-    if not profile.family:
-        return redirect("menu:rejoindre_famille_page")
-    iso = date.today().isocalendar()
-    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+    today = date.today()
+    plan = (
+        WeekPlan.objects
+        .filter(family=profile.family, period_end__gte=today)
+        .order_by("period_start")
+        .first()
+    )
+    if not plan:
+        plan = (
+            WeekPlan.objects
+            .filter(family=profile.family)
+            .order_by("-period_end")
+            .first()
+        )
+    if plan:
+        return redirect("menu:planning_periode", plan_id=plan.id)
+    return redirect("menu:creer_periode")
 
 
 @login_required
-def planning_semaine(request, year, week):
+def creer_periode(request):
+    """GET : formulaire de création d'une période. POST : crée le WeekPlan."""
     profile = _get_profile(request)
-    if not profile:
+    if not profile or not profile.family:
         return redirect("menu:rejoindre_famille_page")
-    if not profile.family:
-        return redirect("menu:rejoindre_famille_page")
-
-    try:
-        week_start = date.fromisocalendar(year, week, 1)   # lundi
-    except ValueError:
+    if not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
         return redirect("menu:planning")
-    week_end = week_start + timedelta(days=6)              # dimanche
 
-    # Rôle déterminé tôt — nécessaire pour la création du WeekPlan
+    today = date.today()
+
+    if request.method == "POST":
+        jours_raw = request.POST.getlist("jours")  # liste de "YYYY-MM-DD"
+        if not jours_raw:
+            messages.error(request, "Sélectionne au moins un jour.")
+            return redirect("menu:creer_periode")
+
+        try:
+            jours = sorted(set([date.fromisoformat(d) for d in jours_raw]))
+        except ValueError:
+            messages.error(request, "Dates invalides.")
+            return redirect("menu:creer_periode")
+
+        if jours[0] < today:
+            messages.error(request, "Impossible de créer une période dans le passé.")
+            return redirect("menu:creer_periode")
+        if len(jours) > 7:
+            messages.error(request, "Une période ne peut pas dépasser 7 jours.")
+            return redirect("menu:creer_periode")
+
+        period_start = jours[0]
+        period_end   = jours[-1]
+
+        if WeekPlan.objects.filter(family=profile.family, period_start=period_start).exists():
+            messages.error(request, "Une période commençant ce jour existe déjà.")
+            return redirect("menu:creer_periode")
+
+        plan = WeekPlan.objects.create(
+            family=profile.family,
+            period_start=period_start,
+            period_end=period_end,
+            active_dates=[d.isoformat() for d in jours],
+            created_by=request.user,
+            status="draft",
+        )
+        return redirect("menu:planning_periode", plan_id=plan.id)
+
+    # GET — calcule la date de départ suggérée (lendemain de la dernière période ou aujourd'hui)
+    last_plan = (
+        WeekPlan.objects
+        .filter(family=profile.family)
+        .order_by("-period_end")
+        .first()
+    )
+    if last_plan and last_plan.period_end >= today:
+        suggested_start = last_plan.period_end + timedelta(days=1)
+    else:
+        suggested_start = today
+
+    # Les 7 jours à partir de suggested_start
+    candidate_days = [suggested_start + timedelta(days=i) for i in range(7)]
+    JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+    candidate_days_info = [
+        {"date": d, "label": JOURS_FR[d.weekday()], "iso": d.isoformat()}
+        for d in candidate_days
+    ]
+
+    return render(request, "menu/planning/creer_periode.html", {
+        "today_iso": today.isoformat(),
+        "suggested_start": suggested_start,
+        "candidate_days": candidate_days_info,
+    })
+
+
+@login_required
+def planning_periode(request, plan_id):
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return redirect("menu:rejoindre_famille_page")
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
     is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
 
-    # Créer le WeekPlan s'il n'existe pas encore.
-    # `created_by` DOIT être un Cuisinier — si l'utilisateur est un Convive,
-    # on utilise le premier Cuisinier de la famille pour respecter la contrainte métier.
-    if is_cuisinier:
-        plan_creator = request.user
-    else:
-        cuisinier_profile = (
-            UserProfile.objects
-            .filter(family=profile.family, role__in=["cuisinier", "chef_etoile"])
-            .select_related("user")
-            .first()
-        )
-        plan_creator = cuisinier_profile.user if cuisinier_profile else request.user
+    active_dates = plan.get_active_dates()
 
-    with transaction.atomic():
-        plan, _ = WeekPlan.objects.get_or_create(
-            family=profile.family,
-            period_start=week_start,
-            defaults={
-                "period_end": week_end,
-                "created_by": plan_creator,
-                "status": "draft",
-            },
-        )
-
-    # Repas de la semaine
     meals_qs = (
         Meal.objects.filter(week_plan=plan)
         .select_related("recipe", "source_meal__recipe")
     )
     meal_by_slot = {(m.date, m.meal_time): m for m in meals_qs}
 
-    # Construction de la grille
     JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
-    grid = []
-    for i in range(7):
-        d = week_start + timedelta(days=i)
-        grid.append({
+    grid = [
+        {
             "date": d,
-            "day_name": JOURS_FR[i],
+            "day_name": JOURS_FR[d.weekday()],
             "lunch": meal_by_slot.get((d, "lunch")),
             "dinner": meal_by_slot.get((d, "dinner")),
-        })
+        }
+        for d in active_dates
+    ]
 
-    # Indicateurs nutritionnels de la semaine (hors créneaux absent)
-    total_calories = total_proteins = 0.0
-    for m in meals_qs:
-        if not m.is_leftovers and not m.absent and m.recipe:
-            n = m.servings_count or m.recipe.base_servings or 1
-            total_calories += (m.recipe.calories_per_serving or 0) * n
-            total_proteins += (m.recipe.proteins_per_serving or 0) * n
-
-    # Backlog propositions famille — indépendant de la semaine
+    # Backlog propositions famille
     proposals = []
+    user_proposals = []
     if is_cuisinier:
         proposals = list(
             MealProposal.objects.filter(family=profile.family, week_plan__isnull=True)
             .select_related("recipe", "proposed_by")
             .order_by("-created_at")
         )
-
-    user_proposals = []
-    if not is_cuisinier:
+    else:
         user_proposals = list(
             MealProposal.objects.filter(family=profile.family, week_plan__isnull=True)
             .select_related("recipe", "proposed_by")
             .order_by("-created_at")
         )
 
-    # Navigation prev/next
-    prev_monday = week_start - timedelta(days=7)
-    next_monday = week_start + timedelta(days=7)
-    prev_iso = prev_monday.isocalendar()
-    next_iso = next_monday.isocalendar()
+    # Navigation prev/next par date
+    prev_plan = (
+        WeekPlan.objects
+        .filter(family=profile.family, period_end__lt=plan.period_start)
+        .order_by("-period_end")
+        .first()
+    )
+    next_plan = (
+        WeekPlan.objects
+        .filter(family=profile.family, period_start__gt=plan.period_end)
+        .order_by("period_start")
+        .first()
+    )
+
+    # Présence
+    family_members = list(
+        UserProfile.objects
+        .filter(family=profile.family)
+        .select_related("user")
+        .order_by("user__first_name")
+    )
+    present_member_ids = set(plan.present_members.values_list("id", flat=True))
 
     ctx = {
         "plan": plan,
         "grid": grid,
-        "week_start": week_start,
-        "week_end": week_end,
-        "year": year,
-        "week": week,
-        "prev_year": prev_iso[0],
-        "prev_week": prev_iso[1],
-        "next_year": next_iso[0],
-        "next_week": next_iso[1],
-        "total_calories": round(total_calories) if total_calories else None,
-        "total_proteins": round(total_proteins, 1) if total_proteins else None,
+        "period_start": plan.period_start,
+        "period_end": plan.period_end,
+        "prev_plan": prev_plan,
+        "next_plan": next_plan,
         "proposals": proposals,
         "user_proposals": user_proposals,
         "is_cuisinier": is_cuisinier,
-        # Pour le dialog "restes" : tous les repas avec recette de cette semaine
         "meals_avec_recette": [
-            {"id": m.id, "label": f"{m.date} {'Midi' if m.meal_time == 'lunch' else 'Soir'} — {m.recipe.title}"}
+            {"id": m.id, "label": f"{JOURS_FR[m.date.weekday()]} {'Midi' if m.meal_time == 'lunch' else 'Soir'} — {m.recipe.title}"}
             for m in meals_qs if m.recipe and not m.is_leftovers
         ],
-        # Lien courses
         "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
-        # Alertes équilibre (nudges) — Cuisinier uniquement
         "alertes_planning": calculer_alertes_planning(plan, profile.family) if is_cuisinier else [],
-        # Bilan équilibre — Cuisinier uniquement
         "bilan": bilan_planning(plan) if is_cuisinier else None,
+        "family_members": family_members,
+        "present_member_ids": present_member_ids,
+        "guests": plan.guests,
     }
     return render(request, "menu/planning/semaine.html", ctx)
 
@@ -702,8 +758,8 @@ def bilan_planning_ajax(request, plan_id):
 
 @require_POST
 @login_required
-def publier_planning(request, plan_id):
-    """Publie un WeekPlan (brouillon → publié)."""
+def valider_planning(request, plan_id):
+    """Valide un WeekPlan (brouillon → publié)."""
     profile = _get_profile(request)
     if not profile or not _verifier_cuisinier(request):
         messages.error(request, "Réservé aux Cuisiniers.")
@@ -711,19 +767,75 @@ def publier_planning(request, plan_id):
 
     plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
 
-    if plan.status == "published":
-        messages.warning(request, "Ce planning est déjà publié.")
+    if plan.status in ("published", "finished"):
+        messages.warning(request, "Ce planning est déjà validé.")
     elif not plan.meals.filter(recipe__isnull=False).exists():
-        messages.error(request, "Impossible de publier un planning vide (aucune recette planifiée).")
+        messages.error(request, "Impossible de valider un planning vide (aucune recette planifiée).")
     else:
         plan.status = "published"
         plan.save(update_fields=["status"])
-        messages.success(request, "Menu publié ! Vous pouvez maintenant générer la liste de courses.")
-        logger.info("Planning %d publié par %s.", plan.id, request.user.email)
+        messages.success(request, "Menu validé ! Vous pouvez maintenant générer la liste de courses.")
+        logger.info("Planning %d validé par %s.", plan.id, request.user.email)
         notifier_planning_publie(plan)
 
-    iso = plan.period_start.isocalendar()
-    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+    return redirect("menu:planning_periode", plan_id=plan.id)
+
+
+@require_POST
+@login_required
+def rouvrir_planning(request, plan_id):
+    """Repasse un WeekPlan en brouillon. Supprime la liste de courses si statut était finished."""
+    profile = _get_profile(request)
+    if not profile or not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:planning")
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    if plan.status == "finished":
+        ShoppingList.objects.filter(week_plan=plan).delete()
+        messages.info(request, "Liste de courses supprimée. Planning repassé en brouillon.")
+    elif plan.status == "published":
+        messages.info(request, "Planning repassé en brouillon.")
+    else:
+        messages.warning(request, "Le planning est déjà en brouillon.")
+        return redirect("menu:planning_periode", plan_id=plan.id)
+
+    plan.status = "draft"
+    plan.save(update_fields=["status"])
+    logger.info("Planning %d réouvert par %s.", plan.id, request.user.email)
+    return redirect("menu:planning_periode", plan_id=plan.id)
+
+
+@require_POST
+@login_required
+def maj_presence(request, plan_id):
+    """AJAX : met à jour les membres présents et invités d'une période."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return JsonResponse({"ok": False, "error": "Famille requise"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({"ok": False, "error": "JSON invalide"}, status=400)
+
+    member_ids = body.get("member_ids", [])
+    guests = [g.strip() for g in body.get("guests", []) if g.strip()]
+
+    valid_ids = set(
+        UserProfile.objects
+        .filter(family=profile.family, user_id__in=member_ids)
+        .values_list("user_id", flat=True)
+    )
+    with transaction.atomic():
+        plan.present_members.set(valid_ids)
+        plan.guests = guests
+        plan.save(update_fields=["guests"])
+
+    return JsonResponse({"ok": True})
 
 
 @require_POST
@@ -769,13 +881,10 @@ def proposer_repas(request, plan_id):
 @require_POST
 @login_required
 def creer_proposition_recette(request, id):
-    """Propose une recette depuis sa fiche — Convive uniquement. Alimente le backlog famille."""
+    """Propose une recette depuis sa fiche. Alimente le backlog famille pour tous les membres."""
     profile = _get_profile(request)
     if not profile or not profile.family:
         messages.error(request, "Vous devez appartenir à une famille pour proposer une recette.")
-        return redirect("menu:detail_recette", id=id)
-    if profile.role in ("cuisinier", "chef_etoile"):
-        messages.info(request, "En tant que Cuisinier, ajoutez directement la recette au planning.")
         return redirect("menu:detail_recette", id=id)
 
     recipe = get_object_or_404(Recipe, id=id, actif=True)
@@ -838,7 +947,7 @@ def api_recettes(request):
 @require_POST
 @login_required
 def generer_courses(request, plan_id):
-    """Génère (ou recrée) la liste de courses d'un planning. Cuisinier uniquement."""
+    """Génère la liste de courses et passe le plan en 'finished'. Cuisinier uniquement."""
     plan = get_object_or_404(WeekPlan, pk=plan_id)
     profile = _get_profile(request)
     if not profile or profile.family != plan.family:
@@ -847,14 +956,15 @@ def generer_courses(request, plan_id):
     if profile.role not in ("cuisinier", "chef_etoile"):
         messages.error(request, "Réservé au Cuisinier.")
         return redirect("menu:planning")
-    if plan.status != "published":
-        messages.error(request, "Publie d'abord le menu avant de générer la liste de courses.")
-        iso = plan.period_start.isocalendar()
-        return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+    if plan.status not in ("published", "finished"):
+        messages.error(request, "Valide d'abord le menu avant de générer la liste de courses.")
+        return redirect("menu:planning_periode", plan_id=plan.id)
 
     try:
         generer_liste_courses(plan)
-        messages.success(request, "Liste de courses générée !")
+        plan.status = "finished"
+        plan.save(update_fields=["status"])
+        messages.success(request, "Liste de courses générée ! La période est maintenant terminée.")
     except Exception as exc:
         logger.error("generer_courses error plan=%s : %s", plan_id, exc)
         messages.error(request, "Erreur lors de la génération de la liste.")
@@ -886,9 +996,6 @@ def liste_courses(request, plan_id):
 
     nb_total = sum(len(v) for v in groups.values())
 
-    # Navigation semaine pour les liens retour
-    year, week, _ = plan.period_start.isocalendar()
-
     is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
 
     ctx = {
@@ -897,8 +1004,6 @@ def liste_courses(request, plan_id):
         "groups": groups,
         "nb_total": nb_total,
         "nb_checked": nb_checked,
-        "year": year,
-        "week": week,
         "is_cuisinier": is_cuisinier,
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
     }
@@ -1918,14 +2023,14 @@ def export_calendar(request, plan_id):
 
     if not TokenOAuth.objects.filter(user=request.user, service="google").exists():
         messages.warning(request, "Connecte ton compte Google dans ton profil avant d'exporter.")
-        return redirect("menu:planning_semaine", year=plan.period_start.isocalendar()[0], week=plan.period_start.isocalendar()[1])
+        return redirect("menu:planning_periode", plan_id=plan.id)
 
     try:
         stats = google_calendar_export_planning(request.user, plan)
     except Exception as exc:
         logger.error("export_calendar : erreur pour user %s : %s", request.user.id, exc)
         messages.error(request, "Erreur lors de l'export Google Calendar. Réessaie dans quelques instants.")
-        return redirect("menu:planning_semaine", year=plan.period_start.isocalendar()[0], week=plan.period_start.isocalendar()[1])
+        return redirect("menu:planning_periode", plan_id=plan.id)
 
     total = stats["created"] + stats["updated"]
     parts = []
@@ -1941,8 +2046,7 @@ def export_calendar(request, plan_id):
     else:
         messages.info(request, "📅 Aucun repas avec recette à exporter cette semaine.")
 
-    iso = plan.period_start.isocalendar()
-    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+    return redirect("menu:planning_periode", plan_id=plan.id)
 
 
 @require_POST

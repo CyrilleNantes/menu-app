@@ -302,31 +302,33 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
         .select_related("recipe")
     )
 
+    nb_jours = len(week_plan.get_active_dates()) or 7
+
     protein_types = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
     red_meat_count = protein_types.count("boeuf") + protein_types.count("porc")
     fish_count     = protein_types.count("poisson")
     veg_count      = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
 
-    # Totaux nutritionnels (référence : 1 portion par repas)
     total_cal  = sum(m.recipe.calories_per_serving  or 0 for m in meals)
     total_prot = sum(m.recipe.proteins_per_serving or 0 for m in meals)
 
-    cal_week_target  = config.calories_dinner_target  * 14
-    prot_week_target = config.proteins_dinner_target  * 14
+    # Cibles proportionnelles au nombre de jours (référence : 14 créneaux/semaine)
+    cal_target  = config.calories_dinner_target  * nb_jours * 2
+    prot_target = config.proteins_dinner_target  * nb_jours * 2
 
     alertes = []
 
     if fish_count == 0:
         alertes.append({
             "type": "poisson",
-            "message": "🐟 Pensez à intégrer un repas poisson cette semaine",
+            "message": "🐟 Pensez à intégrer un repas poisson sur cette période",
             "dismissable": True,
         })
 
     if red_meat_count >= config.max_red_meat_per_week:
         alertes.append({
             "type": "viande_rouge",
-            "message": f"🥩 Vous avez déjà {red_meat_count} repas de viande rouge cette semaine",
+            "message": f"🥩 Vous avez déjà {red_meat_count} repas de viande rouge",
             "dismissable": True,
         })
 
@@ -337,17 +339,17 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
             "dismissable": True,
         })
 
-    if cal_week_target > 0 and total_cal > cal_week_target * 1.3:
+    if cal_target > 0 and total_cal > cal_target * 1.3:
         alertes.append({
             "type": "calories_hautes",
-            "message": "⚠️ La semaine semble chargée en calories",
+            "message": "⚠️ La période semble chargée en calories",
             "dismissable": True,
         })
 
-    if prot_week_target > 0 and total_prot > 0 and total_prot < prot_week_target * 0.6:
+    if prot_target > 0 and total_prot > 0 and total_prot < prot_target * 0.6:
         alertes.append({
             "type": "proteines_basses",
-            "message": "💪 Les protéines sont un peu faibles cette semaine",
+            "message": "💪 Les protéines sont un peu faibles sur cette période",
             "dismissable": True,
         })
 
@@ -357,7 +359,7 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
 
 def bilan_planning(week_plan) -> dict:
     """
-    Calcule le bilan équilibre de la semaine pour l'affichage dynamique.
+    Calcule le bilan équilibre de la période pour l'affichage dynamique.
     Retourne un dict avec les compteurs variété, totaux nutritionnels et statuts.
     Les créneaux `absent=True` sont exclus de tous les calculs.
     """
@@ -370,15 +372,18 @@ def bilan_planning(week_plan) -> dict:
     )
 
     absent_count = Meal.objects.filter(week_plan=week_plan, absent=True).count()
-    total_slots  = 14  # 7 jours × 2 créneaux
+    nb_jours = len(week_plan.get_active_dates()) or 7
+    total_slots = nb_jours * 2  # midi + soir par jour
 
-    protein_types  = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
-    fish_count     = protein_types.count("poisson")
-    red_meat_count = protein_types.count("boeuf") + protein_types.count("porc")
-    veg_count      = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
+    protein_types    = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
+    fish_count       = protein_types.count("poisson")
+    red_meat_count   = protein_types.count("boeuf") + protein_types.count("porc")
+    white_meat_count = protein_types.count("volaille")
+    veg_count        = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
 
-    total_cal  = sum((m.recipe.calories_per_serving  or 0) for m in meals)
-    total_prot = sum((m.recipe.proteins_per_serving or 0) for m in meals)
+    total_cal    = sum((m.recipe.calories_per_serving  or 0) for m in meals)
+    total_prot   = sum((m.recipe.proteins_per_serving or 0) for m in meals)
+    total_sugars = sum((m.recipe.sugars_per_serving   or 0) for m in meals)
 
     cal_target  = config.calories_dinner_target  * (total_slots - absent_count)
     prot_target = config.proteins_dinner_target  * (total_slots - absent_count)
@@ -403,12 +408,15 @@ def bilan_planning(week_plan) -> dict:
         "absent_count":       absent_count,
         "fish_count":         fish_count,
         "red_meat_count":     red_meat_count,
+        "white_meat_count":   white_meat_count,
         "veg_count":          veg_count,
         "fish_ok":            fish_count >= 1,
         "red_meat_ok":        red_meat_count <= config.max_red_meat_per_week,
+        "white_meat_ok":      white_meat_count >= 1,
         "veg_ok":             veg_count >= 1,
         "cal_total":          round(total_cal),
         "prot_total":         round(total_prot, 1),
+        "sugars_total":       round(total_sugars, 1),
         "cal_target":         round(cal_target),
         "prot_target":        round(prot_target, 1),
         "cal_pct":            _pct(total_cal, cal_target),

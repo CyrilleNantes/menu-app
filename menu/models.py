@@ -450,21 +450,41 @@ class WeekPlan(models.Model):
     STATUS_CHOICES = [
         ("draft", "Brouillon"),
         ("published", "Publié"),
+        ("finished", "Terminé"),
     ]
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="week_plans")
     period_start = models.DateField()
     period_end = models.DateField()
+    # Dates actives dans la période (liste de "YYYY-MM-DD"). Vide = toutes les dates period_start…period_end.
+    active_dates = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
+    # Présence : membres famille présents + invités libres
+    present_members = models.ManyToManyField(User, blank=True, related_name="planning_presences")
+    guests = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="week_plans")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = "Planning hebdomadaire"
-        verbose_name_plural = "Plannings hebdomadaires"
+        verbose_name = "Planning de période"
+        verbose_name_plural = "Plannings de période"
         constraints = [
             models.UniqueConstraint(fields=["family", "period_start"], name="unique_family_period_start")
         ]
+
+    def get_active_dates(self):
+        """Retourne la liste des dates actives (objets date). Si active_dates vide, retourne toutes les dates de la période."""
+        from datetime import date as date_type, timedelta
+        import datetime
+        if self.active_dates:
+            return sorted([datetime.date.fromisoformat(d) for d in self.active_dates])
+        # Fallback : toutes les dates de period_start à period_end
+        result = []
+        d = self.period_start
+        while d <= self.period_end:
+            result.append(d)
+            d += timedelta(days=1)
+        return result
 
     def __str__(self):
         return f"{self.family.name} — {self.period_start}"

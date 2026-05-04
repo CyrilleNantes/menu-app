@@ -631,23 +631,33 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 
 ---
 
-### 5.8 Planning hebdomadaire
+### 5.8 Planning par période
 
-**URL** :
-- `GET /planning/` → `menu:planning` (semaine courante ou prochaine)
-- `GET /planning/<year>/<week>/` → `menu:planning_semaine`
+**URLs** :
+- `GET /planning/` → `menu:planning` — redirige vers la période en cours ou `creer_periode`
+- `GET /planning/creer/` → `menu:creer_periode` — formulaire de création d'une période
+- `GET /planning/<id>/` → `menu:planning_periode` — affiche la période par son ID
 
-**Vue** : `planning(request)` / `planning_semaine(request, year, week)`
-**Template** : `menu/planning/semaine.html`
-**Accès** : tout membre de la famille
+**Vues** : `planning`, `creer_periode`, `planning_periode`
+**Templates** : `menu/planning/semaine.html`, `menu/planning/creer_periode.html`
+**Accès** : tout membre de la famille (création réservée au Cuisinier)
+
+**Création d'une période (Cuisinier)** :
+- Sélection des jours (boutons Lun–Dim), au moins 1, max 7 jours
+- Jours passés interdits
+- Les jours sélectionnés sont stockés dans `active_dates` (liste de dates ISO)
+- La grille n'affiche que les jours actifs (pas forcément 7 colonnes)
+
+**Navigation** : flèches prev/next par ID de WeekPlan adjacent (par date). La flèche "suivant" absente est remplacée par un lien "+" vers la création.
 
 **Contenu affiché** :
-- Grille 7 jours × 2 repas (midi / soir), créneaux vides autorisés
-- Statut du planning (Brouillon / Publié)
-- Propositions des Convives en attente (visibles par le Cuisinier)
-- Indicateurs nutritionnels de la semaine (calories / protéines cumulés)
-
-**Création automatique du WeekPlan** : si aucun plan n'existe pour la semaine demandée, `planning_semaine` le crée automatiquement en `draft`. `created_by` est toujours un Cuisinier — si l'utilisateur courant est un Convive, le premier Cuisinier de la famille est utilisé comme auteur.
+- Dates de début / fin de la période
+- Statut (Brouillon / Validé / Terminé) + boutons d'action selon le statut
+- Bloc Présence : membres famille présents + invités libres (informatif)
+- Alertes équilibre (Cuisinier uniquement)
+- Bilan nutritionnel : poisson, végétarien, viande blanche, viande rouge, calories, protéines, sucres
+- Grille des jours actifs × 2 repas (midi / soir)
+- Backlog propositions famille
 
 ---
 
@@ -668,18 +678,21 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 
 ---
 
-### 5.10 Publication du planning
+### 5.10 Statuts du planning et transitions
 
-**URL** : `POST /planning/<id>/publier/` → `menu:publier_planning`
-**Vue** : `publier_planning(request, id)`
-**Accès** : Cuisinier uniquement
+| Statut | Label | Boutons Cuisinier |
+|--------|-------|-------------------|
+| `draft` | ✏️ Brouillon | ✓ Valider |
+| `published` | ✅ Validé | 🛒 Publier la liste de courses · ✏️ Modifier |
+| `finished` | 🏁 Terminé | ✏️ Modifier |
 
-**Règles de gestion** :
-1. Passe `WeekPlan.status` de `draft` à `published`
-2. La liste de courses n'est **pas** générée automatiquement — le Cuisinier la génère manuellement depuis le toolbar du planning via `POST /courses/generer/<plan_id>/`
+**Transitions** :
+- `draft → published` : `POST /planning/<id>/valider/` → `menu:valider_planning`
+- `published → finished` : `POST /courses/generer/<id>/` → génère la liste ET passe en `finished`
+- `published/finished → draft` : `POST /planning/<id>/rouvrir/` → `menu:rouvrir_planning` (supprime la ShoppingList si statut était `finished`)
 
-**Réponse** :
-- Succès : redirection vers `/planning/<year>/<week>/` + message flash "Menu publié"
+**Présence** : `POST /planning/<id>/presence/` → `menu:maj_presence` (AJAX JSON)
+- Met à jour `present_members` (M2M User) et `guests` (JSONField liste de noms)
 
 ---
 
@@ -1182,6 +1195,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v4.3 | 2026-05-04 | Propositions en backlog famille — persistantes (week_plan=None), visibles par tous les Convives, bouton "Proposer" sur fiche recette, sans email |
 | v4.4 | 2026-05-04 | "Mettre en avant" une photo de galerie met à jour `Recipe.photo_url` — photo visible dans la liste et l'en-tête |
 | v4.4 | 2026-05-04 | Fiche recette : Retour/Proposer/Mode Cuisine en haut, Famille/Modifier en bas — bouton Proposer ouvert à tous les membres de la famille |
+| v5.0 | 2026-05-04 | Planning par périodes flexibles : active_dates, statut finished, présence membres/invités, viande blanche dans le bilan, sucres, navigation par plan_id |
 
 ### Détail v2.0
 

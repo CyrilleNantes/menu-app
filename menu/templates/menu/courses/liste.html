@@ -7,10 +7,10 @@
 
 <!-- ── En-tête ────────────────────────────────────────────────── -->
 <div class="courses-header">
-    <a href="{% url 'menu:planning_semaine' year week %}" class="btn btn--secondary btn--sm">← Retour au planning</a>
+    <a href="{% url 'menu:planning_periode' plan.id %}" class="btn btn--secondary btn--sm">← Retour au planning</a>
     <div class="courses-header__info">
         <h1 class="courses-header__title">🛒 Liste de courses</h1>
-        <span class="courses-header__week text-muted">Semaine {{ week }} — {{ plan.period_start|date:"d/m" }} au {{ plan.period_end|date:"d/m/Y" }}</span>
+        <span class="courses-header__week text-muted">{{ plan.period_start|date:"d/m" }} au {{ plan.period_end|date:"d/m/Y" }}</span>
     </div>
     {% if is_cuisinier %}
     <form method="post" action="{% url 'menu:generer_courses' plan.id %}">
