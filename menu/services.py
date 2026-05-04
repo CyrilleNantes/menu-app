@@ -253,17 +253,20 @@ def calculer_macros_recette(recipe: Recipe) -> None:
 
     if not all_ingrs:
         recipe.calories_per_serving = None
+        recipe.kcal_per_100g_raw    = None
         recipe.proteins_per_serving = None
         recipe.carbs_per_serving    = None
+        recipe.sugars_per_serving   = None
         recipe.fats_per_serving     = None
         recipe.nutrition_status     = 'missing'
         recipe.save(update_fields=[
-            "calories_per_serving", "proteins_per_serving",
-            "carbs_per_serving", "fats_per_serving", "nutrition_status",
+            "calories_per_serving", "kcal_per_100g_raw", "proteins_per_serving",
+            "carbs_per_serving", "sugars_per_serving", "fats_per_serving", "nutrition_status",
         ])
         return
 
     total_cal = total_prot = total_carbs = total_sugars = total_fats = 0.0
+    total_weight_g = 0.0
     has_any = False
     for ingr in all_ingrs:
         macros = compute_ingredient_macros_from_ciqual(ingr)
@@ -273,17 +276,22 @@ def calculer_macros_recette(recipe: Recipe) -> None:
             total_carbs  += macros['carbs']
             total_sugars += macros['sugars']
             total_fats   += macros['fats']
+            ref = ingr.ciqual_ref
+            qty_g = _quantity_to_grams(ingr.quantity, ingr.unit, ref.default_weight_g if ref else None)
+            if qty_g:
+                total_weight_g += qty_g
             has_any = True
 
     n = max(recipe.base_servings or 1, 1)
     recipe.calories_per_serving = round(total_cal    / n, 1) if has_any else None
+    recipe.kcal_per_100g_raw    = round(total_cal / total_weight_g * 100, 1) if has_any and total_weight_g > 0 else None
     recipe.proteins_per_serving = round(total_prot   / n, 1) if has_any else None
     recipe.carbs_per_serving    = round(total_carbs  / n, 1) if has_any else None
     recipe.sugars_per_serving   = round(total_sugars / n, 1) if has_any else None
     recipe.fats_per_serving     = round(total_fats   / n, 1) if has_any else None
     recipe.nutrition_status     = status
     recipe.save(update_fields=[
-        "calories_per_serving", "proteins_per_serving",
+        "calories_per_serving", "kcal_per_100g_raw", "proteins_per_serving",
         "carbs_per_serving", "sugars_per_serving", "fats_per_serving", "nutrition_status",
     ])
 

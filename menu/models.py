@@ -240,6 +240,7 @@ class Recipe(models.Model):
     health_tags = models.JSONField(default=list, blank=True)
     complexity = models.CharField(max_length=20, choices=COMPLEXITY_CHOICES, default="simple")
     calories_per_serving = models.FloatField(blank=True, null=True)
+    kcal_per_100g_raw = models.FloatField(blank=True, null=True)
     proteins_per_serving = models.FloatField(blank=True, null=True)
     carbs_per_serving = models.FloatField(blank=True, null=True)
     sugars_per_serving = models.FloatField(blank=True, null=True)
