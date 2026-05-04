@@ -242,6 +242,7 @@ class Recipe(models.Model):
     calories_per_serving = models.FloatField(blank=True, null=True)
     proteins_per_serving = models.FloatField(blank=True, null=True)
     carbs_per_serving = models.FloatField(blank=True, null=True)
+    sugars_per_serving = models.FloatField(blank=True, null=True)
     fats_per_serving = models.FloatField(blank=True, null=True)
     NUTRITION_STATUS_CHOICES = [
         ('ok',      'Complet — tous les ingrédients mappés'),

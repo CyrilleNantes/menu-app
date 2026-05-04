@@ -90,6 +90,7 @@
             {% if recipe.calories_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.calories_per_serving|floatformat:0 }}</span><span class="nutri-label">kcal / portion</span></div>{% endif %}
             {% if recipe.proteins_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.proteins_per_serving|floatformat:1 }}g</span><span class="nutri-label">Protéines / portion</span></div>{% endif %}
             {% if recipe.carbs_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.carbs_per_serving|floatformat:1 }}g</span><span class="nutri-label">Glucides / portion</span></div>{% endif %}
+            {% if recipe.sugars_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.sugars_per_serving|floatformat:1 }}g</span><span class="nutri-label">dont sucres / portion</span></div>{% endif %}
             {% if recipe.fats_per_serving %}<div class="nutri-item"><span class="nutri-value">{{ recipe.fats_per_serving|floatformat:1 }}g</span><span class="nutri-label">Lipides / portion</span></div>{% endif %}
         </div>
         {% if total_recipe_cal and recipe.base_servings > 1 %}

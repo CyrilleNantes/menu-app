@@ -245,7 +245,8 @@ Catalogue global partagé entre toutes les familles.
 | `protein_type` | `CharField(20)` | oui | `null` | Protéine principale : `boeuf` / `volaille` / `porc` / `poisson` / `oeufs` / `legumineuses` / `autre` / `aucune`. Utilisé par l'algorithme de suggestions pour assurer la variété. |
 | `calories_per_serving` | `FloatField` | oui | — | Kcal par portion (calculé via Ciqual) |
 | `proteins_per_serving` | `FloatField` | oui | — | Protéines (g) par portion (calculé) |
-| `carbs_per_serving` | `FloatField` | oui | — | Glucides (g) par portion (calculé) |
+| `carbs_per_serving` | `FloatField` | oui | — | Glucides totaux (g) par portion (calculé) |
+| `sugars_per_serving` | `FloatField` | oui | — | dont sucres (g) par portion (calculé — sous-ensemble des glucides) |
 | `fats_per_serving` | `FloatField` | oui | — | Lipides (g) par portion (calculé) |
 | `nutrition_status` | `CharField(10)` | non | `'missing'` | Statut du calcul nutritionnel : `ok` / `partial` / `missing` |
 | `created_by` | `ForeignKey(User)` | non | — | Auteur |
@@ -1151,6 +1152,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0011_known_ingredient_fk_and_default_unit` | 2026-05-01 | `Ingredient.known_ingredient` FK + `KnownIngredient.default_unit` |
 | `0012_recipe_nutrition_status` | 2026-05-02 | `Recipe.nutrition_status` CharField (`ok`/`partial`/`missing`) |
 | `0013_ingredientref_new_nutrition_fields` | 2026-05-02 | `IngredientRef` : `sucres_100g`, `fibres_100g`, `ag_satures_100g`, `sel_100g` |
+| `0014_sugars_per_serving` | 2026-05-04 | `Recipe.sugars_per_serving` FloatField — sucres par portion |
 
 ---
 
@@ -1175,6 +1177,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v3.2 | 2026-04-29 | Intégration ANSES Ciqual 2020 — IngredientRef (3185 entrées), matching 74.3%, macros recalculées, autocomplete formulaire, suppression Open Food Facts |
 | v4.0 | 2026-05-03 | Base de connaissance KnownIngredient — architecture deux couches Ciqual, badges nutrition_status, page CRUD référentiel Ciqual, page Management enrichie, refactoring nutrition unifiée, corrections bugs accumulation calories |
 | v4.1 | 2026-05-03 | Calcul nutritionnel : ingrédients optionnels inclus (ne plus minorer les calories) |
+| v4.2 | 2026-05-04 | Sucres par portion (`sugars_per_serving`) — affiché en fiche recette sous les glucides |
 | v4.2 | 2026-05-04 | Galerie photos opérationnelle — Cloudinary configuré, filtre `cloudinary_img` (4 presets) pour optimisation bande passante à l'affichage |
 | v4.3 | 2026-05-04 | Propositions en backlog famille — persistantes (week_plan=None), visibles par tous les Convives, bouton "Proposer" sur fiche recette, sans email |
 
