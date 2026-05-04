@@ -213,6 +213,7 @@ if _email_host_user:
     EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
     EMAIL_HOST_USER = _email_host_user
     EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+    EMAIL_TIMEOUT = 5  # échec rapide si SMTP injoignable — évite de bloquer les vues
 else:
     # Fallback local : affiche les emails dans la console
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
