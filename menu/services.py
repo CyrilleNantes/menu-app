@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import math
 import zipfile as zf_lib
 from datetime import date as date_type
 
@@ -23,22 +24,21 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
     Génère (ou recrée) la liste de courses d'un WeekPlan.
 
     Règles :
-    - Seuls les repas avec recette et is_leftovers=False sont pris en compte.
+    - Tous les repas avec recette (non absents) sont pris en compte.
     - Les quantités sont proratisées : quantité × (servings_count / base_servings).
     - Les ingrédients identiques (même nom, même unité, insensible à la casse) sont agrégés.
+    - Les quantités sont arrondies au plafond (math.ceil) pour ne jamais manquer.
     - Les articles sont triés par catégorie puis par nom.
     """
-    # Supprimer l'ancienne liste si elle existe
     ShoppingList.objects.filter(week_plan=plan).delete()
 
     meals = (
         Meal.objects
-        .filter(week_plan=plan, absent=False, is_leftovers=False, recipe__isnull=False)
+        .filter(week_plan=plan, absent=False, recipe__isnull=False)
         .select_related("recipe")
         .prefetch_related("recipe__ingredients")
     )
 
-    # Clé d'agrégation : (nom_normalisé, unité_normalisée)
     aggregated: dict[tuple, dict] = {}
 
     for meal in meals:
@@ -61,16 +61,10 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
 
             entry = aggregated[key]
             if ing.quantity is not None:
-                adj = ing.quantity * ratio
-                entry["quantity"] = (entry["quantity"] or 0.0) + adj
+                entry["quantity"] = (entry["quantity"] or 0.0) + ing.quantity * ratio
 
-    # Créer la nouvelle liste
-    shopping_list = ShoppingList.objects.create(
-        family=plan.family,
-        week_plan=plan,
-    )
+    shopping_list = ShoppingList.objects.create(family=plan.family, week_plan=plan)
 
-    # Trier : catégorie (vide en dernier) puis nom
     sorted_items = sorted(
         aggregated.values(),
         key=lambda x: (x["category"] or "zzz", x["name"].lower()),
@@ -80,7 +74,7 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
         ShoppingItem(
             shopping_list=shopping_list,
             name=item["name"],
-            quantity=round(item["quantity"], 2) if item["quantity"] is not None else None,
+            quantity=math.ceil(item["quantity"]) if item["quantity"] is not None else None,
             unit=item["unit"],
             category=item["category"],
             checked=False,

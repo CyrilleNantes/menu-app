@@ -213,14 +213,13 @@
     </div>
 
     <!-- Midi -->
-    <div class="meal-slot{% if day.lunch and day.lunch.recipe %} meal-slot--filled{% endif %}{% if day.lunch and day.lunch.is_leftovers %} meal-slot--leftovers{% endif %}{% if day.lunch and day.lunch.absent %} meal-slot--absent{% endif %}"
+    <div class="meal-slot{% if day.lunch and day.lunch.recipe %} meal-slot--filled{% endif %}{% if day.lunch and day.lunch.absent %} meal-slot--absent{% endif %}"
          data-date="{{ day.date|date:'Y-m-d' }}"
          data-meal-time="lunch"
          data-meal-id="{% if day.lunch %}{{ day.lunch.id }}{% endif %}"
          data-recipe-id="{% if day.lunch and day.lunch.recipe %}{{ day.lunch.recipe.id }}{% endif %}"
          data-recipe-title="{% if day.lunch and day.lunch.recipe %}{{ day.lunch.recipe.title }}{% endif %}"
          data-servings="{% if day.lunch %}{{ day.lunch.servings_count|default:'' }}{% endif %}"
-         data-is-leftovers="{% if day.lunch and day.lunch.is_leftovers %}true{% else %}false{% endif %}"
          data-absent="{% if day.lunch and day.lunch.absent %}true{% else %}false{% endif %}"
          {% if is_cuisinier %}data-editable="true"{% endif %}>
         <span class="meal-slot__time">🍽️ Midi</span>
@@ -237,7 +236,6 @@
                 <span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>
                 <div class="meal-slot__meta">
                     {% if day.lunch.servings_count %}<span>{{ day.lunch.servings_count }} pers.</span>{% endif %}
-                    {% if day.lunch.is_leftovers %}<span class="badge badge--leftovers">Restes</span>{% endif %}
                 </div>
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
@@ -258,14 +256,13 @@
     </div>
 
     <!-- Soir -->
-    <div class="meal-slot{% if day.dinner and day.dinner.recipe %} meal-slot--filled{% endif %}{% if day.dinner and day.dinner.is_leftovers %} meal-slot--leftovers{% endif %}{% if day.dinner and day.dinner.absent %} meal-slot--absent{% endif %}"
+    <div class="meal-slot{% if day.dinner and day.dinner.recipe %} meal-slot--filled{% endif %}{% if day.dinner and day.dinner.absent %} meal-slot--absent{% endif %}"
          data-date="{{ day.date|date:'Y-m-d' }}"
          data-meal-time="dinner"
          data-meal-id="{% if day.dinner %}{{ day.dinner.id }}{% endif %}"
          data-recipe-id="{% if day.dinner and day.dinner.recipe %}{{ day.dinner.recipe.id }}{% endif %}"
          data-recipe-title="{% if day.dinner and day.dinner.recipe %}{{ day.dinner.recipe.title }}{% endif %}"
          data-servings="{% if day.dinner %}{{ day.dinner.servings_count|default:'' }}{% endif %}"
-         data-is-leftovers="{% if day.dinner and day.dinner.is_leftovers %}true{% else %}false{% endif %}"
          data-absent="{% if day.dinner and day.dinner.absent %}true{% else %}false{% endif %}"
          {% if is_cuisinier %}data-editable="true"{% endif %}>
         <span class="meal-slot__time">🌙 Soir</span>
@@ -282,7 +279,6 @@
                 <span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>
                 <div class="meal-slot__meta">
                     {% if day.dinner.servings_count %}<span>{{ day.dinner.servings_count }} pers.</span>{% endif %}
-                    {% if day.dinner.is_leftovers %}<span class="badge badge--leftovers">Restes</span>{% endif %}
                 </div>
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
@@ -399,7 +395,8 @@
 <div id="planning-meta"
      data-plan-id="{{ plan.id }}"
      data-presence-url="{% url 'menu:maj_presence' plan.id %}"
-     data-is-cuisinier="{{ is_cuisinier|yesno:'true,false' }}"></div>
+     data-is-cuisinier="{{ is_cuisinier|yesno:'true,false' }}"
+     data-nb-presents="{{ nb_presents }}"></div>
 {{ meals_avec_recette|json_script:"meals-json" }}
 
 <!-- ── Dialog : suggestions de recettes (Cuisinier) ────────── -->
@@ -442,19 +439,9 @@
     </div>
 
     <div class="form-group">
-        <label class="form-label">Portions</label>
-        <input type="number" id="meal-servings" min="1" max="20" value="4"
+        <label class="form-label">Convives</label>
+        <input type="number" id="meal-servings" min="1" max="20" value="{{ nb_presents }}"
                class="input-short">
-    </div>
-
-    <label class="checkbox-label">
-        <input type="checkbox" id="meal-is-leftovers">
-        Ce repas est composé de <strong>restes</strong>
-    </label>
-
-    <div id="meal-source-section" class="form-group" style="display:none">
-        <label class="form-label">Restes du repas…</label>
-        <select id="meal-source-select" class="input-short"></select>
     </div>
 
     <div class="planning-dialog__actions">

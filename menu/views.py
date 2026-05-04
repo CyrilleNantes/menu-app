@@ -589,9 +589,10 @@ def planning_periode(request, plan_id):
         "proposals": proposals,
         "user_proposals": user_proposals,
         "is_cuisinier": is_cuisinier,
+        "nb_presents": plan.present_members.count() or len(plan.guests) or 1,
         "meals_avec_recette": [
             {"id": m.id, "label": f"{JOURS_FR[m.date.weekday()]} {'Midi' if m.meal_time == 'lunch' else 'Soir'} — {m.recipe.title}"}
-            for m in meals_qs if m.recipe and not m.is_leftovers
+            for m in meals_qs if m.recipe
         ],
         "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
@@ -641,8 +642,6 @@ def modifier_meal(request, plan_id):
             defaults={
                 "recipe": None,
                 "servings_count": None,
-                "is_leftovers": False,
-                "source_meal": None,
                 "absent": True,
             },
         )
@@ -661,17 +660,10 @@ def modifier_meal(request, plan_id):
         if not recipe:
             return JsonResponse({"ok": False, "error": "Recette introuvable", "code": "NO_RECIPE"}, status=404)
 
-    is_leftovers = bool(body.get("is_leftovers", False))
-    source_meal = None
-    if is_leftovers:
-        src_id = body.get("source_meal_id")
-        if src_id:
-            source_meal = Meal.objects.filter(id=src_id, week_plan=plan).first()
-
     try:
-        servings = int(body.get("servings_count") or 0) or (recipe.base_servings if recipe else None)
+        servings = int(body.get("servings_count") or 0) or plan.present_members.count() or 1
     except (ValueError, TypeError):
-        servings = recipe.base_servings if recipe else None
+        servings = plan.present_members.count() or 1
 
     meal, _ = Meal.objects.update_or_create(
         week_plan=plan,
@@ -680,9 +672,7 @@ def modifier_meal(request, plan_id):
         defaults={
             "recipe": recipe,
             "servings_count": servings,
-            "is_leftovers": is_leftovers,
-            "source_meal": source_meal,
-            "absent": False,  # toute sauvegarde de recette lève l'absence
+            "absent": False,
         },
     )
 
@@ -693,7 +683,6 @@ def modifier_meal(request, plan_id):
         "recipe_id": recipe.id if recipe else None,
         "recipe_title": recipe.title if recipe else None,
         "servings_count": meal.servings_count,
-        "is_leftovers": meal.is_leftovers,
         "calories_per_serving": recipe.calories_per_serving if recipe else None,
     })
 

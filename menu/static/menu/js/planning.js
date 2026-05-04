@@ -2,18 +2,11 @@
 (function () {
     'use strict';
 
-    const meta      = document.getElementById('planning-meta');
-    const PLAN_ID   = meta ? meta.dataset.planId   : null;
-    const IS_COOK   = meta ? meta.dataset.isCuisinier === 'true' : false;
-    const CSRF      = document.getElementById('csrf-token')?.value || '';
-
-    // Repas avec recette (source pour le select "restes de…")
-    let mealsAvecRecette = [];
-    try {
-        mealsAvecRecette = JSON.parse(
-            document.getElementById('meals-json')?.textContent || '[]'
-        );
-    } catch (e) { /* ignore */ }
+    const meta        = document.getElementById('planning-meta');
+    const PLAN_ID     = meta ? meta.dataset.planId        : null;
+    const IS_COOK     = meta ? meta.dataset.isCuisinier === 'true' : false;
+    const NB_PRESENTS = meta ? parseInt(meta.dataset.nbPresents) || 1 : 1;
+    const CSRF        = document.getElementById('csrf-token')?.value || '';
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -78,13 +71,10 @@
     // ── Dialogue : modifier un repas (Cuisinier) ─────────────────────────────
 
     if (IS_COOK) {
-        const dlg            = document.getElementById('dialog-meal');
-        const dlgLabel       = document.getElementById('dialog-meal-label');
-        const recipeName     = document.getElementById('meal-recipe-name');
-        const servingsInput  = document.getElementById('meal-servings');
-        const leftoversCheck = document.getElementById('meal-is-leftovers');
-        const sourceSection  = document.getElementById('meal-source-section');
-        const sourceSelect   = document.getElementById('meal-source-select');
+        const dlg           = document.getElementById('dialog-meal');
+        const dlgLabel      = document.getElementById('dialog-meal-label');
+        const recipeName    = document.getElementById('meal-recipe-name');
+        const servingsInput = document.getElementById('meal-servings');
 
         const search = makeSearchDropdown(
             document.getElementById('meal-recipe-search'),
@@ -92,62 +82,40 @@
             ({ title }) => { recipeName.textContent = title; recipeName.classList.remove('text-muted'); }
         );
 
-        // Écoute l'événement émis par "Utiliser" dans le dialog suggestions
         document.getElementById('meal-recipe-search')?.addEventListener('suggestion-select', e => {
             search.setSelected(e.detail.id, e.detail.title);
         });
 
         let currentSlot = {};
 
-        // Ouvrir le dialog en cliquant sur un créneau
         document.querySelectorAll('.meal-slot[data-editable]').forEach(slot => {
             slot.addEventListener('click', function () {
-                // Ne pas ouvrir le dialog si le créneau est absent (géré par btn-unabsent)
                 if (this.dataset.absent === 'true') return;
                 currentSlot = {
-                    date:       this.dataset.date,
-                    meal_time:  this.dataset.mealTime,
-                    meal_id:    this.dataset.mealId || null,
-                    recipe_id:  this.dataset.recipeId || null,
+                    date:         this.dataset.date,
+                    meal_time:    this.dataset.mealTime,
+                    meal_id:      this.dataset.mealId || null,
+                    recipe_id:    this.dataset.recipeId || null,
                     recipe_title: this.dataset.recipeTitle || '',
-                    servings:   parseInt(this.dataset.servings) || 4,
-                    is_leftovers: this.dataset.isLeftovers === 'true',
+                    servings:     parseInt(this.dataset.servings) || NB_PRESENTS,
                 };
 
-                // Pré-remplir
                 const label = currentSlot.meal_time === 'lunch' ? 'Midi' : 'Soir';
                 dlgLabel.textContent = `${currentSlot.date} — ${label}`;
 
                 search.setSelected(currentSlot.recipe_id, currentSlot.recipe_title);
-                recipeName.textContent     = currentSlot.recipe_title || 'Aucune recette';
+                recipeName.textContent = currentSlot.recipe_title || 'Aucune recette';
                 recipeName.classList.toggle('text-muted', !currentSlot.recipe_title);
-                servingsInput.value        = currentSlot.servings;
-                leftoversCheck.checked     = currentSlot.is_leftovers;
-                sourceSection.style.display = currentSlot.is_leftovers ? 'block' : 'none';
-
-                // Peupler le select "restes de…"
-                sourceSelect.innerHTML = '<option value="">— choisir —</option>';
-                mealsAvecRecette.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m.id;
-                    opt.textContent = m.label;
-                    sourceSelect.appendChild(opt);
-                });
+                servingsInput.value = currentSlot.servings;
 
                 dlg.showModal();
             });
         });
 
-        // Vider la recette
         document.getElementById('btn-clear-recipe')?.addEventListener('click', () => {
             search.clear();
             recipeName.textContent = 'Aucune recette';
             recipeName.classList.add('text-muted');
-        });
-
-        // Toggle restes
-        leftoversCheck.addEventListener('change', function () {
-            sourceSection.style.display = this.checked ? 'block' : 'none';
         });
 
         // Enregistrer
@@ -157,9 +125,7 @@
                 date:           currentSlot.date,
                 meal_time:      currentSlot.meal_time,
                 recipe_id:      selected.id ? parseInt(selected.id) : null,
-                servings_count: parseInt(servingsInput.value) || null,
-                is_leftovers:   leftoversCheck.checked,
-                source_meal_id: leftoversCheck.checked ? (parseInt(sourceSelect.value) || null) : null,
+                servings_count: parseInt(servingsInput.value) || NB_PRESENTS,
             };
 
             try {
@@ -172,11 +138,6 @@
                 if (data.ok) {
                     dlg.close();
                     updateSlotDOM(currentSlot.date, currentSlot.meal_time, data);
-                    // Mettre à jour la liste des repas pour le select "restes de…"
-                    if (data.recipe_id && !mealsAvecRecette.find(m => m.id === data.meal_id)) {
-                        const label = `${currentSlot.date} ${body.meal_time === 'lunch' ? 'Midi' : 'Soir'} — ${data.recipe_title}`;
-                        mealsAvecRecette.push({ id: data.meal_id, label });
-                    }
                     // Réafficher les alertes d'équilibre (le menu a changé)
                     if (typeof window._resetAlertesDismissed === 'function') {
                         window._resetAlertesDismissed();
@@ -207,11 +168,10 @@
 
         // ── Créneau marqué absent ──────────────────────────────────────────
         if (data.absent === true) {
-            slot.dataset.absent = 'true';
+            slot.dataset.absent      = 'true';
             slot.dataset.recipeId    = '';
             slot.dataset.recipeTitle = '';
-            slot.dataset.isLeftovers = 'false';
-            slot.classList.remove('meal-slot--filled', 'meal-slot--leftovers');
+            slot.classList.remove('meal-slot--filled');
             slot.classList.add('meal-slot--absent');
             body.innerHTML = `
                 <span class="meal-slot__absent-label">🏠 Absent</span>
@@ -225,24 +185,21 @@
 
         // ── Absence levée ou recette normale ──────────────────────────────
         slot.dataset.absent      = 'false';
-        slot.dataset.mealId      = data.meal_id  || '';
+        slot.dataset.mealId      = data.meal_id      || '';
         slot.dataset.recipeId    = data.recipe_id    || '';
         slot.dataset.recipeTitle = data.recipe_title || '';
         slot.dataset.servings    = data.servings_count || '';
-        slot.dataset.isLeftovers = data.is_leftovers ? 'true' : 'false';
         slot.classList.remove('meal-slot--absent');
 
         if (data.recipe_title) {
             slot.classList.add('meal-slot--filled');
-            const leftBadge = data.is_leftovers
-                ? '<span class="badge badge--leftovers">Restes</span>' : '';
             const servings = data.servings_count
                 ? `<span>${data.servings_count} pers.</span>` : '';
             body.innerHTML = `
                 <span class="meal-slot__recipe">${escHtml(data.recipe_title)}</span>
-                <div class="meal-slot__meta">${servings}${leftBadge}</div>`;
+                <div class="meal-slot__meta">${servings}</div>`;
         } else {
-            slot.classList.remove('meal-slot--filled', 'meal-slot--leftovers');
+            slot.classList.remove('meal-slot--filled');
             body.innerHTML = `
                 <span class="meal-slot__empty">+ Ajouter</span>
                 <div class="meal-slot__empty-actions">
@@ -253,12 +210,6 @@
                             data-date="${dateStr}" data-meal-time="${mealTime}"
                             title="Personne ne mange à la maison">🏠</button>
                 </div>`;
-        }
-
-        if (data.is_leftovers) {
-            slot.classList.add('meal-slot--leftovers');
-        } else {
-            slot.classList.remove('meal-slot--leftovers');
         }
 
         refreshBilan();
@@ -664,9 +615,7 @@
                 date:           dateStr,
                 meal_time:      mealTime,
                 recipe_id:      recipeId,
-                servings_count: null,
-                is_leftovers:   false,
-                source_meal_id: null,
+                servings_count: NB_PRESENTS,
             };
 
             btn.disabled = true;
