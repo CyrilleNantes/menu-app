@@ -49,14 +49,19 @@
                 {% endif %}
             </div>
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem">
-                <a href="{% url 'menu:mode_cuisine' recipe.id %}" class="btn btn--primary">
-                    👨‍🍳 Mode Cuisine
-                </a>
+                <a href="{% url 'menu:liste_recettes' %}" class="btn btn--secondary">← Retour</a>
                 {% if not is_cuisinier and request.user.profile.family %}
                 <form method="post" action="{% url 'menu:creer_proposition_recette' recipe.id %}" class="inline-form">
                     {% csrf_token %}
                     <button type="submit" class="btn btn--secondary">💡 Proposer</button>
                 </form>
+                {% endif %}
+                <a href="{% url 'menu:mode_cuisine' recipe.id %}" class="btn btn--primary">👨‍🍳 Mode Cuisine</a>
+                {% if request.user.profile.family %}
+                <a href="{% url 'menu:compatibilite_recette' recipe.id %}" class="btn btn--secondary">👨‍👩‍👧 Famille</a>
+                {% endif %}
+                {% if request.user == recipe.created_by or request.user.profile.role == 'chef_etoile' %}
+                <a href="{% url 'menu:modifier_recette' recipe.id %}" class="btn btn--secondary">✏️ Modifier</a>
                 {% endif %}
             </div>
         </div>
@@ -287,15 +292,6 @@
         {% endif %}
     </section>
 
-    <div class="recette-detail__actions">
-        <a href="{% url 'menu:liste_recettes' %}" class="btn btn--secondary">← Retour au catalogue</a>
-        {% if request.user.profile.family %}
-        <a href="{% url 'menu:compatibilite_recette' recipe.id %}" class="btn btn--secondary">👨‍👩‍👧 Compatibilité famille</a>
-        {% endif %}
-        {% if request.user == recipe.created_by or request.user.profile.role == 'chef_etoile' %}
-        <a href="{% url 'menu:modifier_recette' recipe.id %}" class="btn btn--primary">Modifier</a>
-        {% endif %}
-    </div>
 
 </div>
 
