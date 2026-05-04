@@ -852,3 +852,9 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .day-toggle__date { font-size: .75rem; opacity: .8; }
 .periode-summary { font-size: .85rem; margin-bottom: 1rem; min-height: 1.2em; }
 .creer-periode__actions { display: flex; gap: .75rem; }
+
+/* Sélecteur de jours période */
+.planning-jours { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: .75rem 1.25rem; margin-bottom: 1rem; }
+.planning-jours__title { font-size: .8rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: .6rem; }
+.planning-jours__form { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.planning-jours__days { display: flex; flex-wrap: wrap; gap: .4rem; }

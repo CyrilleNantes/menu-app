@@ -19,6 +19,7 @@ urlpatterns = [
     path("planning/<int:plan_id>/valider/", views.valider_planning, name="valider_planning"),
     path("planning/<int:plan_id>/rouvrir/", views.rouvrir_planning, name="rouvrir_planning"),
     path("planning/<int:plan_id>/presence/", views.maj_presence, name="maj_presence"),
+    path("planning/<int:plan_id>/jours/", views.modifier_jours_periode, name="modifier_jours_periode"),
     path("planning/<int:plan_id>/proposer/", views.proposer_repas, name="proposer_repas"),
     path("planning/<int:plan_id>/suggestions/", views.suggestions_repas, name="suggestions_repas"),
     path("planning/<int:plan_id>/bilan/", views.bilan_planning_ajax, name="bilan_planning_ajax"),

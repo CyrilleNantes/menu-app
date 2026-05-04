@@ -564,6 +564,17 @@ def planning_periode(request, plan_id):
     )
     present_member_ids = set(plan.present_members.values_list("id", flat=True))
 
+    # Sélecteur de jours : les 7 jours à partir de period_start
+    active_dates_iso = set(plan.active_dates) if plan.active_dates else {d.isoformat() for d in active_dates}
+    periode_candidate_days = [
+        {
+            "date": plan.period_start + timedelta(days=i),
+            "label": JOURS_FR[(plan.period_start + timedelta(days=i)).weekday()],
+            "iso": (plan.period_start + timedelta(days=i)).isoformat(),
+        }
+        for i in range(7)
+    ]
+
     ctx = {
         "plan": plan,
         "grid": grid,
@@ -580,11 +591,12 @@ def planning_periode(request, plan_id):
         ],
         "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
-        "alertes_planning": calculer_alertes_planning(plan, profile.family) if is_cuisinier else [],
         "bilan": bilan_planning(plan) if is_cuisinier else None,
         "family_members": family_members,
         "present_member_ids": present_member_ids,
         "guests": plan.guests,
+        "periode_candidate_days": periode_candidate_days,
+        "active_dates_iso": active_dates_iso,
     }
     return render(request, "menu/planning/semaine.html", ctx)
 
@@ -836,6 +848,42 @@ def maj_presence(request, plan_id):
         plan.save(update_fields=["guests"])
 
     return JsonResponse({"ok": True})
+
+
+@require_POST
+@login_required
+def modifier_jours_periode(request, plan_id):
+    """Met à jour les jours actifs d'une période (active_dates + period_end). Cuisinier uniquement."""
+    profile = _get_profile(request)
+    if not profile or not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:planning_periode", plan_id=plan_id)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    jours_raw = request.POST.getlist("jours")
+    if not jours_raw:
+        messages.error(request, "Sélectionne au moins un jour.")
+        return redirect("menu:planning_periode", plan_id=plan_id)
+
+    try:
+        jours = sorted(set([date.fromisoformat(d) for d in jours_raw]))
+    except ValueError:
+        messages.error(request, "Dates invalides.")
+        return redirect("menu:planning_periode", plan_id=plan_id)
+
+    if len(jours) > 7:
+        messages.error(request, "Maximum 7 jours par période.")
+        return redirect("menu:planning_periode", plan_id=plan_id)
+
+    with transaction.atomic():
+        plan.active_dates = [d.isoformat() for d in jours]
+        plan.period_end = jours[-1]
+        plan.save(update_fields=["active_dates", "period_end"])
+        # Supprimer les repas hors des nouvelles dates actives
+        Meal.objects.filter(week_plan=plan).exclude(date__in=jours).delete()
+
+    return redirect("menu:planning_periode", plan_id=plan_id)
 
 
 @require_POST

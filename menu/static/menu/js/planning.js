@@ -859,3 +859,18 @@
         });
     });
 })();
+
+// ── Sélecteur de jours période ──────────────────────────────────────────────
+(function () {
+    const form = document.getElementById('form-jours');
+    if (!form) return;
+
+    form.querySelectorAll('.day-toggle').forEach(label => {
+        label.addEventListener('click', function (e) {
+            e.preventDefault();
+            const cb = label.querySelector('.day-toggle__cb');
+            cb.checked = !cb.checked;
+            label.classList.toggle('day-toggle--active', cb.checked);
+        });
+    });
+})();
