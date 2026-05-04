@@ -51,7 +51,7 @@
     {% for recette in recettes %}
     <a href="{% url 'menu:detail_recette' recette.id %}" class="recette-card">
         {% if recette.photo_url %}
-        <div class="recette-card__photo" style="background-image:url('{{ recette.photo_url }}')"></div>
+        <div class="recette-card__photo" style="background-image:url('{{ recette.photo_url|cloudinary_img:"card" }}')"></div>
         {% else %}
         <div class="recette-card__photo recette-card__photo--placeholder">🍽️</div>
         {% endif %}

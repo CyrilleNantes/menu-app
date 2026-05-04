@@ -20,7 +20,7 @@
     <!-- En-tête -->
     <div class="recette-detail__header">
         {% if recipe.photo_url %}
-        <div class="recette-detail__photo" style="background-image:url('{{ recipe.photo_url }}')"></div>
+        <div class="recette-detail__photo" style="background-image:url('{{ recipe.photo_url|cloudinary_img:"header" }}')"></div>
         {% endif %}
         <div class="recette-detail__meta">
             <span class="recette-card__categorie">{{ recipe.get_category_display }}</span>
@@ -102,7 +102,7 @@
             <div class="galerie-track" id="galerie-track">
                 {% for photo in gallery_photos %}
                 <div class="galerie-slide" data-index="{{ forloop.counter0 }}">
-                    <img src="{{ photo.photo_url }}" alt="{% if photo.caption %}{{ photo.caption }}{% else %}Photo {{ forloop.counter }}{% endif %}" class="galerie-img" loading="lazy">
+                    <img src="{{ photo.photo_url|cloudinary_img:"gallery" }}" alt="{% if photo.caption %}{{ photo.caption }}{% else %}Photo {{ forloop.counter }}{% endif %}" class="galerie-img" loading="lazy">
                     {% if photo.caption %}
                     <p class="galerie-caption">{{ photo.caption }}</p>
                     {% endif %}

@@ -111,7 +111,7 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 | Service | Usage | Variable d'env | Fichier `integrations/` |
 |---------|-------|----------------|--------------------------|
 | Ciqual 2020 (local) | Référentiel nutritionnel ingrédients | *(aucune clé — table locale PostgreSQL)* | *(pas d'intégration externe)* |
-| Cloudinary | Stockage et redimensionnement des photos | `CLOUDINARY_URL` | `integrations/cloudinary.py` |
+| Cloudinary | Stockage des photos (original brut) + optimisation à l'affichage (`f_auto,q_auto,w_X,c_limit` via filtre template `cloudinary_img`) | `CLOUDINARY_URL` | `integrations/cloudinary.py` |
 | Google Calendar | Export des menus planifiés | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `integrations/google_calendar.py` |
 | Google Tasks | Export des listes de courses | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `integrations/google_tasks.py` |
 
@@ -1046,6 +1046,18 @@ Affichées dans la vue planning (`planning_semaine`). Jamais bloquantes, jamais 
 - Navigation gauche/droite, indicateur de position
 - Légende optionnelle affichée sous chaque photo
 
+**Optimisation bande passante Cloudinary :**
+L'URL brute est stockée en base. Le filtre template `cloudinary_img` (dans `menu_extras.py`) insère les paramètres de transformation dans l'URL à l'affichage — Cloudinary génère la version optimisée au premier appel et la met en cache.
+
+| Preset | Transformation | Contexte |
+|--------|---------------|---------|
+| `card` | `f_auto,q_auto,w_600,c_limit` | Vignettes catalogue |
+| `header` | `f_auto,q_auto,w_1200,c_limit` | Photo principale fiche recette |
+| `gallery` | `f_auto,q_auto,w_900,c_limit` | Carousel galerie |
+| `thumb` | `f_auto,q_auto,w_300,c_limit` | Miniature formulaire |
+
+Usage : `{{ photo.photo_url|cloudinary_img:"gallery" }}`
+
 **Gestion des erreurs** :
 - Upload Cloudinary échoué → message flash, pas de `RecipePhoto` créé
 - Photo non trouvée → `get_object_or_404` → HTTP 404
@@ -1142,6 +1154,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v3.2 | 2026-04-29 | Intégration ANSES Ciqual 2020 — IngredientRef (3185 entrées), matching 74.3%, macros recalculées, autocomplete formulaire, suppression Open Food Facts |
 | v4.0 | 2026-05-03 | Base de connaissance KnownIngredient — architecture deux couches Ciqual, badges nutrition_status, page CRUD référentiel Ciqual, page Management enrichie, refactoring nutrition unifiée, corrections bugs accumulation calories |
 | v4.1 | 2026-05-03 | Calcul nutritionnel : ingrédients optionnels inclus (ne plus minorer les calories) |
+| v4.2 | 2026-05-04 | Galerie photos opérationnelle — Cloudinary configuré, filtre `cloudinary_img` (4 presets) pour optimisation bande passante à l'affichage |
 
 ### Détail v2.0
 

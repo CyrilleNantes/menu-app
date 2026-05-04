@@ -17,7 +17,6 @@ def upload_photo(file) -> str | None:
             file,
             folder="menu_familial",
             allowed_formats=["jpg", "jpeg", "png", "webp"],
-            transformation={"quality": "auto", "fetch_format": "auto"},
         )
         return result["secure_url"]
     except Exception as exc:

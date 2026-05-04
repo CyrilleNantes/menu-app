@@ -58,7 +58,7 @@
         <div class="form-group">
             <label>{{ form.photo.label }}</label>
             {% if recipe and recipe.photo_url %}
-            <img src="{{ recipe.photo_url }}" alt="Photo actuelle" class="photo-preview">
+            <img src="{{ recipe.photo_url|cloudinary_img:"thumb" }}" alt="Photo actuelle" class="photo-preview">
             <p class="form-help">Choisir un fichier remplace la photo existante.</p>
             {% endif %}
             {{ form.photo }}
