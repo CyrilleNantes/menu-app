@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v4.0** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-05-03
+> Version courante : **v5.0** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-05-04
 
 ---
 
@@ -395,19 +395,24 @@ Avis d'un utilisateur sur une recette. Plusieurs avis possibles par utilisateur 
 
 ### 4.10 `WeekPlan`
 
-Planning hebdomadaire d'une famille.
+Planning par période d'une famille. Les périodes sont des objets indépendants à durée variable (1–7 jours).
 
 | Champ | Type Django | Nullable | Défaut | Description |
 |-------|-------------|----------|--------|-------------|
 | `id` | `BigAutoField` | non | auto | Clé primaire |
 | `family` | `ForeignKey(Family)` | non | — | Famille |
-| `period_start` | `DateField` | non | — | Début de la période (paramétrable) |
-| `period_end` | `DateField` | non | — | Fin de la période |
-| `status` | `CharField(20)` | non | `"draft"` | `draft` / `published` |
+| `period_start` | `DateField` | non | — | Premier jour de la fenêtre de 7 jours |
+| `period_end` | `DateField` | non | — | Dernier jour actif de la période |
+| `active_dates` | `JSONField` | non | `[]` | Liste de dates ISO actives (`["2026-05-04", ...]`). Si vide : tous les jours de `period_start` à `period_end`. |
+| `status` | `CharField(20)` | non | `"draft"` | `draft` / `published` / `finished` |
+| `present_members` | `ManyToManyField(User)` | — | — | Membres de la famille présents sur la période |
+| `guests` | `JSONField` | non | `[]` | Noms des invités ponctuels (liste de strings) |
 | `created_by` | `ForeignKey(User)` | non | — | Cuisinier auteur |
 | `created_at` | `DateTimeField` | non | auto | Date de création |
 
-**Contrainte DB** : `(family, period_start)` unique — une seule planification par famille par période de départ.
+**Contrainte DB** : `(family, period_start)` unique.
+
+**Méthode `get_active_dates()`** : retourne les dates actives triées. Si `active_dates` est rempli, parse les ISO strings. Sinon, génère tous les jours de `period_start` à `period_end` (rétrocompatibilité).
 
 ---
 
@@ -634,29 +639,43 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 ### 5.8 Planning par période
 
 **URLs** :
-- `GET /planning/` → `menu:planning` — redirige vers la période en cours ou `creer_periode`
+- `GET /planning/` → `menu:planning` — redirige vers la période en cours (ou `creer_periode` si aucune)
 - `GET /planning/creer/` → `menu:creer_periode` — formulaire de création d'une période
 - `GET /planning/<id>/` → `menu:planning_periode` — affiche la période par son ID
 
 **Vues** : `planning`, `creer_periode`, `planning_periode`
 **Templates** : `menu/planning/semaine.html`, `menu/planning/creer_periode.html`
-**Accès** : tout membre de la famille (création réservée au Cuisinier)
+**Accès** : tout membre de la famille (création et modification réservées au Cuisinier)
 
-**Création d'une période (Cuisinier)** :
-- Sélection des jours (boutons Lun–Dim), au moins 1, max 7 jours
-- Jours passés interdits
-- Les jours sélectionnés sont stockés dans `active_dates` (liste de dates ISO)
-- La grille n'affiche que les jours actifs (pas forcément 7 colonnes)
+---
 
-**Navigation** : flèches prev/next par ID de WeekPlan adjacent (par date). La flèche "suivant" absente est remplacée par un lien "+" vers la création.
+**Création d'une période (`creer_periode`)** :
+- La `suggested_start` est calculée : lendemain de la fin de la dernière période, ou aujourd'hui
+- Le paramètre GET `?after=YYYY-MM-DD` force `suggested_start = after + 1 jour` (utilisé par le bouton `+` de navigation)
+- Affiche 7 jours depuis `suggested_start` en ordre chronologique, tous pré-cochés
+- L'utilisateur peut décocher les jours non souhaités
+- Les jours sélectionnés sont stockés dans `active_dates` (liste de dates ISO triées)
+- `period_start = premier jour sélectionné`, `period_end = dernier jour sélectionné`
+- Validation : au moins 1 jour, max 7 jours, pas dans le passé
 
-**Contenu affiché** :
-- Dates de début / fin de la période
-- Statut (Brouillon / Validé / Terminé) + boutons d'action selon le statut
-- Bloc Présence : membres famille présents + invités libres (informatif)
-- Alertes équilibre (Cuisinier uniquement)
-- Bilan nutritionnel : poisson, végétarien, viande blanche, viande rouge, calories, protéines, sucres
-- Grille des jours actifs × 2 repas (midi / soir)
+---
+
+**Modification des jours (`modifier_jours_periode`)** :
+
+`POST /planning/<id>/jours/` → `menu:modifier_jours_periode`
+
+- Met à jour `active_dates` et `period_end`
+- Supprime les `Meal` des dates retirées (transaction atomique)
+- **Cascade automatique** : si `period_end` change ET qu'une période suivante existe en brouillon sans repas, cette période est automatiquement recalée (ses dates sont décalées du même delta)
+
+---
+
+**Affichage (`planning_periode`)** :
+- Sélecteur de jours (Cuisinier) : 7 jours depuis `period_start` en ordre chronologique — les jours actifs sont cochés, les autres décochables
+- Navigation prev/next : WeekPlan adjacent par date, identifié par son `id`. La flèche `+` (dernier plan) pointe vers `creer_periode?after=<period_end>`
+- Grille : uniquement les `active_dates` × 2 créneaux (midi / soir)
+- Bloc Présence : membres famille (M2M) + invités ponctuels — AJAX auto-save
+- Bilan équilibre (Cuisinier) : poisson, végétarien, viande blanche, viande rouge, calories/période, protéines/période, sucres/période
 - Backlog propositions famille
 
 ---
@@ -682,17 +701,18 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 
 | Statut | Label | Boutons Cuisinier |
 |--------|-------|-------------------|
-| `draft` | ✏️ Brouillon | ✓ Valider |
-| `published` | ✅ Validé | 🛒 Publier la liste de courses · ✏️ Modifier |
+| `draft` | ✏️ Brouillon | ✓ Valider le menu |
+| `published` | ✅ Validé | 🛒 Publier les courses · ✏️ Modifier |
 | `finished` | 🏁 Terminé | ✏️ Modifier |
 
 **Transitions** :
 - `draft → published` : `POST /planning/<id>/valider/` → `menu:valider_planning`
-- `published → finished` : `POST /courses/generer/<id>/` → génère la liste ET passe en `finished`
-- `published/finished → draft` : `POST /planning/<id>/rouvrir/` → `menu:rouvrir_planning` (supprime la ShoppingList si statut était `finished`)
+- `published → finished` : `POST /courses/generer/<id>/` → génère la ShoppingList ET passe en `finished`
+- `published/finished → draft` : `POST /planning/<id>/rouvrir/` → `menu:rouvrir_planning` — supprime la ShoppingList si le statut était `finished`
 
 **Présence** : `POST /planning/<id>/presence/` → `menu:maj_presence` (AJAX JSON)
-- Met à jour `present_members` (M2M User) et `guests` (JSONField liste de noms)
+- Met à jour `present_members` (M2M User) et `guests` (JSONField liste de noms libres)
+- Auto-save à chaque changement (pas de bouton Valider)
 
 ---
 
@@ -865,14 +885,16 @@ Comportement :
 ### États de `WeekPlan`
 
 ```
-DRAFT ──[publier_planning]──► PUBLISHED
+DRAFT ──[valider_planning]──► PUBLISHED ──[generer_courses]──► FINISHED
+  ▲                               │                                │
+  └───────────[rouvrir_planning]──┘────────────────────────────────┘
 ```
 
 | Transition | Vue | Conditions |
 |------------|-----|------------|
-| `DRAFT` → `PUBLISHED` | `publier_planning` | Cuisinier de la famille, au moins 1 Meal non vide |
-
-**Transition interdite** : `PUBLISHED` → `DRAFT` non prévue (modification directe possible).
+| `DRAFT` → `PUBLISHED` | `valider_planning` | Cuisinier de la famille |
+| `PUBLISHED` → `FINISHED` | `generer_courses` | Cuisinier, génère la ShoppingList |
+| `PUBLISHED/FINISHED` → `DRAFT` | `rouvrir_planning` | Cuisinier — supprime ShoppingList si `FINISHED` |
 
 ---
 
@@ -1166,6 +1188,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0012_recipe_nutrition_status` | 2026-05-02 | `Recipe.nutrition_status` CharField (`ok`/`partial`/`missing`) |
 | `0013_ingredientref_new_nutrition_fields` | 2026-05-02 | `IngredientRef` : `sucres_100g`, `fibres_100g`, `ag_satures_100g`, `sel_100g` |
 | `0014_sugars_per_serving` | 2026-05-04 | `Recipe.sugars_per_serving` FloatField — sucres par portion |
+| `0015_weekplan_flexible_periods` | 2026-05-04 | `WeekPlan` : `active_dates` JSONField, `guests` JSONField, `present_members` M2M, statut `finished` ajouté |
 
 ---
 
@@ -1195,7 +1218,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v4.3 | 2026-05-04 | Propositions en backlog famille — persistantes (week_plan=None), visibles par tous les Convives, bouton "Proposer" sur fiche recette, sans email |
 | v4.4 | 2026-05-04 | "Mettre en avant" une photo de galerie met à jour `Recipe.photo_url` — photo visible dans la liste et l'en-tête |
 | v4.4 | 2026-05-04 | Fiche recette : Retour/Proposer/Mode Cuisine en haut, Famille/Modifier en bas — bouton Proposer ouvert à tous les membres de la famille |
-| v5.0 | 2026-05-04 | Planning par périodes flexibles : active_dates, statut finished, présence membres/invités, viande blanche dans le bilan, sucres, navigation par plan_id |
+| v5.0 | 2026-05-04 | Planning par périodes flexibles : `active_dates`, statut `finished`, présence membres/invités (AJAX auto-save), viande blanche + sucres dans le bilan, navigation par `plan_id`, cascade recalage période suivante |
 
 ### Détail v2.0
 
