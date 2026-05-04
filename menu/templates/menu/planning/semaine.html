@@ -79,10 +79,9 @@
         {% csrf_token %}
         <div class="planning-jours__days">
             {% for day in periode_candidate_days %}
-            <label class="day-toggle{% if day.iso in active_dates_iso %} day-toggle--active{% endif %}{% if day.disabled %} day-toggle--disabled{% endif %}" id="day-{{ day.iso }}">
+            <label class="day-toggle{% if day.iso in active_dates_iso %} day-toggle--active{% endif %}" id="day-{{ day.iso }}">
                 <input type="checkbox" name="jours" value="{{ day.iso }}"
                        {% if day.iso in active_dates_iso %}checked{% endif %}
-                       {% if day.disabled %}disabled{% endif %}
                        class="day-toggle__cb" style="display:none">
                 <span class="day-toggle__label">{{ day.label }}</span>
                 <span class="day-toggle__date">{{ day.date|date:"d/m" }}</span>

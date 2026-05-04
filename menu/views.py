@@ -491,28 +491,11 @@ def creer_periode(request):
 
     JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 
-    # Semaines calendaires complètes (lundi→dimanche) sur 2 semaines depuis le lundi de suggested_start
-    week_mon = suggested_start - timedelta(days=suggested_start.weekday())
-    week_sun = week_mon + timedelta(days=13)
-
-    # Jours déjà pris par des périodes existantes
-    taken_dates = set()
-    for ep in WeekPlan.objects.filter(family=profile.family):
-        for d in ep.get_active_dates():
-            taken_dates.add(d.isoformat())
-
-    candidate_days_info = []
-    d = week_mon
-    while d <= week_sun:
-        iso = d.isoformat()
-        candidate_days_info.append({
-            "date": d,
-            "label": JOURS_FR[d.weekday()],
-            "iso": iso,
-            "disabled": iso in taken_dates or d < suggested_start,
-            "precheck": d >= suggested_start and iso not in taken_dates,
-        })
-        d += timedelta(days=1)
+    # 7 jours depuis suggested_start, ordre chronologique
+    candidate_days_info = [
+        {"date": suggested_start + timedelta(days=i), "label": JOURS_FR[(suggested_start + timedelta(days=i)).weekday()], "iso": (suggested_start + timedelta(days=i)).isoformat()}
+        for i in range(7)
+    ]
 
     return render(request, "menu/planning/creer_periode.html", {
         "today_iso": today.isoformat(),
@@ -588,29 +571,13 @@ def planning_periode(request, plan_id):
     )
     present_member_ids = set(plan.present_members.values_list("id", flat=True))
 
-    # Sélecteur de jours : semaines calendaires complètes (lundi→dimanche)
+    # Sélecteur de jours : 7 jours depuis period_start, ordre chronologique
     active_dates_iso = set(plan.active_dates) if plan.active_dates else {d.isoformat() for d in active_dates}
 
-    week_mon = plan.period_start - timedelta(days=plan.period_start.weekday())
-    week_sun = plan.period_end + timedelta(days=6 - plan.period_end.weekday())
-
-    taken_dates = set()
-    if prev_plan:
-        taken_dates.update(d.isoformat() for d in prev_plan.get_active_dates())
-    if next_plan:
-        taken_dates.update(d.isoformat() for d in next_plan.get_active_dates())
-
-    periode_candidate_days = []
-    _d = week_mon
-    while _d <= week_sun:
-        iso = _d.isoformat()
-        periode_candidate_days.append({
-            "date": _d,
-            "label": JOURS_FR[_d.weekday()],
-            "iso": iso,
-            "disabled": iso in taken_dates,
-        })
-        _d += timedelta(days=1)
+    periode_candidate_days = [
+        {"date": plan.period_start + timedelta(days=i), "label": JOURS_FR[(plan.period_start + timedelta(days=i)).weekday()], "iso": (plan.period_start + timedelta(days=i)).isoformat()}
+        for i in range(7)
+    ]
 
     ctx = {
         "plan": plan,

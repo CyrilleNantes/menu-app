@@ -883,7 +883,7 @@
         headerDates.textContent = `${formatDate(first, false)} — ${formatDate(last, true)}`;
     }
 
-    form.querySelectorAll('.day-toggle:not(.day-toggle--disabled)').forEach(label => {
+    form.querySelectorAll('.day-toggle').forEach(label => {
         label.addEventListener('click', function (e) {
             e.preventDefault();
             const cb = label.querySelector('.day-toggle__cb');
