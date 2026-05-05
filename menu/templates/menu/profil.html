@@ -266,15 +266,26 @@
                 </tbody>
                 <tfoot>
                     <tr class="nutrition-targets-table__total">
-                        <td colspan="2"><strong>Total journalier</strong></td>
+                        <td colspan="2"><strong>Total kcal/jour</strong></td>
                         <td id="nutrition-total-kcal"><strong>{{ profile.daily_kcal_total }} kcal</strong></td>
                         <td class="text-muted" id="nutrition-planned-hint">dont {{ profile.planned_kcal_per_day }} kcal planifiés</td>
                     </tr>
-                    <tr>
-                        <td>💪 Protéines/jour</td>
+                    <tr class="nutrition-targets-table__total">
+                        <td colspan="2"><strong>Total protéines/jour</strong></td>
+                        <td>
+                            <input type="number" name="daily_prot_target" value="{{ profile.daily_prot_target }}" min="0" max="300" step="1" class="input-short" required>
+                        </td>
                         <td class="text-muted pnns-ref" data-field="daily_prot_target">—</td>
-                        <td><input type="number" name="daily_prot_target" value="{{ profile.daily_prot_target }}" min="0" max="300" step="5" class="input-short" required></td>
-                        <td class="text-muted">dont {{ profile.planned_prot_per_day }}g planifiés</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="text-muted" style="font-size:.8rem">↳ dont planifiés (déj. + dîner)</td>
+                        <td id="nutrition-prot-planned"><span class="text-muted">{{ profile.planned_prot_per_day }} g</span></td>
+                        <td><span class="badge badge--ok">✓ Oui</span></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="text-muted" style="font-size:.8rem">↳ dont hors planning</td>
+                        <td id="nutrition-prot-other"><span class="text-muted">{% widthratio profile.daily_prot_target 1 1 %} g</span></td>
+                        <td class="text-muted">Non</td>
                     </tr>
                 </tfoot>
             </table>
@@ -306,6 +317,17 @@
                 const dinner = parseInt(getInput('dinner_kcal_target')?.value) || 0;
                 totalEl.innerHTML = `<strong>${sum} kcal</strong>`;
                 hintEl.textContent = `dont ${lunch + dinner} kcal planifiés`;
+                updateProteins(sum, lunch + dinner);
+            }
+
+            function updateProteins(totalKcal, plannedKcal) {
+                const protTotal   = parseInt(getInput('daily_prot_target')?.value) || 0;
+                const planned     = totalKcal > 0 ? Math.round(protTotal * plannedKcal / totalKcal * 10) / 10 : 0;
+                const other       = Math.round((protTotal - planned) * 10) / 10;
+                const plannedEl   = document.getElementById('nutrition-prot-planned');
+                const otherEl     = document.getElementById('nutrition-prot-other');
+                if (plannedEl) plannedEl.innerHTML = `<span class="text-muted">${planned} g</span>`;
+                if (otherEl)   otherEl.innerHTML   = `<span class="text-muted">${other} g</span>`;
             }
 
             function updateRefs(profile) {
@@ -334,6 +356,19 @@
             });
 
             kcalFields.forEach(n => getInput(n)?.addEventListener('input', updateTotal));
+            getInput('daily_prot_target')?.addEventListener('input', function () {
+                const sum    = kcalFields.reduce((acc, n) => acc + (parseInt(getInput(n)?.value) || 0), 0);
+                const lunch  = parseInt(getInput('lunch_kcal_target')?.value) || 0;
+                const dinner = parseInt(getInput('dinner_kcal_target')?.value) || 0;
+                updateProteins(sum, lunch + dinner);
+            });
+            // Calcul initial au chargement
+            (function () {
+                const sum    = kcalFields.reduce((acc, n) => acc + (parseInt(getInput(n)?.value) || 0), 0);
+                const lunch  = parseInt(getInput('lunch_kcal_target')?.value) || 0;
+                const dinner = parseInt(getInput('dinner_kcal_target')?.value) || 0;
+                updateProteins(sum, lunch + dinner);
+            })();
         })();
         </script>
     </section>
