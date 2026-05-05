@@ -260,11 +260,11 @@
                     const rows = el.querySelectorAll('.bilan-membre__row');
                     if (rows[0]) {
                         rows[0].querySelector('.bilan-membre__label').textContent = `🔥 ${m.kcal} kcal`;
-                        rows[0].querySelector('.bilan-membre__hint').textContent  = `/ ${m.kcal_target} kcal cible · ${m.kcal_pct}%`;
+                        rows[0].querySelector('.bilan-membre__hint').textContent  = `Cible : ${m.kcal_target} kcal · ${m.kcal_pct}%`;
                     }
                     if (rows[1]) {
                         rows[1].querySelector('.bilan-membre__label').textContent = `💪 ${m.prot}g prot.`;
-                        rows[1].querySelector('.bilan-membre__hint').textContent  = `/ ${m.prot_target}g cible · ${m.prot_pct}%`;
+                        rows[1].querySelector('.bilan-membre__hint').textContent  = `Cible : ${m.prot_target}g · ${m.prot_pct}%`;
                     }
                     const bars = el.querySelectorAll('.bilan-progress__bar');
                     if (bars[0]) {
