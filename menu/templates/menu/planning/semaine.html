@@ -171,7 +171,7 @@
             <span class="bilan-membre__name">{{ m.name }}</span>
             <div class="bilan-membre__row">
                 <span class="bilan-membre__label bilan-membre__label--kcal">🔥 {{ m.kcal }} kcal</span>
-                <span class="bilan-membre__hint">{{ m.kcal_pct }}%</span>
+                <span class="bilan-membre__hint">/ {{ m.kcal_target }} kcal cible &nbsp;·&nbsp; {{ m.kcal_pct }}%</span>
             </div>
             <div class="bilan-progress">
                 <div class="bilan-progress__bar bilan-progress__bar--kcal bilan-progress__bar--{{ m.kcal_status }}"
@@ -179,7 +179,7 @@
             </div>
             <div class="bilan-membre__row" style="margin-top:.3rem">
                 <span class="bilan-membre__label bilan-membre__label--prot">💪 {{ m.prot }}g prot.</span>
-                <span class="bilan-membre__hint">{{ m.prot_pct }}%</span>
+                <span class="bilan-membre__hint">/ {{ m.prot_target }}g cible &nbsp;·&nbsp; {{ m.prot_pct }}%</span>
             </div>
             <div class="bilan-progress">
                 <div class="bilan-progress__bar bilan-progress__bar--prot bilan-progress__bar--prot-{{ m.prot_status }}"
@@ -201,7 +201,7 @@
             <span class="bilan-membre__name">{{ m.name }}</span>
             <div class="bilan-membre__row">
                 <span class="bilan-membre__label bilan-membre__label--kcal">🔥 {{ m.kcal }} kcal</span>
-                <span class="bilan-membre__hint">{{ m.kcal_pct }}%</span>
+                <span class="bilan-membre__hint">/ {{ m.kcal_target }} kcal cible &nbsp;·&nbsp; {{ m.kcal_pct }}%</span>
             </div>
             <div class="bilan-progress">
                 <div class="bilan-progress__bar bilan-progress__bar--kcal bilan-progress__bar--{{ m.kcal_status }}"
@@ -209,7 +209,7 @@
             </div>
             <div class="bilan-membre__row" style="margin-top:.3rem">
                 <span class="bilan-membre__label bilan-membre__label--prot">💪 {{ m.prot }}g prot.</span>
-                <span class="bilan-membre__hint">{{ m.prot_pct }}%</span>
+                <span class="bilan-membre__hint">/ {{ m.prot_target }}g cible &nbsp;·&nbsp; {{ m.prot_pct }}%</span>
             </div>
             <div class="bilan-progress">
                 <div class="bilan-progress__bar bilan-progress__bar--prot bilan-progress__bar--prot-{{ m.prot_status }}"
