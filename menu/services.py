@@ -432,9 +432,14 @@ def bilan_planning(week_plan) -> dict:
 def bilan_par_membre(plan) -> list[dict]:
     """
     Calcule les kcal/prot de la période par membre présent.
-    - Repas mappé + membre présent dans meal_members → calories * portions_factor
-    - Repas absent → calories_dinner_target * portions_factor (proxy 1 repas)
-    - Repas sans recette ou membre absent du repas → 0
+
+    Par jour :
+    - Repas hors planning (petit-dej, collation, autres) → valeurs fixes du profil, ajoutées chaque jour
+    - Repas planifié avec recette + membre présent → kcal/prot de la recette × portions_factor
+    - Repas absent → cible du profil pour ce créneau (lunch ou dinner) × portions_factor
+    - Créneau sans repas ou membre non présent → 0
+
+    Cible totale = daily_kcal_total (profil) × nb_jours
     """
     config = NutritionConfig.get()
     active_dates = plan.get_active_dates()
@@ -458,35 +463,47 @@ def bilan_par_membre(plan) -> list[dict]:
     result = []
     for user in present_users:
         try:
-            factor = user.profile.portions_factor
+            factor  = user.profile.portions_factor
+            profile = user.profile
+            # Créneaux planifiés — kcal
+            lunch_kcal    = (profile.lunch_kcal_target  or 650) * factor
+            dinner_kcal   = (profile.dinner_kcal_target or 650) * factor
+            # Créneaux planifiés — protéines
+            lunch_prot    = (profile.lunch_prot_target  or 25) * factor
+            dinner_prot   = (profile.dinner_prot_target or 25) * factor
+            # Hors planning — kcal et protéines par jour
+            fixed_kcal    = ((profile.breakfast_kcal or 0) + (profile.snack_kcal or 0) + (profile.other_kcal or 0)) * factor
+            fixed_prot    = ((profile.breakfast_prot  or 0) + (profile.snack_prot  or 0) + (profile.other_prot  or 0)) * factor
+            # Cibles journalières complètes
+            daily_kcal_target = (profile.daily_kcal_total or 2000) * factor
+            daily_prot_target = (profile.daily_prot_total or 75)   * factor
         except Exception:
             factor = 1.0
-
-        try:
-            profile       = user.profile
-            lunch_target  = (profile.lunch_kcal_target  or 650) * factor
-            dinner_target = (profile.dinner_kcal_target or 650) * factor
-            prot_day      = float((profile.lunch_prot_target or 25) + (profile.dinner_prot_target or 25)) * factor
-        except Exception:
-            lunch_target  = (config.calories_dinner_target or 650) * factor
-            dinner_target = (config.calories_dinner_target or 650) * factor
-            prot_day      = (config.proteins_dinner_target or 27) * factor
+            lunch_kcal  = dinner_kcal  = (config.calories_dinner_target or 650) * factor
+            lunch_prot  = dinner_prot  = (config.proteins_dinner_target  or 27)  * factor
+            fixed_kcal  = fixed_prot   = 0.0
+            daily_kcal_target = (config.calories_dinner_target or 650) * 2 * factor
+            daily_prot_target = (config.proteins_dinner_target  or 27)  * 2 * factor
 
         kcal_total = 0.0
         prot_total = 0.0
+        member_ids_in_meals = {}
 
-        member_ids_in_meals = {}  # slot → frozenset of user IDs (lazy fetch)
-
-        kcal_target_total = 0.0
+        nb_jours = len(active_dates)
         for d in active_dates:
+            # Hors planning : ajoutés chaque jour sans condition
+            kcal_total += fixed_kcal
+            prot_total += fixed_prot
+
             for mt in ('lunch', 'dinner'):
-                slot_target = lunch_target if mt == 'lunch' else dinner_target
-                kcal_target_total += slot_target
+                slot_kcal = lunch_kcal if mt == 'lunch' else dinner_kcal
+                slot_prot = lunch_prot if mt == 'lunch' else dinner_prot
                 meal = meal_by_slot.get((d, mt))
                 if meal is None:
                     continue
                 if meal.absent:
-                    kcal_total += slot_target
+                    kcal_total += slot_kcal
+                    prot_total += slot_prot
                 elif meal.recipe:
                     slot = (meal.pk,)
                     if slot not in member_ids_in_meals:
@@ -497,9 +514,8 @@ def bilan_par_membre(plan) -> list[dict]:
                         kcal_total += (meal.recipe.calories_per_serving or 0) * factor
                         prot_total += (meal.recipe.proteins_per_serving or 0) * factor
 
-        nb_jours = len(active_dates)
-        weekly_target_prorated = kcal_target_total
-        prot_target = prot_day * nb_jours
+        kcal_target = daily_kcal_target * nb_jours
+        prot_target = daily_prot_target * nb_jours
 
         def _pct_membre(actual, target):
             return min(round(actual / target * 100) if target else 0, 100)
@@ -515,15 +531,15 @@ def bilan_par_membre(plan) -> list[dict]:
             return 'ok'
 
         result.append({
-            'user_id':    user.pk,
-            'name':       user.first_name or user.email.split('@')[0],
-            'kcal':       round(kcal_total),
-            'prot':       round(prot_total, 1),
-            'kcal_target': round(weekly_target_prorated),
+            'user_id':     user.pk,
+            'name':        user.first_name or user.email.split('@')[0],
+            'kcal':        round(kcal_total),
+            'prot':        round(prot_total, 1),
+            'kcal_target': round(kcal_target),
             'prot_target': round(prot_target, 1),
-            'kcal_pct':   _pct_membre(kcal_total, weekly_target_prorated),
-            'prot_pct':   _pct_membre(prot_total, prot_target),
-            'kcal_status': _status_membre(kcal_total, weekly_target_prorated),
+            'kcal_pct':    _pct_membre(kcal_total, kcal_target),
+            'prot_pct':    _pct_membre(prot_total, prot_target),
+            'kcal_status': _status_membre(kcal_total, kcal_target),
             'prot_status': _status_membre(prot_total, prot_target),
         })
 
