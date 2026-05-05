@@ -1,0 +1,497 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Management — Menu Familial{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <span class="page-header__label">ADMINISTRATION</span>
+  <h1>Management</h1>
+</div>
+
+{% if messages %}
+<div class="messages">
+  {% for message in messages %}
+  <div class="message message--{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 1 — Base de connaissance ingrédients
+══════════════════════════════════════════════════════════════════ -->
+<section style="margin-bottom:3rem">
+  <h2 style="font-size:1.2rem;margin-bottom:1rem">🧠 Base de connaissance ingrédients</h2>
+  <p style="color:#555;margin-bottom:1.5rem;font-size:.9rem">
+    Tous les ingrédients utilisés dans vos recettes. Le mapping Ciqual permet le calcul
+    nutritionnel automatique. Les synonymes améliorent l'autocomplete (insensible aux accents et à la casse).
+  </p>
+
+  <!-- Ajouter un ingrédient -->
+  <details style="margin-bottom:1.5rem">
+    <summary style="cursor:pointer;font-weight:600;padding:.5rem 0">+ Ajouter un ingrédient</summary>
+    <div style="background:#f9f9f9;border:1px solid #ddd;border-radius:8px;padding:1rem;margin-top:.5rem;max-width:700px">
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end">
+        <div style="flex:1;min-width:180px">
+          <label style="font-size:.85rem;font-weight:500;display:block;margin-bottom:.3rem">Nom de l'ingrédient *</label>
+          <input type="text" id="add-name" placeholder="ex: spaghetti"
+                 style="width:100%;padding:.45rem .6rem;border:1px solid #ccc;border-radius:4px">
+        </div>
+        <div style="flex:2;min-width:220px;position:relative">
+          <label style="font-size:.85rem;font-weight:500;display:block;margin-bottom:.3rem">Mapping Ciqual (optionnel)</label>
+          <input type="text" id="add-ciqual-search" placeholder="Rechercher dans Ciqual…"
+                 autocomplete="off"
+                 style="width:100%;padding:.45rem .6rem;border:1px solid #ccc;border-radius:4px">
+          <input type="hidden" id="add-ciqual-id">
+          <span id="add-ciqual-badge" style="display:none;font-size:.8rem;color:#2e7d32;margin-top:.3rem;display:block"></span>
+          <ul id="add-ciqual-dropdown" style="display:none;position:absolute;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;width:100%;max-height:200px;overflow-y:auto;margin:0;padding:0;list-style:none"></ul>
+        </div>
+        <button id="btn-add-ki" class="btn btn--primary" style="white-space:nowrap">Ajouter</button>
+      </div>
+      <p id="add-error" style="color:#c62828;font-size:.85rem;margin-top:.5rem;display:none"></p>
+    </div>
+  </details>
+
+  <!-- Filtres -->
+  <form method="get" style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center">
+    <input type="text" name="q" value="{{ q }}" placeholder="Rechercher un ingrédient ou synonyme…"
+           style="flex:1;min-width:200px;padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px">
+    <select name="filtre" style="padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px">
+      <option value="tous" {% if filtre == 'tous' %}selected{% endif %}>Tous</option>
+      <option value="avec_ciqual" {% if filtre == 'avec_ciqual' %}selected{% endif %}>Avec mapping Ciqual</option>
+      <option value="sans_ciqual" {% if filtre == 'sans_ciqual' %}selected{% endif %}>Sans mapping Ciqual</option>
+    </select>
+    <button type="submit" class="btn btn--primary btn--sm">Filtrer</button>
+    {% if q or filtre != 'tous' %}<a href="{% url 'menu:management_page' %}" class="btn btn--secondary btn--sm">Réinitialiser</a>{% endif %}
+  </form>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+    <p style="color:#888;font-size:.85rem;margin:0">{{ total }} ingrédient{{ total|pluralize }}</p>
+    <div style="display:flex;gap:.5rem">
+      <form method="post" action="{% url 'menu:build_known_ingredients_view' %}" style="margin:0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm"
+                title="Étape 2 — Construit la base d'ingrédients connus à partir des recettes importées">
+          🏗️ Construire la base
+        </button>
+      </form>
+      <form method="post" action="{% url 'menu:link_known_ingredients' %}" style="margin:0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm"
+                title="Étape 3 (après mapping Ciqual) — Relie les recettes à la base de connaissance">
+          🔗 Lier les recettes
+        </button>
+      </form>
+      <form method="post" action="{% url 'menu:recalculate_nutrition_view' %}" style="margin:0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm"
+                title="Étape 4 — Recalcule les macros de toutes les recettes depuis les mappings Ciqual actuels">
+          🔄 Recalculer les macros
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:.88rem;min-width:700px">
+    <thead>
+      <tr style="background:#f5f5f5;text-align:left">
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Ingrédient</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:70px;text-align:center">Recettes</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Synonymes</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:80px">Unité déf.</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Mapping Ciqual</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px;text-align:right">kcal/100g</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px;text-align:right">prot./100g</th>
+      </tr>
+    </thead>
+    <tbody id="ki-table-body">
+      {% for ki in ingredients %}
+      <tr class="ki-row" data-ki-id="{{ ki.pk }}" style="border-bottom:1px solid #eee">
+        <td style="padding:.6rem .8rem;font-weight:500">{{ ki.name }}</td>
+        <td style="padding:.6rem .8rem;text-align:center">
+          {% if ki.nb_recettes %}<span style="background:#e8f5e9;color:#2e7d32;border-radius:12px;padding:2px 8px">{{ ki.nb_recettes }}</span>
+          {% else %}<span style="color:#ccc">—</span>{% endif %}
+        </td>
+        <td style="padding:.6rem .8rem">
+          <div style="display:flex;gap:.4rem;align-items:center">
+            <input type="text" class="ki-synonymes" value="{{ ki.synonymes }}"
+                   placeholder="ex: spag, pâtes, tagliatelles"
+                   style="flex:1;padding:.3rem .5rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;min-width:120px">
+            <button class="btn btn--secondary btn--sm ki-save-syno" style="white-space:nowrap">✓</button>
+            <span class="ki-syno-status" style="display:none;color:#2e7d32;font-size:.8rem">✓</span>
+          </div>
+        </td>
+        <td style="padding:.6rem .8rem">
+          <input type="text" class="ki-default-unit" value="{{ ki.default_unit|default:'g' }}"
+                 maxlength="20"
+                 style="width:60px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
+                 title="Unité par défaut (g, ml, kg, unité…)">
+          <span class="ki-unit-status" style="display:none;color:#2e7d32;font-size:.8rem;margin-left:.2rem">✓</span>
+        </td>
+        <td style="padding:.6rem .8rem">
+          <div class="ki-ciqual-cell">
+            <span class="ki-ciqual-label" style="font-size:.85rem;color:{% if ki.ciqual_ref %}#333{% else %}#aaa{% endif %}">
+              {{ ki.ciqual_ref.nom_fr|default:"— non qualifié" }}
+            </span>
+            <button class="btn btn--secondary btn--sm ki-edit-ciqual" style="margin-left:.4rem;font-size:.75rem">Changer</button>
+          </div>
+          <div class="ki-ciqual-edit" style="display:none;margin-top:.4rem;position:relative">
+            <input type="text" class="ki-ciqual-search" placeholder="Rechercher dans Ciqual…"
+                   autocomplete="off"
+                   style="width:100%;padding:.3rem .5rem;border:1px solid #ccc;border-radius:4px;font-size:.85rem">
+            <input type="hidden" class="ki-ciqual-id">
+            <ul class="ki-ciqual-dropdown" style="display:none;position:absolute;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;width:100%;max-height:160px;overflow-y:auto;margin:0;padding:0;list-style:none;font-size:.85rem"></ul>
+            <div style="margin-top:.3rem;display:flex;gap:.4rem">
+              <button class="btn btn--primary btn--sm ki-save-ciqual">Enregistrer</button>
+              <button class="btn btn--secondary btn--sm ki-cancel-ciqual">Annuler</button>
+            </div>
+          </div>
+        </td>
+        <td style="padding:.6rem .8rem;text-align:right;color:#555">
+          <span class="ki-kcal">{% if ki.kcal_100g %}{{ ki.kcal_100g|floatformat:0 }}{% else %}—{% endif %}</span>
+        </td>
+        <td style="padding:.6rem .8rem;text-align:right;color:#555">
+          <span class="ki-prot">{% if ki.proteines_100g %}{{ ki.proteines_100g|floatformat:1 }}{% else %}—{% endif %}</span>
+        </td>
+        <td style="display:none">{{ ki.pk }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" style="padding:2rem;text-align:center;color:#888">Aucun ingrédient trouvé</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+{% if is_staff %}
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 2 — Backup & Import (staff uniquement)
+══════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2 style="font-size:1.2rem;margin-bottom:1rem">💾 Backup &amp; Import</h2>
+  <div class="backup-grid">
+    <div class="backup-card">
+      <div class="backup-card__label">EXPORTER</div>
+      <p>Télécharge un fichier <code>.zip</code> contenant toutes les données (recettes, plannings, familles, comptes).</p>
+      <a href="{% url 'menu:export_backup' %}" class="btn btn--primary">↓ Télécharger le backup</a>
+    </div>
+    <div class="backup-card backup-card--danger">
+      <div class="backup-card__label">RESTAURER</div>
+      <p><strong>Attention : toutes les données actuelles seront effacées</strong> avant l'import.</p>
+      <form method="post" action="{% url 'menu:import_backup' %}" id="form-restore" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="file" name="backup_zip" accept=".zip" required class="backup-file-input">
+        <button type="button" id="btn-restore" class="btn btn--danger" style="margin-top:.5rem">⚠ Restaurer</button>
+      </form>
+    </div>
+  </div>
+  <div class="backup-card backup-card--wide" style="margin-top:1rem">
+    <div class="backup-card__label">IMPORTER DES RECETTES</div>
+    <div class="backup-import-grid">
+      <div class="backup-import-col">
+        <p class="backup-import-col__title">Recette unique <code>.json</code></p>
+        <form method="post" action="{% url 'menu:import_recettes' %}" enctype="multipart/form-data" class="backup-import-form">
+          {% csrf_token %}<input type="file" name="recette_json" accept=".json" required class="backup-file-input">
+          <button type="submit" class="btn btn--secondary">↑ Importer</button>
+        </form>
+      </div>
+      <div class="backup-import-col">
+        <p class="backup-import-col__title">Import en masse <code>.zip</code></p>
+        <form method="post" action="{% url 'menu:import_recettes' %}" enctype="multipart/form-data" class="backup-import-form">
+          {% csrf_token %}<input type="file" name="recettes_zip" accept=".zip" required class="backup-file-input">
+          <button type="submit" class="btn btn--secondary">↑ Importer tout</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 3 — Maintenance Ciqual (staff uniquement)
+══════════════════════════════════════════════════════════════════ -->
+<section style="margin-top:2rem">
+  <h2 style="font-size:1.2rem;margin-bottom:1rem">🧹 Maintenance Ciqual
+    <a href="{% url 'menu:gestion_ciqual_ref' %}" class="btn btn--secondary btn--sm" style="margin-left:1rem;font-size:.8rem">
+      📋 Voir / éditer le référentiel
+    </a>
+  </h2>
+  <div style="display:flex;gap:1rem;flex-wrap:wrap">
+
+    <div class="backup-card" style="flex:1;min-width:260px">
+      <div class="backup-card__label">IMPORTER UN FICHIER CIQUAL</div>
+      <p>Upload du fichier <code>.xls</code> retravaillé. <strong>Vide et recharge toute la table.</strong><br>
+      Les mappings KnownIngredient → Ciqual sont conservés si les codes Ciqual n'ont pas changé.</p>
+      <form method="post" action="{% url 'menu:import_ciqual_view' %}" enctype="multipart/form-data" style="margin-top:.75rem">
+        {% csrf_token %}
+        <input type="file" name="ciqual_xls" accept=".xls,.xlsx" required class="backup-file-input">
+        <button type="submit" class="btn btn--primary btn--sm" style="margin-top:.5rem"
+                onclick="return confirm('Vider et recharger toute la table Ciqual ?')">
+          ↑ Importer et recharger
+        </button>
+      </form>
+    </div>
+
+    <div class="backup-card" style="flex:1;min-width:260px">
+      <div class="backup-card__label">NETTOYER LA TABLE CIQUAL</div>
+      <p>Supprime les entrées inutiles :<br>
+      • <strong>Plats composés</strong><br>
+      • <strong>Entrées sans calorie</strong> (légumes crus non mesurés…)<br>
+      Eaux, bouillons et vinaigres conservés.</p>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
+        <form method="post" action="{% url 'menu:clean_ciqual_view' %}" style="margin:0">
+          {% csrf_token %}
+          <input type="hidden" name="dry_run" value="1">
+          <button type="submit" class="btn btn--secondary btn--sm">🔍 Simuler</button>
+        </form>
+        <form method="post" action="{% url 'menu:clean_ciqual_view' %}" style="margin:0">
+          {% csrf_token %}
+          <input type="hidden" name="dry_run" value="0">
+          <button type="submit" class="btn btn--danger btn--sm"
+                  onclick="return confirm('Supprimer les entrées Ciqual inutiles ?')">
+            🧹 Nettoyer
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 4 — Réinitialisation (staff uniquement)
+══════════════════════════════════════════════════════════════════ -->
+<section style="margin-top:2rem">
+  <h2 style="font-size:1.2rem;margin-bottom:1rem">🗑️ Réinitialisation</h2>
+  <div class="backup-card backup-card--danger">
+    <div class="backup-card__label">RESET</div>
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+
+      <div>
+        <p style="margin:.25rem 0 .5rem"><strong>Recettes uniquement</strong><br>
+        <small style="color:#888">Garde les plannings et la base d'ingrédients connus</small></p>
+        <button type="button" class="btn btn--danger btn--sm"
+                onclick="ouvrirDialogReset('recipes')">
+          🗑️ Vider les recettes
+        </button>
+      </div>
+
+      <div>
+        <p style="margin:.25rem 0 .5rem"><strong>Reset complet</strong><br>
+        <small style="color:#888">Recettes + ingrédients connus + plannings — repart de zéro</small></p>
+        <button type="button" class="btn btn--danger btn--sm"
+                onclick="ouvrirDialogReset('full')">
+          ⚠️ Reset complet
+        </button>
+      </div>
+
+    </div>
+    <p style="margin-top:.75rem;font-size:.8rem;color:#888">
+      La table Ciqual (référentiel nutritionnel ANSES) est toujours conservée.
+      Les utilisateurs et familles ne sont pas touchés.
+    </p>
+  </div>
+</section>
+
+<!-- Dialog reset -->
+<dialog id="dialog-reset-recipes" class="confirm-dialog">
+  <p id="dialog-reset-text"></p>
+  <form method="post" action="{% url 'menu:reset_recipes_view' %}" id="form-reset-recipes">
+    {% csrf_token %}
+    <input type="hidden" name="reset_mode" id="reset-mode" value="recipes">
+    <div class="confirm-dialog__actions">
+      <button type="submit" class="btn btn--danger">Oui, supprimer</button>
+      <button type="button" class="btn btn--secondary"
+              onclick="document.getElementById('dialog-reset-recipes').close()">Annuler</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialog-restore" class="confirm-dialog">
+  <p>⚠️ <strong>Confirmer la restauration ?</strong><br><br>
+  Toutes les données seront effacées. Vous serez déconnecté automatiquement.</p>
+  <div class="confirm-dialog__actions">
+    <button type="button" id="btn-confirm-restore" class="btn btn--danger">Oui, restaurer</button>
+    <button type="button" id="btn-cancel-restore" class="btn btn--secondary">Annuler</button>
+  </div>
+</dialog>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = '{{ csrf_token }}';
+
+function debounce(fn, d) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), d); }; }
+
+// ── Recherche Ciqual générique ───────────────────────────────────────────────
+async function searchCiqual(q) {
+  if (q.length < 2) return [];
+  try {
+    const r = await fetch(`/api/ingredients/ciqual/?q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    return d.ok ? d.results : [];
+  } catch { return []; }
+}
+
+function buildCiqualDropdown(ul, results, onSelect) {
+  ul.innerHTML = '';
+  if (!results.length) { ul.style.display = 'none'; return; }
+  results.forEach(item => {
+    const li = document.createElement('li');
+    li.style.cssText = 'padding:.4rem .6rem;cursor:pointer;border-bottom:1px solid #f0f0f0';
+    li.textContent = item.nom_fr + (item.kcal_100g ? ` — ${Math.round(item.kcal_100g)} kcal/100g` : '');
+    li.addEventListener('mousedown', e => { e.preventDefault(); onSelect(item); });
+    ul.appendChild(li);
+  });
+  ul.style.display = 'block';
+}
+
+// ── Formulaire ajout ingrédient ──────────────────────────────────────────────
+const addCiqualSearch  = document.getElementById('add-ciqual-search');
+const addCiqualId      = document.getElementById('add-ciqual-id');
+const addCiqualBadge   = document.getElementById('add-ciqual-badge');
+const addCiqualDropdown = document.getElementById('add-ciqual-dropdown');
+
+const debouncedAddCiqual = debounce(async () => {
+  const results = await searchCiqual(addCiqualSearch.value);
+  buildCiqualDropdown(addCiqualDropdown, results, item => {
+    addCiqualId.value = item.id;
+    addCiqualSearch.value = item.nom_fr;
+    addCiqualBadge.textContent = item.kcal_100g ? `${Math.round(item.kcal_100g)} kcal/100g` : 'Ciqual';
+    addCiqualBadge.style.display = 'block';
+    addCiqualDropdown.style.display = 'none';
+  });
+}, 350);
+
+addCiqualSearch?.addEventListener('input', debouncedAddCiqual);
+addCiqualSearch?.addEventListener('blur', () => setTimeout(() => addCiqualDropdown.style.display = 'none', 150));
+
+document.getElementById('btn-add-ki')?.addEventListener('click', async () => {
+  const name = document.getElementById('add-name').value.trim();
+  const errEl = document.getElementById('add-error');
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = 'Le nom est requis.'; errEl.style.display = 'block'; return; }
+
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('ciqual_ref_id', addCiqualId.value);
+  fd.append('csrfmiddlewaretoken', CSRF);
+
+  const r = await fetch('{% url "menu:ajouter_known_ingredient" %}', { method: 'POST', body: fd });
+  const d = await r.json();
+  if (d.ok) {
+    location.reload();
+  } else {
+    errEl.textContent = d.error;
+    errEl.style.display = 'block';
+  }
+});
+
+// ── Lignes du tableau ────────────────────────────────────────────────────────
+document.querySelectorAll('.ki-row').forEach(row => {
+  const kiId = row.dataset.kiId;
+
+  async function saveField(payload) {
+    const fd = new FormData();
+    Object.entries(payload).forEach(([k,v]) => fd.append(k, v));
+    fd.append('csrfmiddlewaretoken', CSRF);
+    const r = await fetch(`/management/ingredients/${kiId}/`, { method: 'POST', body: fd });
+    return r.json();
+  }
+
+  // Synonymes
+  const synoInput = row.querySelector('.ki-synonymes');
+  const synoBtn   = row.querySelector('.ki-save-syno');
+  const synoStatus = row.querySelector('.ki-syno-status');
+  synoBtn?.addEventListener('click', async () => {
+    synoBtn.disabled = true;
+    const d = await saveField({ synonymes: synoInput.value });
+    if (d.ok) { synoStatus.style.display = 'inline'; setTimeout(() => synoStatus.style.display = 'none', 2000); }
+    synoBtn.disabled = false;
+  });
+  synoInput?.addEventListener('keydown', e => { if (e.key === 'Enter') synoBtn.click(); });
+
+  // Unité par défaut
+  const unitInput  = row.querySelector('.ki-default-unit');
+  const unitStatus = row.querySelector('.ki-unit-status');
+  const saveUnit = async () => {
+    const d = await saveField({ default_unit: unitInput.value.trim() || 'g' });
+    if (d.ok) { unitStatus.style.display = 'inline'; setTimeout(() => unitStatus.style.display = 'none', 2000); }
+  };
+  unitInput?.addEventListener('change', saveUnit);
+  unitInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveUnit(); });
+
+  // Mapping Ciqual — afficher éditeur
+  const editBtn    = row.querySelector('.ki-edit-ciqual');
+  const editDiv    = row.querySelector('.ki-ciqual-edit');
+  const ciqualSearch = row.querySelector('.ki-ciqual-search');
+  const ciqualIdInput = row.querySelector('.ki-ciqual-id');
+  const ciqualDropdown = row.querySelector('.ki-ciqual-dropdown');
+  const saveBtn    = row.querySelector('.ki-save-ciqual');
+  const cancelBtn  = row.querySelector('.ki-cancel-ciqual');
+
+  editBtn?.addEventListener('click', () => {
+    editDiv.style.display = editDiv.style.display === 'none' ? 'block' : 'none';
+    ciqualSearch?.focus();
+  });
+  cancelBtn?.addEventListener('click', () => { editDiv.style.display = 'none'; });
+
+  const debouncedKiCiqual = debounce(async () => {
+    const results = await searchCiqual(ciqualSearch.value);
+    buildCiqualDropdown(ciqualDropdown, results, item => {
+      ciqualIdInput.value = item.id;
+      ciqualSearch.value  = item.nom_fr;
+      ciqualDropdown.style.display = 'none';
+    });
+  }, 350);
+  ciqualSearch?.addEventListener('input', debouncedKiCiqual);
+  ciqualSearch?.addEventListener('blur', () => setTimeout(() => ciqualDropdown.style.display = 'none', 150));
+
+  saveBtn?.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    const d = await saveField({ ciqual_ref_id: ciqualIdInput.value });
+    if (d.ok) {
+      row.querySelector('.ki-ciqual-label').textContent = d.ciqual_nom || '— non qualifié';
+      row.querySelector('.ki-ciqual-label').style.color = d.ciqual_nom ? '#333' : '#aaa';
+      row.querySelector('.ki-kcal').textContent = d.kcal_100g ? Math.round(d.kcal_100g) : '—';
+      row.querySelector('.ki-prot').textContent = d.proteines_100g ? parseFloat(d.proteines_100g).toFixed(1) : '—';
+      editDiv.style.display = 'none';
+    }
+    saveBtn.disabled = false;
+  });
+});
+
+// ── Dialog restauration ──────────────────────────────────────────────────────
+const dlg = document.getElementById('dialog-restore');
+document.getElementById('btn-restore')?.addEventListener('click', () => dlg?.showModal());
+document.getElementById('btn-cancel-restore')?.addEventListener('click', () => dlg?.close());
+document.getElementById('btn-confirm-restore')?.addEventListener('click', () => {
+  dlg?.close(); document.getElementById('form-restore')?.submit();
+});
+
+// ── Dialog reset ──────────────────────────────────────────────────────────────
+function ouvrirDialogReset(mode) {
+  const dlgReset = document.getElementById('dialog-reset-recipes');
+  const txt      = document.getElementById('dialog-reset-text');
+  const modeInput = document.getElementById('reset-mode');
+  if (mode === 'full') {
+    txt.innerHTML =
+      '⚠️ <strong>Reset complet — êtes-vous sûr ?</strong><br><br>' +
+      'Seront supprimés :<br>' +
+      '&nbsp;• Toutes les recettes (ingrédients, étapes, photos, avis)<br>' +
+      '&nbsp;• Tous les ingrédients connus et leurs mappings Ciqual<br>' +
+      '&nbsp;• Tous les plannings<br><br>' +
+      'Conservés : utilisateurs, familles, table Ciqual ANSES.<br>' +
+      '<strong>Action irréversible.</strong>';
+  } else {
+    txt.innerHTML =
+      '⚠️ <strong>Vider toutes les recettes ?</strong><br><br>' +
+      'Seront supprimés : recettes, ingrédients, étapes, photos, avis.<br>' +
+      'Les plannings et ingrédients connus sont conservés.<br>' +
+      '<strong>Action irréversible.</strong>';
+  }
+  modeInput.value = mode;
+  dlgReset.showModal();
+}
+</script>
+{% endblock %}

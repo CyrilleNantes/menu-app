@@ -1,76 +1,128 @@
 {% extends "menu/base.html" %}
 {% load menu_extras %}
 
-{% block title %}Planning semaine {{ week }} — Menu Familial{% endblock %}
+{% block title %}Planning {{ period_start|date:"d/m" }}–{{ period_end|date:"d/m/Y" }} — Menu Familial{% endblock %}
 
 {% block content %}
 
-<!-- ── Navigation semaine ────────────────────────────────────── -->
+<!-- ── Navigation période ─────────────────────────────────────── -->
 <div class="planning-nav">
-    <a href="{% url 'menu:planning_semaine' prev_year prev_week %}" class="planning-nav__arrow" title="Semaine précédente">&#8592;</a>
+    {% if prev_plan %}
+    <a href="{% url 'menu:planning_periode' prev_plan.id %}" class="planning-nav__arrow" title="Période précédente">&#8592;</a>
+    {% else %}
+    <span class="planning-nav__arrow planning-nav__arrow--disabled">&#8592;</span>
+    {% endif %}
+
     <div class="planning-nav__center">
-        <h1 class="planning-nav__title">Semaine {{ week }}</h1>
-        <span class="planning-nav__dates">{{ week_start|date:"d/m" }} — {{ week_end|date:"d/m/Y" }}</span>
+        <span class="planning-nav__dates">{{ period_start|date:"d/m" }} — {{ period_end|date:"d/m/Y" }}</span>
     </div>
-    <a href="{% url 'menu:planning_semaine' next_year next_week %}" class="planning-nav__arrow" title="Semaine suivante">&#8594;</a>
+
+    {% if next_plan %}
+    <a href="{% url 'menu:planning_periode' next_plan.id %}" class="planning-nav__arrow" title="Période suivante">&#8594;</a>
+    {% else %}
+    <a href="{% url 'menu:creer_periode' %}?after={{ period_end|date:'Y-m-d' }}" class="planning-nav__arrow" title="Créer la période suivante">+</a>
+    {% endif %}
 </div>
 
 <!-- ── Statut + actions ──────────────────────────────────────── -->
 <div class="planning-toolbar">
-    <span class="badge badge--{{ plan.status }}">
-        {% if plan.status == "draft" %}✏️ Brouillon{% else %}✅ Publié{% endif %}
-    </span>
-
-    {% if is_cuisinier and plan.status == "draft" %}
-    <form method="post" action="{% url 'menu:publier_planning' plan.id %}" class="inline-form">
-        {% csrf_token %}
-        <button type="submit" class="btn btn--primary btn--sm">Publier le menu</button>
-    </form>
+    {% if plan.status == "draft" %}
+    <span class="badge badge--draft">✏️ Brouillon</span>
+    {% elif plan.status == "published" %}
+    <span class="badge badge--published">✅ Validé</span>
+    {% else %}
+    <span class="badge badge--finished">🏁 Terminé</span>
     {% endif %}
 
-    {% if is_cuisinier and plan.status == "published" %}
-    <form method="post" action="{% url 'menu:generer_courses' plan.id %}" class="inline-form">
-        {% csrf_token %}
-        <button type="submit" class="btn btn--secondary btn--sm">
-            {% if has_shopping_list %}🔄 Régénérer les courses{% else %}🛒 Générer les courses{% endif %}
-        </button>
-    </form>
-    {% endif %}
+    {% if is_cuisinier %}
+        {% if plan.status == "draft" %}
+        <form method="post" action="{% url 'menu:valider_planning' plan.id %}" class="inline-form">
+            {% csrf_token %}
+            <button type="submit" class="btn btn--primary btn--sm">✓ Valider le menu</button>
+        </form>
+        {% endif %}
 
-    {% if has_shopping_list %}
-    <a href="{% url 'menu:liste_courses' plan.id %}" class="btn btn--secondary btn--sm">📋 Voir les courses</a>
-    {% endif %}
+        {% if plan.status == "published" %}
+        <form method="post" action="{% url 'menu:generer_courses' plan.id %}" class="inline-form">
+            {% csrf_token %}
+            <button type="submit" class="btn btn--primary btn--sm">🛒 Publier la liste de courses</button>
+        </form>
+        {% endif %}
 
-    {% if is_cuisinier and google_connected %}
-    <form method="post" action="{% url 'menu:export_calendar' plan.id %}" class="inline-form">
-        {% csrf_token %}
-        <button type="submit" class="btn btn--secondary btn--sm">📅 Exporter vers Google Agenda</button>
-    </form>
-    {% endif %}
+        {% if plan.status in "published,finished" %}
+        <form method="post" action="{% url 'menu:rouvrir_planning' plan.id %}" class="inline-form">
+            {% csrf_token %}
+            <button type="submit" class="btn btn--secondary btn--sm">✏️ Modifier</button>
+        </form>
+        {% endif %}
 
-    {% if not is_cuisinier %}
+        {% if has_shopping_list %}
+        <a href="{% url 'menu:liste_courses' plan.id %}" class="btn btn--secondary btn--sm">📋 Voir les courses</a>
+        {% endif %}
+
+        {% if google_connected %}
+        <form method="post" action="{% url 'menu:export_calendar' plan.id %}" class="inline-form">
+            {% csrf_token %}
+            <button type="submit" class="btn btn--secondary btn--sm">📅 Google Agenda</button>
+        </form>
+        {% endif %}
+    {% else %}
     <button type="button" id="btn-propose" class="btn btn--secondary btn--sm">💡 Proposer une recette</button>
     {% endif %}
 </div>
 
-<!-- ── Alertes équilibre (Cuisinier) ────────────────────────── -->
-{% if is_cuisinier and alertes_planning %}
-<div id="alertes-planning" data-plan-id="{{ plan.id }}">
-    {% for alerte in alertes_planning %}
-    <div class="planning-alerte" data-type="{{ alerte.type }}" role="alert">
-        <span class="planning-alerte__msg">{{ alerte.message }}</span>
-        {% if alerte.dismissable %}
-        <button type="button" class="planning-alerte__dismiss" aria-label="Ignorer">✕</button>
-        {% endif %}
-    </div>
-    {% endfor %}
+<!-- ── Jours de la période ───────────────────────────────────── -->
+{% if is_cuisinier %}
+<div class="planning-jours">
+    <div class="planning-jours__title">📅 Jours de la période</div>
+    <form method="post" action="{% url 'menu:modifier_jours_periode' plan.id %}" class="planning-jours__form" id="form-jours">
+        {% csrf_token %}
+        <div class="planning-jours__days">
+            {% for day in periode_candidate_days %}
+            <label class="day-toggle{% if day.iso in active_dates_iso %} day-toggle--active{% endif %}" id="day-{{ day.iso }}">
+                <input type="checkbox" name="jours" value="{{ day.iso }}"
+                       {% if day.iso in active_dates_iso %}checked{% endif %}
+                       class="day-toggle__cb" style="display:none">
+                <span class="day-toggle__label">{{ day.label }}</span>
+                <span class="day-toggle__date">{{ day.date|date:"d/m" }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="btn btn--primary btn--sm" id="btn-valider-jours">✓ Valider</button>
+    </form>
 </div>
 {% endif %}
 
-<!-- ── Bilan équilibre semaine (Cuisinier) ───────────────────── -->
+<!-- ── Présence ──────────────────────────────────────────────── -->
+<div class="planning-presence" id="planning-presence" data-plan-id="{{ plan.id }}">
+    <div class="planning-presence__title">👥 Présents sur la période</div>
+    <div class="planning-presence__members">
+        {% for member in family_members %}
+        <label class="presence-toggle {% if member.user.id in present_member_ids %}presence-toggle--active{% endif %}">
+            <input type="checkbox"
+                   class="presence-member-cb"
+                   data-user-id="{{ member.user.id }}"
+                   {% if member.user.id in present_member_ids %}checked{% endif %}
+                   style="display:none">
+            {{ member.user.first_name|default:member.user.email }}
+        </label>
+        {% endfor %}
+    </div>
+    <div class="planning-presence__guests" id="presence-guests">
+        {% for g in guests %}
+        <span class="presence-guest-tag">
+            {{ g }}
+            <button type="button" class="presence-guest-remove" data-name="{{ g }}" aria-label="Supprimer">✕</button>
+        </span>
+        {% endfor %}
+        <input type="text" id="presence-guest-input" placeholder="+ Invité…" class="presence-guest-input">
+    </div>
+</div>
+
+<!-- ── Bilan équilibre période (Cuisinier) ───────────────────── -->
 {% if is_cuisinier and bilan %}
 <div class="planning-bilan" id="planning-bilan" data-plan-id="{{ plan.id }}">
-    <div class="planning-bilan__title">📊 Équilibre de la semaine</div>
+    <div class="planning-bilan__title">📊 Équilibre de la période</div>
     <div class="planning-bilan__grid">
 
         <!-- Variété protéines -->
@@ -88,11 +140,18 @@
             <span class="bilan-item__hint">{% if bilan.veg_ok %}✓{% else %}objectif : ≥1{% endif %}</span>
         </div>
 
+        <div class="bilan-item {% if bilan.white_meat_ok %}bilan-item--ok{% else %}bilan-item--warn{% endif %}">
+            <span class="bilan-item__emoji">🍗</span>
+            <span class="bilan-item__value" id="bilan-white-meat">{{ bilan.white_meat_count }}</span>
+            <span class="bilan-item__label">viande{% if bilan.white_meat_count > 1 %}s{% endif %} blanche{% if bilan.white_meat_count > 1 %}s{% endif %}</span>
+            <span class="bilan-item__hint">{% if bilan.white_meat_ok %}✓{% else %}objectif : ≥1{% endif %}</span>
+        </div>
+
         <div class="bilan-item {% if bilan.red_meat_ok %}bilan-item--ok{% else %}bilan-item--warn{% endif %}">
             <span class="bilan-item__emoji">🥩</span>
             <span class="bilan-item__value" id="bilan-red-meat">{{ bilan.red_meat_count }}</span>
             <span class="bilan-item__label">viande{% if bilan.red_meat_count > 1 %}s{% endif %} rouge{% if bilan.red_meat_count > 1 %}s{% endif %}</span>
-            <span class="bilan-item__hint">{% if bilan.red_meat_ok %}✓{% else %}max {{ bilan.max_red_meat }}/sem.{% endif %}</span>
+            <span class="bilan-item__hint">{% if bilan.red_meat_ok %}✓{% else %}max {{ bilan.max_red_meat }}{% endif %}</span>
         </div>
 
         {% if bilan.absent_count %}
@@ -104,33 +163,60 @@
         </div>
         {% endif %}
 
-        <!-- Nutrition -->
-        {% if bilan.cal_total %}
-        <div class="bilan-item bilan-item--{{ bilan.cal_status }}">
-            <span class="bilan-item__emoji">🔥</span>
-            <span class="bilan-item__value" id="bilan-cal">{{ bilan.cal_total }}</span>
-            <span class="bilan-item__label">kcal / sem.</span>
-            <div class="bilan-progress">
-                <div class="bilan-progress__bar bilan-progress__bar--{{ bilan.cal_status }}"
-                     style="width: {% if bilan.cal_pct > 100 %}100{% else %}{{ bilan.cal_pct }}{% endif %}%"></div>
+    </div>
+    {% if bilan_membres %}
+    <div class="planning-bilan__membres" id="bilan-membres">
+        {% for m in bilan_membres %}
+        <div class="bilan-membre" id="bilan-membre-{{ m.user_id }}">
+            <span class="bilan-membre__name">{{ m.name }}</span>
+            <div class="bilan-membre__row">
+                <span class="bilan-membre__label bilan-membre__label--kcal">🔥 {{ m.kcal }} kcal</span>
+                <span class="bilan-membre__hint">Cible : {{ m.kcal_target }} kcal &nbsp;·&nbsp; {{ m.kcal_pct }}%</span>
             </div>
-            <span class="bilan-item__hint">{{ bilan.cal_pct }}% cible</span>
-        </div>
-        {% endif %}
-
-        {% if bilan.prot_total %}
-        <div class="bilan-item bilan-item--{{ bilan.prot_status }}">
-            <span class="bilan-item__emoji">💪</span>
-            <span class="bilan-item__value" id="bilan-prot">{{ bilan.prot_total }}</span>
-            <span class="bilan-item__label">g prot. / sem.</span>
             <div class="bilan-progress">
-                <div class="bilan-progress__bar bilan-progress__bar--{{ bilan.prot_status }}"
-                     style="width: {% if bilan.prot_pct > 100 %}100{% else %}{{ bilan.prot_pct }}{% endif %}%"></div>
+                <div class="bilan-progress__bar bilan-progress__bar--kcal bilan-progress__bar--{{ m.kcal_status }}"
+                     style="width:{{ m.kcal_pct }}%"></div>
             </div>
-            <span class="bilan-item__hint">{{ bilan.prot_pct }}% cible</span>
+            <div class="bilan-membre__row" style="margin-top:.3rem">
+                <span class="bilan-membre__label bilan-membre__label--prot">💪 {{ m.prot }}g prot.</span>
+                <span class="bilan-membre__hint">Cible : {{ m.prot_target }}g &nbsp;·&nbsp; {{ m.prot_pct }}%</span>
+            </div>
+            <div class="bilan-progress">
+                <div class="bilan-progress__bar bilan-progress__bar--prot bilan-progress__bar--prot-{{ m.prot_status }}"
+                     style="width:{{ m.prot_pct }}%"></div>
+            </div>
         </div>
-        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 
+{% if not is_cuisinier and bilan_membres %}
+<div class="planning-bilan" id="planning-bilan-convive">
+    <div class="planning-bilan__title">📊 Mon apport sur la période</div>
+    <div class="planning-bilan__membres">
+        {% for m in bilan_membres %}
+        <div class="bilan-membre">
+            <span class="bilan-membre__name">{{ m.name }}</span>
+            <div class="bilan-membre__row">
+                <span class="bilan-membre__label bilan-membre__label--kcal">🔥 {{ m.kcal }} kcal</span>
+                <span class="bilan-membre__hint">Cible : {{ m.kcal_target }} kcal &nbsp;·&nbsp; {{ m.kcal_pct }}%</span>
+            </div>
+            <div class="bilan-progress">
+                <div class="bilan-progress__bar bilan-progress__bar--kcal bilan-progress__bar--{{ m.kcal_status }}"
+                     style="width:{{ m.kcal_pct }}%"></div>
+            </div>
+            <div class="bilan-membre__row" style="margin-top:.3rem">
+                <span class="bilan-membre__label bilan-membre__label--prot">💪 {{ m.prot }}g prot.</span>
+                <span class="bilan-membre__hint">Cible : {{ m.prot_target }}g &nbsp;·&nbsp; {{ m.prot_pct }}%</span>
+            </div>
+            <div class="bilan-progress">
+                <div class="bilan-progress__bar bilan-progress__bar--prot bilan-progress__bar--prot-{{ m.prot_status }}"
+                     style="width:{{ m.prot_pct }}%"></div>
+            </div>
+        </div>
+        {% endfor %}
     </div>
 </div>
 {% endif %}
@@ -145,14 +231,15 @@
     </div>
 
     <!-- Midi -->
-    <div class="meal-slot{% if day.lunch and day.lunch.recipe %} meal-slot--filled{% endif %}{% if day.lunch and day.lunch.is_leftovers %} meal-slot--leftovers{% endif %}{% if day.lunch and day.lunch.absent %} meal-slot--absent{% endif %}"
+    <div class="meal-slot{% if day.lunch and day.lunch.recipe %} meal-slot--filled{% endif %}{% if day.lunch and day.lunch.absent %} meal-slot--absent{% endif %}"
          data-date="{{ day.date|date:'Y-m-d' }}"
          data-meal-time="lunch"
          data-meal-id="{% if day.lunch %}{{ day.lunch.id }}{% endif %}"
          data-recipe-id="{% if day.lunch and day.lunch.recipe %}{{ day.lunch.recipe.id }}{% endif %}"
          data-recipe-title="{% if day.lunch and day.lunch.recipe %}{{ day.lunch.recipe.title }}{% endif %}"
          data-servings="{% if day.lunch %}{{ day.lunch.servings_count|default:'' }}{% endif %}"
-         data-is-leftovers="{% if day.lunch and day.lunch.is_leftovers %}true{% else %}false{% endif %}"
+         data-members="{{ day.lunch_member_ids }}"
+         data-guests="{{ day.lunch_guest_count }}"
          data-absent="{% if day.lunch and day.lunch.absent %}true{% else %}false{% endif %}"
          {% if is_cuisinier %}data-editable="true"{% endif %}>
         <span class="meal-slot__time">🍽️ Midi</span>
@@ -169,7 +256,6 @@
                 <span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>
                 <div class="meal-slot__meta">
                     {% if day.lunch.servings_count %}<span>{{ day.lunch.servings_count }} pers.</span>{% endif %}
-                    {% if day.lunch.is_leftovers %}<span class="badge badge--leftovers">Restes</span>{% endif %}
                 </div>
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
@@ -190,14 +276,15 @@
     </div>
 
     <!-- Soir -->
-    <div class="meal-slot{% if day.dinner and day.dinner.recipe %} meal-slot--filled{% endif %}{% if day.dinner and day.dinner.is_leftovers %} meal-slot--leftovers{% endif %}{% if day.dinner and day.dinner.absent %} meal-slot--absent{% endif %}"
+    <div class="meal-slot{% if day.dinner and day.dinner.recipe %} meal-slot--filled{% endif %}{% if day.dinner and day.dinner.absent %} meal-slot--absent{% endif %}"
          data-date="{{ day.date|date:'Y-m-d' }}"
          data-meal-time="dinner"
          data-meal-id="{% if day.dinner %}{{ day.dinner.id }}{% endif %}"
          data-recipe-id="{% if day.dinner and day.dinner.recipe %}{{ day.dinner.recipe.id }}{% endif %}"
          data-recipe-title="{% if day.dinner and day.dinner.recipe %}{{ day.dinner.recipe.title }}{% endif %}"
          data-servings="{% if day.dinner %}{{ day.dinner.servings_count|default:'' }}{% endif %}"
-         data-is-leftovers="{% if day.dinner and day.dinner.is_leftovers %}true{% else %}false{% endif %}"
+         data-members="{{ day.dinner_member_ids }}"
+         data-guests="{{ day.dinner_guest_count }}"
          data-absent="{% if day.dinner and day.dinner.absent %}true{% else %}false{% endif %}"
          {% if is_cuisinier %}data-editable="true"{% endif %}>
         <span class="meal-slot__time">🌙 Soir</span>
@@ -214,7 +301,6 @@
                 <span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>
                 <div class="meal-slot__meta">
                     {% if day.dinner.servings_count %}<span>{{ day.dinner.servings_count }} pers.</span>{% endif %}
-                    {% if day.dinner.is_leftovers %}<span class="badge badge--leftovers">Restes</span>{% endif %}
                 </div>
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
@@ -287,7 +373,7 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="text-muted" id="proposals-empty">Aucune proposition pour cette semaine.</p>
+    <p class="text-muted" id="proposals-empty">Aucune proposition en attente.</p>
     {% endif %}
 </section>
 {% endif %}
@@ -295,18 +381,20 @@
 <!-- ── Mes propositions (Convive) ───────────────────────────── -->
 {% if not is_cuisinier %}
 <section class="planning-proposals" id="user-proposals-section">
-    <h2 class="planning-proposals__title">💡 Mes propositions</h2>
+    <h2 class="planning-proposals__title">💡 Propositions de la famille</h2>
     {% if user_proposals %}
     <ul class="proposals-list" id="user-proposals-list">
         {% for p in user_proposals %}
         <li class="proposals-list__item" id="user-proposal-{{ p.id }}">
             <div class="proposals-list__header">
                 <span class="proposals-list__recipe">{{ p.recipe.title }}</span>
+                <span class="proposals-list__by text-muted">par {{ p.proposed_by.first_name|default:p.proposed_by.email }}</span>
                 <span class="proposals-list__date text-muted">{{ p.created_at|date:"d/m" }}</span>
             </div>
             {% if p.message %}
             <p class="proposals-list__msg">{{ p.message }}</p>
             {% endif %}
+            {% if p.proposed_by == request.user %}
             <div class="proposals-list__actions">
                 <button type="button"
                         class="btn-cancel-my-proposal btn btn--secondary btn--sm"
@@ -314,11 +402,12 @@
                     ✕ Annuler ma proposition
                 </button>
             </div>
+            {% endif %}
         </li>
         {% endfor %}
     </ul>
     {% else %}
-    <p class="text-muted" id="user-proposals-empty">Tu n'as pas encore proposé de recette cette semaine.</p>
+    <p class="text-muted" id="user-proposals-empty">Aucune proposition en attente.</p>
     {% endif %}
 </section>
 {% endif %}
@@ -327,7 +416,9 @@
 <input type="hidden" id="csrf-token" value="{{ csrf_token }}">
 <div id="planning-meta"
      data-plan-id="{{ plan.id }}"
-     data-is-cuisinier="{{ is_cuisinier|yesno:'true,false' }}"></div>
+     data-presence-url="{% url 'menu:maj_presence' plan.id %}"
+     data-is-cuisinier="{{ is_cuisinier|yesno:'true,false' }}"
+     data-present-members="{{ present_member_ids_json }}"></div>
 {{ meals_avec_recette|json_script:"meals-json" }}
 
 <!-- ── Dialog : suggestions de recettes (Cuisinier) ────────── -->
@@ -370,19 +461,19 @@
     </div>
 
     <div class="form-group">
-        <label class="form-label">Portions</label>
-        <input type="number" id="meal-servings" min="1" max="20" value="4"
-               class="input-short">
-    </div>
-
-    <label class="checkbox-label">
-        <input type="checkbox" id="meal-is-leftovers">
-        Ce repas est composé de <strong>restes</strong>
-    </label>
-
-    <div id="meal-source-section" class="form-group" style="display:none">
-        <label class="form-label">Restes du repas…</label>
-        <select id="meal-source-select" class="input-short"></select>
+        <label class="form-label">Convives</label>
+        <div class="meal-members-list" id="meal-members-list">
+            {% for member in family_members %}
+            <label class="meal-member-toggle" id="meal-member-{{ member.user.id }}">
+                <input type="checkbox" class="meal-member-cb" value="{{ member.user.id }}">
+                <span>{{ member.user.first_name|default:member.user.email }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
+            <label class="form-label" style="margin:0">+ Invités</label>
+            <input type="number" id="meal-guest-count" min="0" max="20" value="0" class="input-short" style="width:4rem">
+        </div>
     </div>
 
     <div class="planning-dialog__actions">

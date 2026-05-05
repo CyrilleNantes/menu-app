@@ -1,4 +1,5 @@
 {% extends "menu/base.html" %}
+{% load menu_extras %}
 
 {% block title %}Recettes — Menu Familial{% endblock %}
 
@@ -51,7 +52,7 @@
     {% for recette in recettes %}
     <a href="{% url 'menu:detail_recette' recette.id %}" class="recette-card">
         {% if recette.photo_url %}
-        <div class="recette-card__photo" style="background-image:url('{{ recette.photo_url }}')"></div>
+        <div class="recette-card__photo" style="background-image:url('{{ recette.photo_url|cloudinary_img:"card" }}')"></div>
         {% else %}
         <div class="recette-card__photo recette-card__photo--placeholder">🍽️</div>
         {% endif %}
@@ -70,6 +71,13 @@
                 {% endif %}
                 {% if recette.note_moyenne %}
                 <span class="recette-card__note">★ {{ recette.note_moyenne|floatformat:1 }} ({{ recette.nb_avis }})</span>
+                {% endif %}
+                {% if recette.nutrition_status == 'ok' %}
+                <span class="nutri-status nutri-status--ok" title="Tous les ingrédients sont mappés Ciqual">✔ Nutrition OK</span>
+                {% elif recette.nutrition_status == 'partial' %}
+                <span class="nutri-status nutri-status--partial" title="Certains ingrédients ne sont pas mappés Ciqual">⚠ Partiel</span>
+                {% else %}
+                <span class="nutri-status nutri-status--missing" title="Aucun ingrédient mappé — lancer Recalculer les macros">✕ Non mappé</span>
                 {% endif %}
             </div>
         </div>

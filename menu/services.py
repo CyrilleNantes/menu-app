@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import math
 import zipfile as zf_lib
 from datetime import date as date_type
 
@@ -8,7 +9,8 @@ from django.contrib.auth.models import User as DjangoUser
 from django.db import connection, transaction
 
 from .models import (
-    Ingredient, IngredientGroup, IngredientRef, Meal, MealProposal, NutritionConfig, NotificationPreference,
+    Ingredient, IngredientGroup, IngredientRef, KnownIngredient,
+    Meal, MealProposal, NutritionConfig, NotificationPreference,
     Recipe, RecipeSection, RecipeStep, Review, ShoppingItem, ShoppingList,
     UserProfile, WeekPlan,
 )
@@ -22,22 +24,21 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
     Génère (ou recrée) la liste de courses d'un WeekPlan.
 
     Règles :
-    - Seuls les repas avec recette et is_leftovers=False sont pris en compte.
+    - Tous les repas avec recette (non absents) sont pris en compte.
     - Les quantités sont proratisées : quantité × (servings_count / base_servings).
     - Les ingrédients identiques (même nom, même unité, insensible à la casse) sont agrégés.
+    - Les quantités sont arrondies au plafond (math.ceil) pour ne jamais manquer.
     - Les articles sont triés par catégorie puis par nom.
     """
-    # Supprimer l'ancienne liste si elle existe
     ShoppingList.objects.filter(week_plan=plan).delete()
 
     meals = (
         Meal.objects
-        .filter(week_plan=plan, absent=False, is_leftovers=False, recipe__isnull=False)
+        .filter(week_plan=plan, absent=False, recipe__isnull=False)
         .select_related("recipe")
         .prefetch_related("recipe__ingredients")
     )
 
-    # Clé d'agrégation : (nom_normalisé, unité_normalisée)
     aggregated: dict[tuple, dict] = {}
 
     for meal in meals:
@@ -60,16 +61,10 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
 
             entry = aggregated[key]
             if ing.quantity is not None:
-                adj = ing.quantity * ratio
-                entry["quantity"] = (entry["quantity"] or 0.0) + adj
+                entry["quantity"] = (entry["quantity"] or 0.0) + ing.quantity * ratio
 
-    # Créer la nouvelle liste
-    shopping_list = ShoppingList.objects.create(
-        family=plan.family,
-        week_plan=plan,
-    )
+    shopping_list = ShoppingList.objects.create(family=plan.family, week_plan=plan)
 
-    # Trier : catégorie (vide en dernier) puis nom
     sorted_items = sorted(
         aggregated.values(),
         key=lambda x: (x["category"] or "zzz", x["name"].lower()),
@@ -79,7 +74,7 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
         ShoppingItem(
             shopping_list=shopping_list,
             name=item["name"],
-            quantity=round(item["quantity"], 2) if item["quantity"] is not None else None,
+            quantity=math.ceil(item["quantity"]) if item["quantity"] is not None else None,
             unit=item["unit"],
             category=item["category"],
             checked=False,
@@ -124,21 +119,66 @@ def _quantity_to_grams(quantity: float | None, unit: str | None,
 def compute_ingredient_macros_from_ciqual(ingr: Ingredient) -> dict | None:
     """
     Calcule les macros d'un ingrédient à partir de son ciqual_ref.
-    Retourne None si le calcul est impossible (pas de ref, pas de kcal, qté non convertible).
+    Retourne None si le calcul est impossible (pas de ref ou qté non convertible).
+    Un kcal_100g NULL (sel, eau…) est traité comme 0 — l'ingrédient est mappé.
     """
     ref = ingr.ciqual_ref
-    if ref is None or ref.kcal_100g is None:
+    if ref is None:
         return None
     qty_g = _quantity_to_grams(ingr.quantity, ingr.unit, ref.default_weight_g)
     if qty_g is None or qty_g <= 0:
         return None
     factor = qty_g / 100.0
     return {
-        'calories': round(ref.kcal_100g * factor, 2),
+        'calories': round((ref.kcal_100g or 0) * factor, 2),
         'proteins': round((ref.proteines_100g or 0) * factor, 2),
         'carbs':    round((ref.glucides_100g or 0) * factor, 2),
+        'sugars':   round((ref.sucres_100g or 0) * factor, 2),
         'fats':     round((ref.lipides_100g or 0) * factor, 2),
     }
+
+
+def rechercher_connus(q: str, limit: int = 10) -> list[dict]:
+    """
+    Recherche dans la base de connaissance ingrédients (KnownIngredient).
+    Insensible à la casse et aux accents. Priorité aux correspondances synonymes.
+    """
+    from .models import _normaliser_nom
+    if not q or len(q) < 2:
+        return []
+    q_norm = _normaliser_nom(q)
+    from django.db.models import Q, Case, When, IntegerField, Count
+    qs = (
+        KnownIngredient.objects
+        .select_related('ciqual_ref')
+        .annotate(nb_recettes=Count('ciqual_ref__ingredients__recipe', distinct=True))
+        .filter(Q(nom_normalise__icontains=q_norm) | Q(synonymes__icontains=q_norm))
+        .annotate(
+            pertinence=Case(
+                When(nom_normalise__startswith=q_norm, then=0),
+                When(nom_normalise__icontains=q_norm, then=1),
+                default=2,
+                output_field=IntegerField(),
+            )
+        )
+        .order_by('pertinence', 'name')[:limit]
+    )
+    results = []
+    for ki in qs:
+        ref = ki.ciqual_ref
+        results.append({
+            'id':             ki.pk,
+            'name':           ki.name,
+            'ciqual_ref_id':  ref.pk if ref else None,
+            'nom_ciqual':     ref.nom_fr if ref else None,
+            'kcal_100g':      ref.kcal_100g if ref else None,
+            'proteines_100g': ref.proteines_100g if ref else None,
+            'glucides_100g':  ref.glucides_100g if ref else None,
+            'lipides_100g':   ref.lipides_100g if ref else None,
+            'default_weight_g': ref.default_weight_g if ref else None,
+            'default_unit':   ki.default_unit or 'g',
+        })
+    return results
 
 
 def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
@@ -146,24 +186,24 @@ def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
     Recherche dans IngredientRef par nom normalisé.
     Retourne une liste de dicts pour le JSON de l'autocomplete.
     """
-    import unicodedata, re
-
-    def _normalize(s: str) -> str:
-        s = s.lower().strip()
-        s = unicodedata.normalize('NFD', s)
-        s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
-        s = s.replace('oe', 'oe').replace('ae', 'ae')
-        s = re.sub(r'[^\w\s]', ' ', s)
-        s = re.sub(r'\s+', ' ', s).strip()
-        return s
-
+    from .models import _normaliser_nom
     if not q or len(q) < 2:
         return []
-    q_norm = _normalize(q)
+    q_norm = _normaliser_nom(q)
+    from django.db.models import Q, Case, When, IntegerField
     refs = (
         IngredientRef.objects
-        .filter(nom_normalise__icontains=q_norm)
-        .order_by('nom_fr')[:limit]
+        .filter(Q(nom_normalise__icontains=q_norm) | Q(synonymes__icontains=q_norm))
+        .annotate(
+            # Priorité : correspond au synonyme (nom courant) > correspond au nom Ciqual
+            pertinence=Case(
+                When(synonymes__icontains=q_norm, then=0),
+                default=1,
+                output_field=IntegerField(),
+            )
+        )
+        .order_by('pertinence', 'nom_fr')
+        .distinct()[:limit]
     )
     return [
         {
@@ -181,27 +221,73 @@ def rechercher_ciqual(q: str, limit: int = 8) -> list[dict]:
 
 
 def calculer_macros_recette(recipe: Recipe) -> None:
-    """Recalcule et sauvegarde les macros par portion à partir des ingrédients."""
-    ingredients = list(recipe.ingredients.all())
-    if not ingredients:
+    """
+    Recalcule et sauvegarde les macros par portion + nutrition_status.
+    Calcule directement depuis ciqual_ref (pas les calories stockées).
+    Tous les ingrédients (y compris optionnels) contribuent au calcul.
+    Le nutrition_status est déterminé sur les non-optionnels uniquement.
+    """
+    all_ingrs = list(
+        recipe.ingredients
+        .select_related('ciqual_ref')
+        .all()
+    )
+    non_optional = [i for i in all_ingrs if not i.is_optional]
+
+    # ── Statut nutritionnel (basé sur les non-optionnels) ────────────────────
+    mapped = [i for i in non_optional if i.ciqual_ref_id is not None]
+    if not non_optional:
+        status = 'missing'
+    elif len(mapped) == len(non_optional):
+        status = 'ok'
+    elif mapped:
+        status = 'partial'
+    else:
+        status = 'missing'
+
+    if not all_ingrs:
         recipe.calories_per_serving = None
+        recipe.kcal_per_100g_raw    = None
         recipe.proteins_per_serving = None
-        recipe.carbs_per_serving = None
-        recipe.fats_per_serving = None
-        recipe.save(update_fields=["calories_per_serving", "proteins_per_serving", "carbs_per_serving", "fats_per_serving"])
+        recipe.carbs_per_serving    = None
+        recipe.sugars_per_serving   = None
+        recipe.fats_per_serving     = None
+        recipe.nutrition_status     = 'missing'
+        recipe.save(update_fields=[
+            "calories_per_serving", "kcal_per_100g_raw", "proteins_per_serving",
+            "carbs_per_serving", "sugars_per_serving", "fats_per_serving", "nutrition_status",
+        ])
         return
 
-    total_cal = sum(i.calories or 0 for i in ingredients)
-    total_prot = sum(i.proteins or 0 for i in ingredients)
-    total_carbs = sum(i.carbs or 0 for i in ingredients)
-    total_fats = sum(i.fats or 0 for i in ingredients)
+    total_cal = total_prot = total_carbs = total_sugars = total_fats = 0.0
+    total_weight_g = 0.0
+    has_any = False
+    for ingr in all_ingrs:
+        macros = compute_ingredient_macros_from_ciqual(ingr)
+        if macros:
+            total_cal    += macros['calories']
+            total_prot   += macros['proteins']
+            total_carbs  += macros['carbs']
+            total_sugars += macros['sugars']
+            total_fats   += macros['fats']
+            ref = ingr.ciqual_ref
+            qty_g = _quantity_to_grams(ingr.quantity, ingr.unit, ref.default_weight_g if ref else None)
+            if qty_g:
+                total_weight_g += qty_g
+            has_any = True
 
     n = max(recipe.base_servings or 1, 1)
-    recipe.calories_per_serving = round(total_cal / n, 1) if total_cal else None
-    recipe.proteins_per_serving = round(total_prot / n, 1) if total_prot else None
-    recipe.carbs_per_serving = round(total_carbs / n, 1) if total_carbs else None
-    recipe.fats_per_serving = round(total_fats / n, 1) if total_fats else None
-    recipe.save(update_fields=["calories_per_serving", "proteins_per_serving", "carbs_per_serving", "fats_per_serving"])
+    recipe.calories_per_serving = round(total_cal    / n, 1) if has_any else None
+    recipe.kcal_per_100g_raw    = round(total_cal / total_weight_g * 100, 1) if has_any and total_weight_g > 0 else None
+    recipe.proteins_per_serving = round(total_prot   / n, 1) if has_any else None
+    recipe.carbs_per_serving    = round(total_carbs  / n, 1) if has_any else None
+    recipe.sugars_per_serving   = round(total_sugars / n, 1) if has_any else None
+    recipe.fats_per_serving     = round(total_fats   / n, 1) if has_any else None
+    recipe.nutrition_status     = status
+    recipe.save(update_fields=[
+        "calories_per_serving", "kcal_per_100g_raw", "proteins_per_serving",
+        "carbs_per_serving", "sugars_per_serving", "fats_per_serving", "nutrition_status",
+    ])
 
 
 def calculer_alertes_planning(week_plan, family) -> list[dict]:
@@ -214,35 +300,37 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
 
     meals = list(
         Meal.objects
-        .filter(week_plan=week_plan, absent=False, recipe__isnull=False, is_leftovers=False)
+        .filter(week_plan=week_plan, absent=False, recipe__isnull=False)
         .select_related("recipe")
     )
+
+    nb_jours = len(week_plan.get_active_dates()) or 7
 
     protein_types = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
     red_meat_count = protein_types.count("boeuf") + protein_types.count("porc")
     fish_count     = protein_types.count("poisson")
     veg_count      = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
 
-    # Totaux nutritionnels (référence : 1 portion par repas)
     total_cal  = sum(m.recipe.calories_per_serving  or 0 for m in meals)
     total_prot = sum(m.recipe.proteins_per_serving or 0 for m in meals)
 
-    cal_week_target  = config.calories_dinner_target  * 14
-    prot_week_target = config.proteins_dinner_target  * 14
+    # Cibles proportionnelles au nombre de jours (référence : 14 créneaux/semaine)
+    cal_target  = config.calories_dinner_target  * nb_jours * 2
+    prot_target = config.proteins_dinner_target  * nb_jours * 2
 
     alertes = []
 
     if fish_count == 0:
         alertes.append({
             "type": "poisson",
-            "message": "🐟 Pensez à intégrer un repas poisson cette semaine",
+            "message": "🐟 Pensez à intégrer un repas poisson sur cette période",
             "dismissable": True,
         })
 
     if red_meat_count >= config.max_red_meat_per_week:
         alertes.append({
             "type": "viande_rouge",
-            "message": f"🥩 Vous avez déjà {red_meat_count} repas de viande rouge cette semaine",
+            "message": f"🥩 Vous avez déjà {red_meat_count} repas de viande rouge",
             "dismissable": True,
         })
 
@@ -253,17 +341,17 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
             "dismissable": True,
         })
 
-    if cal_week_target > 0 and total_cal > cal_week_target * 1.3:
+    if cal_target > 0 and total_cal > cal_target * 1.3:
         alertes.append({
             "type": "calories_hautes",
-            "message": "⚠️ La semaine semble chargée en calories",
+            "message": "⚠️ La période semble chargée en calories",
             "dismissable": True,
         })
 
-    if prot_week_target > 0 and total_prot > 0 and total_prot < prot_week_target * 0.6:
+    if prot_target > 0 and total_prot > 0 and total_prot < prot_target * 0.6:
         alertes.append({
             "type": "proteines_basses",
-            "message": "💪 Les protéines sont un peu faibles cette semaine",
+            "message": "💪 Les protéines sont un peu faibles sur cette période",
             "dismissable": True,
         })
 
@@ -273,7 +361,7 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
 
 def bilan_planning(week_plan) -> dict:
     """
-    Calcule le bilan équilibre de la semaine pour l'affichage dynamique.
+    Calcule le bilan équilibre de la période pour l'affichage dynamique.
     Retourne un dict avec les compteurs variété, totaux nutritionnels et statuts.
     Les créneaux `absent=True` sont exclus de tous les calculs.
     """
@@ -281,20 +369,23 @@ def bilan_planning(week_plan) -> dict:
 
     meals = list(
         Meal.objects
-        .filter(week_plan=week_plan, absent=False, recipe__isnull=False, is_leftovers=False)
+        .filter(week_plan=week_plan, absent=False, recipe__isnull=False)
         .select_related("recipe")
     )
 
     absent_count = Meal.objects.filter(week_plan=week_plan, absent=True).count()
-    total_slots  = 14  # 7 jours × 2 créneaux
+    nb_jours = len(week_plan.get_active_dates()) or 7
+    total_slots = nb_jours * 2  # midi + soir par jour
 
-    protein_types  = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
-    fish_count     = protein_types.count("poisson")
-    red_meat_count = protein_types.count("boeuf") + protein_types.count("porc")
-    veg_count      = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
+    protein_types    = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
+    fish_count       = protein_types.count("poisson")
+    red_meat_count   = protein_types.count("boeuf") + protein_types.count("porc")
+    white_meat_count = protein_types.count("volaille")
+    veg_count        = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
 
-    total_cal  = sum((m.recipe.calories_per_serving  or 0) for m in meals)
-    total_prot = sum((m.recipe.proteins_per_serving or 0) for m in meals)
+    total_cal    = sum((m.recipe.calories_per_serving  or 0) for m in meals)
+    total_prot   = sum((m.recipe.proteins_per_serving or 0) for m in meals)
+    total_sugars = sum((m.recipe.sugars_per_serving   or 0) for m in meals)
 
     cal_target  = config.calories_dinner_target  * (total_slots - absent_count)
     prot_target = config.proteins_dinner_target  * (total_slots - absent_count)
@@ -319,12 +410,15 @@ def bilan_planning(week_plan) -> dict:
         "absent_count":       absent_count,
         "fish_count":         fish_count,
         "red_meat_count":     red_meat_count,
+        "white_meat_count":   white_meat_count,
         "veg_count":          veg_count,
         "fish_ok":            fish_count >= 1,
         "red_meat_ok":        red_meat_count <= config.max_red_meat_per_week,
+        "white_meat_ok":      white_meat_count >= 1,
         "veg_ok":             veg_count >= 1,
         "cal_total":          round(total_cal),
         "prot_total":         round(total_prot, 1),
+        "sugars_total":       round(total_sugars, 1),
         "cal_target":         round(cal_target),
         "prot_target":        round(prot_target, 1),
         "cal_pct":            _pct(total_cal, cal_target),
@@ -333,6 +427,123 @@ def bilan_planning(week_plan) -> dict:
         "prot_status":        _status(total_prot, prot_target),
         "max_red_meat":       config.max_red_meat_per_week,
     }
+
+
+def bilan_par_membre(plan) -> list[dict]:
+    """
+    Calcule les kcal/prot de la période par membre présent.
+
+    Par jour :
+    - Repas hors planning (petit-dej, collation, autres) → valeurs fixes du profil, ajoutées chaque jour
+    - Repas planifié avec recette + membre présent → kcal/prot de la recette × portions_factor
+    - Repas absent → cible du profil pour ce créneau (lunch ou dinner) × portions_factor
+    - Créneau sans repas ou membre non présent → 0
+
+    Cible totale = daily_kcal_total (profil) × nb_jours
+    """
+    config = NutritionConfig.get()
+    active_dates = plan.get_active_dates()
+
+    present_users = list(
+        plan.present_members
+        .select_related('profile')
+        .all()
+    )
+    if not present_users:
+        return []
+
+    meals = list(
+        Meal.objects
+        .filter(week_plan=plan)
+        .select_related('recipe')
+        .prefetch_related('meal_members')
+    )
+    meal_by_slot = {(m.date, m.meal_time): m for m in meals}
+
+    result = []
+    for user in present_users:
+        try:
+            factor  = user.profile.portions_factor
+            profile = user.profile
+            # Créneaux planifiés — kcal
+            lunch_kcal    = (profile.lunch_kcal_target  or 650) * factor
+            dinner_kcal   = (profile.dinner_kcal_target or 650) * factor
+            # Créneaux planifiés — protéines
+            lunch_prot    = (profile.lunch_prot_target  or 25) * factor
+            dinner_prot   = (profile.dinner_prot_target or 25) * factor
+            # Hors planning — kcal et protéines par jour
+            fixed_kcal    = ((profile.breakfast_kcal or 0) + (profile.snack_kcal or 0) + (profile.other_kcal or 0)) * factor
+            fixed_prot    = ((profile.breakfast_prot  or 0) + (profile.snack_prot  or 0) + (profile.other_prot  or 0)) * factor
+            # Cibles journalières complètes
+            daily_kcal_target = (profile.daily_kcal_total or 2000) * factor
+            daily_prot_target = (profile.daily_prot_total or 75)   * factor
+        except Exception:
+            factor = 1.0
+            lunch_kcal  = dinner_kcal  = (config.calories_dinner_target or 650) * factor
+            lunch_prot  = dinner_prot  = (config.proteins_dinner_target  or 27)  * factor
+            fixed_kcal  = fixed_prot   = 0.0
+            daily_kcal_target = (config.calories_dinner_target or 650) * 2 * factor
+            daily_prot_target = (config.proteins_dinner_target  or 27)  * 2 * factor
+
+        kcal_total = 0.0
+        prot_total = 0.0
+        member_ids_in_meals = {}
+
+        nb_jours = len(active_dates)
+        for d in active_dates:
+            # Hors planning : ajoutés chaque jour sans condition
+            kcal_total += fixed_kcal
+            prot_total += fixed_prot
+
+            for mt in ('lunch', 'dinner'):
+                slot_kcal = lunch_kcal if mt == 'lunch' else dinner_kcal
+                slot_prot = lunch_prot if mt == 'lunch' else dinner_prot
+                meal = meal_by_slot.get((d, mt))
+                if meal is None:
+                    continue
+                if meal.absent:
+                    kcal_total += slot_kcal
+                    prot_total += slot_prot
+                elif meal.recipe:
+                    slot = (meal.pk,)
+                    if slot not in member_ids_in_meals:
+                        member_ids_in_meals[slot] = frozenset(
+                            meal.meal_members.values_list('id', flat=True)
+                        )
+                    if user.pk in member_ids_in_meals[slot]:
+                        kcal_total += (meal.recipe.calories_per_serving or 0) * factor
+                        prot_total += (meal.recipe.proteins_per_serving or 0) * factor
+
+        kcal_target = daily_kcal_target * nb_jours
+        prot_target = daily_prot_target * nb_jours
+
+        def _pct_membre(actual, target):
+            return min(round(actual / target * 100) if target else 0, 100)
+
+        def _status_membre(actual, target):
+            if not target:
+                return 'neutral'
+            p = actual / target * 100
+            if p < 60 or p > 130:
+                return 'alert'
+            if p < 80 or p > 110:
+                return 'warning'
+            return 'ok'
+
+        result.append({
+            'user_id':     user.pk,
+            'name':        user.first_name or user.email.split('@')[0],
+            'kcal':        round(kcal_total),
+            'prot':        round(prot_total, 1),
+            'kcal_target': round(kcal_target),
+            'prot_target': round(prot_target, 1),
+            'kcal_pct':    _pct_membre(kcal_total, kcal_target),
+            'prot_pct':    _pct_membre(prot_total, prot_target),
+            'kcal_status': _status_membre(kcal_total, kcal_target),
+            'prot_status': _status_membre(prot_total, prot_target),
+        })
+
+    return result
 
 
 def _saison_courante() -> str:
@@ -584,6 +795,19 @@ def _parse_int(val: str):
         return None
 
 
+def _sync_known_ingredient(name: str, ciqual_ref) -> None:
+    """Ajoute ou enrichit la base de connaissance lors de la sauvegarde d'une recette."""
+    from .models import _normaliser_nom
+    nom_norm = _normaliser_nom(name)
+    try:
+        ki = KnownIngredient.objects.get(nom_normalise=nom_norm)
+        if ciqual_ref and ki.ciqual_ref is None:
+            ki.ciqual_ref = ciqual_ref
+            ki.save(update_fields=['ciqual_ref'])
+    except KnownIngredient.DoesNotExist:
+        KnownIngredient.objects.create(name=name, ciqual_ref=ciqual_ref)
+
+
 @transaction.atomic
 def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
     """
@@ -592,7 +816,9 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
     Appelé après la sauvegarde du modèle Recipe lui-même.
     """
     # ── Ingrédients ──────────────────────────────────────────────────────────
-    recipe.ingredient_groups.all().delete()  # cascade sur Ingredient
+    # Ingredient.group a on_delete=SET_NULL → supprimer les ingrédients en premier
+    recipe.ingredients.all().delete()
+    recipe.ingredient_groups.all().delete()
 
     group_count = _parse_int(post_data.get("group_count", "0")) or 0
     for g in range(group_count):
@@ -606,15 +832,31 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
             name = post_data.get(f"ing_name_{g}_{i}", "").strip()
             if not name:
                 continue
-            qty       = _parse_float(post_data.get(f"ing_qty_{g}_{i}"))
-            unit      = post_data.get(f"ing_unit_{g}_{i}", "").strip() or None
-            ciqual_id_raw = post_data.get(f"ing_ciqual_ref_id_{g}_{i}", "").strip()
+            qty  = _parse_float(post_data.get(f"ing_qty_{g}_{i}"))
+            unit = post_data.get(f"ing_unit_{g}_{i}", "").strip() or None
+
+            # ── Résolution KnownIngredient (source primaire) ────────────────
+            # Le formulaire envoie ing_known_id (nouveau) OU ing_ciqual_ref_id
+            # (ancien, rétrocompat pour les recettes déjà en base).
+            known_ingr = None
             ciqual_ref = None
-            if ciqual_id_raw:
+            known_id_raw = post_data.get(f"ing_known_id_{g}_{i}", "").strip()
+            if known_id_raw:
                 try:
-                    ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id_raw))
-                except (IngredientRef.DoesNotExist, ValueError):
+                    known_ingr = KnownIngredient.objects.select_related('ciqual_ref').get(
+                        pk=int(known_id_raw)
+                    )
+                    ciqual_ref = known_ingr.ciqual_ref  # dérivé de la base de connaissance
+                except (KnownIngredient.DoesNotExist, ValueError):
                     pass
+            # Fallback rétrocompat : champ ing_ciqual_ref_id encore présent en base
+            if ciqual_ref is None:
+                ciqual_id_raw = post_data.get(f"ing_ciqual_ref_id_{g}_{i}", "").strip()
+                if ciqual_id_raw:
+                    try:
+                        ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id_raw))
+                    except (IngredientRef.DoesNotExist, ValueError):
+                        pass
 
             ingr = Ingredient(
                 recipe=recipe,
@@ -625,28 +867,27 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
                 unit=unit,
                 is_optional=post_data.get(f"ing_optional_{g}_{i}") == "on",
                 category=post_data.get(f"ing_category_{g}_{i}", "").strip() or None,
+                known_ingredient=known_ingr,
                 ciqual_ref=ciqual_ref,
                 order=i,
             )
-            # Macros : préférence Ciqual si dispo, sinon valeurs saisies manuellement
-            if ciqual_ref:
-                macros = compute_ingredient_macros_from_ciqual(ingr)
-                if macros:
-                    ingr.calories = macros['calories']
-                    ingr.proteins = macros['proteins']
-                    ingr.carbs    = macros['carbs']
-                    ingr.fats     = macros['fats']
-                else:
-                    ingr.calories = _parse_float(post_data.get(f"ing_calories_{g}_{i}"))
-                    ingr.proteins = _parse_float(post_data.get(f"ing_proteins_{g}_{i}"))
-                    ingr.carbs    = _parse_float(post_data.get(f"ing_carbs_{g}_{i}"))
-                    ingr.fats     = _parse_float(post_data.get(f"ing_fats_{g}_{i}"))
+            # Macros : calculées depuis Ciqual (dérivé de KnownIngredient).
+            # Jamais depuis des champs cachés pour éviter les valeurs obsolètes.
+            macros = compute_ingredient_macros_from_ciqual(ingr) if ciqual_ref else None
+            if macros:
+                ingr.calories = macros['calories']
+                ingr.proteins = macros['proteins']
+                ingr.carbs    = macros['carbs']
+                ingr.fats     = macros['fats']
             else:
-                ingr.calories = _parse_float(post_data.get(f"ing_calories_{g}_{i}"))
-                ingr.proteins = _parse_float(post_data.get(f"ing_proteins_{g}_{i}"))
-                ingr.carbs    = _parse_float(post_data.get(f"ing_carbs_{g}_{i}"))
-                ingr.fats     = _parse_float(post_data.get(f"ing_fats_{g}_{i}"))
+                ingr.calories = None
+                ingr.proteins = None
+                ingr.carbs    = None
+                ingr.fats     = None
             ingr.save()
+            # Enrichissement base de connaissance si ingrédient non encore référencé
+            if known_ingr is None:
+                _sync_known_ingredient(name, ciqual_ref)
 
     # ── Étapes ───────────────────────────────────────────────────────────────
     recipe.steps.all().delete()

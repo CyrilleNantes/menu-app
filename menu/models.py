@@ -1,9 +1,20 @@
+import re
+import unicodedata
 import uuid
 from datetime import time as datetime_time
 
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
+
+
+def _normaliser_nom(s: str) -> str:
+    """Normalise un nom : minuscules, sans accents, sans ponctuation."""
+    s = s.lower().strip()
+    s = unicodedata.normalize('NFD', s)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    s = re.sub(r'[^\w\s]', ' ', s)
+    return re.sub(r'\s+', ' ', s).strip()
 
 
 class Family(models.Model):
@@ -43,6 +54,40 @@ class UserProfile(models.Model):
         verbose_name="Facteur de portion",
         help_text="1.0 = adulte référence. Ado garçon 15–16 ans ≈ 1.3, ado fille 13 ans ≈ 0.9.",
     )
+
+    # ── Profil type PNNS sélectionné ─────────────────────────────────────────
+    profile_type = models.CharField(max_length=20, blank=True, default='', verbose_name="Profil type PNNS")
+
+    # ── Apports journaliers — calories (5 créneaux) ──────────────────────────
+    # Seuls déjeuner et dîner sont gérés par le planning.
+    breakfast_kcal     = models.PositiveIntegerField(default=500,  verbose_name="Petit-déjeuner (kcal)")
+    lunch_kcal_target  = models.PositiveIntegerField(default=650,  verbose_name="Déjeuner cible (kcal)")
+    snack_kcal         = models.PositiveIntegerField(default=200,  verbose_name="Collation (kcal)")
+    dinner_kcal_target = models.PositiveIntegerField(default=650,  verbose_name="Dîner cible (kcal)")
+    other_kcal         = models.PositiveIntegerField(default=0,    verbose_name="Autres apports (kcal)")
+
+    # ── Apports journaliers — protéines (5 créneaux) ─────────────────────────
+    breakfast_prot     = models.PositiveIntegerField(default=15,   verbose_name="Petit-déjeuner (g prot)")
+    lunch_prot_target  = models.PositiveIntegerField(default=25,   verbose_name="Déjeuner cible (g prot)")
+    snack_prot         = models.PositiveIntegerField(default=8,    verbose_name="Collation (g prot)")
+    dinner_prot_target = models.PositiveIntegerField(default=25,   verbose_name="Dîner cible (g prot)")
+    other_prot         = models.PositiveIntegerField(default=2,    verbose_name="Autres apports (g prot)")
+
+    @property
+    def daily_kcal_total(self):
+        return self.breakfast_kcal + self.lunch_kcal_target + self.snack_kcal + self.dinner_kcal_target + self.other_kcal
+
+    @property
+    def daily_prot_total(self):
+        return self.breakfast_prot + self.lunch_prot_target + self.snack_prot + self.dinner_prot_target + self.other_prot
+
+    @property
+    def planned_kcal_per_day(self):
+        return self.lunch_kcal_target + self.dinner_kcal_target
+
+    @property
+    def planned_prot_per_day(self):
+        return self.lunch_prot_target + self.dinner_prot_target
 
     class Meta:
         verbose_name = "Profil utilisateur"
@@ -229,9 +274,22 @@ class Recipe(models.Model):
     health_tags = models.JSONField(default=list, blank=True)
     complexity = models.CharField(max_length=20, choices=COMPLEXITY_CHOICES, default="simple")
     calories_per_serving = models.FloatField(blank=True, null=True)
+    kcal_per_100g_raw = models.FloatField(blank=True, null=True)
     proteins_per_serving = models.FloatField(blank=True, null=True)
     carbs_per_serving = models.FloatField(blank=True, null=True)
+    sugars_per_serving = models.FloatField(blank=True, null=True)
     fats_per_serving = models.FloatField(blank=True, null=True)
+    NUTRITION_STATUS_CHOICES = [
+        ('ok',      'Complet — tous les ingrédients mappés'),
+        ('partial', 'Partiel — certains ingrédients non mappés'),
+        ('missing', 'Manquant — aucun ingrédient mappé'),
+    ]
+    nutrition_status = models.CharField(
+        max_length=10,
+        choices=NUTRITION_STATUS_CHOICES,
+        default='missing',
+        verbose_name="Statut nutritionnel",
+    )
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="recipes")
     PROTEIN_TYPE_CHOICES = [
         ("boeuf",        "Bœuf"),
@@ -287,6 +345,10 @@ class IngredientRef(models.Model):
     proteines_100g    = models.FloatField(null=True, blank=True, verbose_name="Protéines (g/100g)")
     glucides_100g     = models.FloatField(null=True, blank=True, verbose_name="Glucides (g/100g)")
     lipides_100g      = models.FloatField(null=True, blank=True, verbose_name="Lipides (g/100g)")
+    sucres_100g       = models.FloatField(null=True, blank=True, verbose_name="Sucres (g/100g)")
+    fibres_100g       = models.FloatField(null=True, blank=True, verbose_name="Fibres alimentaires (g/100g)")
+    ag_satures_100g   = models.FloatField(null=True, blank=True, verbose_name="AG saturés (g/100g)")
+    sel_100g          = models.FloatField(null=True, blank=True, verbose_name="Sel (g/100g)")
     default_weight_g  = models.FloatField(
         null=True, blank=True,
         verbose_name="Poids par défaut (g)",
@@ -302,6 +364,11 @@ class IngredientRef(models.Model):
         verbose_name="Type de protéine",
     )
     shopping_category = models.CharField(max_length=50, blank=True, null=True, verbose_name="Catégorie liste de courses")
+    synonymes = models.TextField(
+        blank=True, default="",
+        verbose_name="Synonymes",
+        help_text="Noms courants séparés par des virgules (ex: spaghetti, tagliatelles, penne). Utilisés pour l'autocomplete.",
+    )
 
     class Meta:
         ordering = ["nom_fr"]
@@ -332,7 +399,15 @@ class Ingredient(models.Model):
         null=True, blank=True,
         related_name="ingredients",
         verbose_name="Référence Ciqual",
-        help_text="Correspondance dans le référentiel ANSES Ciqual 2020",
+        help_text="Dérivé automatiquement depuis known_ingredient.ciqual_ref à la sauvegarde",
+    )
+    known_ingredient = models.ForeignKey(
+        "KnownIngredient",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="usages",
+        verbose_name="Ingrédient connu",
+        help_text="Lien vers la base de connaissance ingrédients",
     )
 
     class Meta:
@@ -410,21 +485,41 @@ class WeekPlan(models.Model):
     STATUS_CHOICES = [
         ("draft", "Brouillon"),
         ("published", "Publié"),
+        ("finished", "Terminé"),
     ]
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="week_plans")
     period_start = models.DateField()
     period_end = models.DateField()
+    # Dates actives dans la période (liste de "YYYY-MM-DD"). Vide = toutes les dates period_start…period_end.
+    active_dates = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
+    # Présence : membres famille présents + invités libres
+    present_members = models.ManyToManyField(User, blank=True, related_name="planning_presences")
+    guests = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="week_plans")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = "Planning hebdomadaire"
-        verbose_name_plural = "Plannings hebdomadaires"
+        verbose_name = "Planning de période"
+        verbose_name_plural = "Plannings de période"
         constraints = [
             models.UniqueConstraint(fields=["family", "period_start"], name="unique_family_period_start")
         ]
+
+    def get_active_dates(self):
+        """Retourne la liste des dates actives (objets date). Si active_dates vide, retourne toutes les dates de la période."""
+        from datetime import date as date_type, timedelta
+        import datetime
+        if self.active_dates:
+            return sorted([datetime.date.fromisoformat(d) for d in self.active_dates])
+        # Fallback : toutes les dates de period_start à period_end
+        result = []
+        d = self.period_start
+        while d <= self.period_end:
+            result.append(d)
+            d += timedelta(days=1)
+        return result
 
     def __str__(self):
         return f"{self.family.name} — {self.period_start}"
@@ -441,6 +536,8 @@ class Meal(models.Model):
     meal_time = models.CharField(max_length=10, choices=MEAL_TIME_CHOICES)
     recipe = models.ForeignKey(Recipe, on_delete=models.SET_NULL, null=True, blank=True, related_name="meals")
     servings_count = models.PositiveIntegerField(blank=True, null=True)
+    meal_members = models.ManyToManyField(User, blank=True, related_name="meal_participations")
+    guest_count = models.PositiveIntegerField(default=0)
     is_leftovers = models.BooleanField(default=False)
     absent = models.BooleanField(
         default=False,
@@ -523,3 +620,45 @@ class NotificationPreference(models.Model):
 
     def __str__(self):
         return f"{self.user.username} — {self.get_channel_display()}"
+
+
+class KnownIngredient(models.Model):
+    """Base de connaissance des ingrédients utilisés dans les recettes."""
+    name          = models.CharField(max_length=200, unique=True, verbose_name="Nom")
+    nom_normalise = models.CharField(max_length=200, db_index=True, editable=False, verbose_name="Nom normalisé")
+    synonymes     = models.TextField(
+        blank=True, default="",
+        verbose_name="Synonymes",
+        help_text="Noms alternatifs séparés par des virgules (insensible à la casse et aux accents)",
+    )
+    ciqual_ref    = models.ForeignKey(
+        'IngredientRef', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='known_ingredients',
+        verbose_name="Référence Ciqual",
+    )
+    default_unit  = models.CharField(
+        max_length=20, default='g', blank=True,
+        verbose_name="Unité par défaut",
+        help_text="Ex. g, ml, kg, unité — pré-remplit le champ Unité dans le formulaire recette",
+    )
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Ingrédient connu"
+        verbose_name_plural = "Ingrédients connus"
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.nom_normalise = _normaliser_nom(self.name)
+        super().save(*args, **kwargs)
+
+    @property
+    def kcal_100g(self):
+        return self.ciqual_ref.kcal_100g if self.ciqual_ref else None
+
+    @property
+    def proteines_100g(self):
+        return self.ciqual_ref.proteines_100g if self.ciqual_ref else None

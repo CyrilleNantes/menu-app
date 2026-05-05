@@ -6,17 +6,29 @@
 <div class="form-page">
     <h1 class="form-page__title">Rejoindre une famille</h1>
     <p class="form-page__subtitle">
-        Demandez à votre Cuisinier de vous envoyer le lien d'invitation.<br>
-        Le lien vous rattachera automatiquement à la famille.
+        Collez le lien d'invitation que votre Cuisinier vous a envoyé.
     </p>
-    <a href="{% url 'menu:deconnexion' %}" class="btn btn--secondary" onclick="this.closest('form')?.submit(); return false;">
-        Se déconnecter
-    </a>
+
+    {% if error %}
+    <div class="message message--error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" class="form-card">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="invite_link">Lien d'invitation</label>
+            <input type="text" id="invite_link" name="invite_link"
+                   placeholder="https://…/famille/inviter/xxxxxxxx-…"
+                   autocomplete="off" autofocus>
+        </div>
+        <button type="submit" class="btn btn--primary btn--full">Rejoindre la famille</button>
+    </form>
+
+    <p class="form-page__alt" style="margin-top:1.5rem">
+        <a href="#" onclick="document.getElementById('logout-form').submit(); return false;">Se déconnecter</a>
+    </p>
     <form method="post" action="{% url 'menu:deconnexion' %}" style="display:none" id="logout-form">
         {% csrf_token %}
     </form>
-    <p class="form-page__alt" style="margin-top:1rem">
-        <a href="#" onclick="document.getElementById('logout-form').submit(); return false;">Se déconnecter</a>
-    </p>
 </div>
 {% endblock %}

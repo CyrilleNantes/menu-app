@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v3.3** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-04-29
+> Version courante : **v5.3** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-05-05
 
 ---
 
@@ -111,7 +111,7 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 | Service | Usage | Variable d'env | Fichier `integrations/` |
 |---------|-------|----------------|--------------------------|
 | Ciqual 2020 (local) | Référentiel nutritionnel ingrédients | *(aucune clé — table locale PostgreSQL)* | *(pas d'intégration externe)* |
-| Cloudinary | Stockage et redimensionnement des photos | `CLOUDINARY_URL` | `integrations/cloudinary.py` |
+| Cloudinary | Stockage des photos (original brut) + optimisation à l'affichage (`f_auto,q_auto,w_X,c_limit` via filtre template `cloudinary_img`) | `CLOUDINARY_URL` | `integrations/cloudinary.py` |
 | Google Calendar | Export des menus planifiés | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `integrations/google_calendar.py` |
 | Google Tasks | Export des listes de courses | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `integrations/google_tasks.py` |
 
@@ -133,36 +133,34 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 - `https://www.googleapis.com/auth/calendar.events` (écriture événements uniquement — moindre privilège)
 - `https://www.googleapis.com/auth/tasks` (écriture tâches)
 
-### 3.3 Référentiel nutritionnel Ciqual 2020 (ANSES) + références personnalisées
+### 3.3 Référentiel nutritionnel Ciqual (ANSES) — version retravaillée
 
-Table locale PostgreSQL (`IngredientRef`), importée depuis le fichier XLS officiel ANSES Ciqual 2020, enrichie de références personnalisées pour les ingrédients non présents dans le référentiel officiel (épices, herbes, eau, sel…).
+Table locale PostgreSQL (`IngredientRef`), importée depuis un fichier XLS ANSES Ciqual retravaillé.
 **Aucun appel réseau** — calcul 100% hors-ligne.
 
-**Commandes d'initialisation** (à lancer dans l'ordre) :
-```
-python manage.py import_ciqual --file "Data/Table Ciqual 2020_FR_2020 07 07.xls"
-python manage.py add_custom_refs
-python manage.py match_ingredients
-```
+**Import** : via l'UI Management (upload XLS → `import_ciqual --wipe`) ou :
+`python manage.py import_ciqual --file data/CIRQUAL_MENU_APP.xls --wipe`
 
-**Commande optionnelle** :
-```
-python manage.py recalculate_nutrition   # recalcule les macros par portion sur toutes les recettes
-```
+**Construction de la base de connaissance** : `python manage.py build_known_ingredients` — construit `KnownIngredient` à partir des noms d'ingrédients déjà utilisés dans les recettes.
 
-**Références personnalisées** (`add_custom_refs`) :
-28 entrées avec codes `CUST001`–`CUST028` (eau, sel, poivre, herbes aromatiques, épices, sauces…). Valeurs nutritionnelles fixées à 0 — quantités utilisées négligeables ou ingrédient sans apport calorique. Ces références sont idempotentes (la commande est rejouable sans effet si déjà présentes).
+**Recalcul** : `python manage.py recalculate_nutrition` — purge les orphelins, resynchronise les `ciqual_ref`, recalcule les macros par portion pour toutes les recettes actives.
 
-**Statistiques (2026-04-29)** :
-- 3185 `IngredientRef` ANSES Ciqual 2020 importés
-- 28 `IngredientRef` personnalisées (CUST001–CUST028)
-- Couverture matching : **99.4%** (1432 mappés, 8 non-calculables, 0 non-matchés / 1440 total)
+**Nettoyage Ciqual** : `python manage.py clean_ciqual [--dry-run]` — supprime les plats composés et les entrées sans données kcal (hors exceptions : eau, sel, bouillon…).
 
-**Autocomplete formulaire** : à la saisie du nom d'un ingrédient, une dropdown propose les correspondances Ciqual (debounce 350ms, `GET /api/ingredients/ciqual/`).
+**Architecture en deux couches** :
+- `IngredientRef` : référentiel officiel ANSES Ciqual — table en lecture seule (sauf via Management)
+- `KnownIngredient` : base de connaissance des ingrédients utilisés dans les recettes, avec lien vers `IngredientRef` et synonymes. Enrichie automatiquement à chaque sauvegarde de recette.
 
-**Audit mapping** : page temporaire `GET /recettes/ciqual-audit/` (Cuisiniers + staff) permettant de visualiser et corriger les mappings ingrédient ↔ IngredientRef directement inline (endpoint AJAX `POST /api/ingredients/<id>/set-ciqual/`).
+**Autocomplete** : à la saisie dans le formulaire recette, une dropdown interroge `KnownIngredient` (debounce 350ms, `GET /api/ingredients/connus/?q=`). Priorité aux correspondances par synonymes puis par nom normalisé.
 
-Fallback : si aucune correspondance Ciqual, les macros restent vides (l'ingrédient est dit "non calculable").
+Fallback : si aucune correspondance, les macros restent vides (`nutrition_status = 'missing'`).
+
+**Règle `nutrition_status`** :
+- `ok` : tous les ingrédients non-optionnels ont un `ciqual_ref`
+- `partial` : au moins un ingrédient non-optionnel non mappé
+- `missing` : aucun ingrédient non-optionnel mappé
+
+**Calcul des macros** (`calculer_macros_recette`) : calcule directement depuis `ciqual_ref` (pas les valeurs stockées), **tous les ingrédients contribuent au calcul (y compris les optionnels)**. Le `nutrition_status` est déterminé uniquement sur les non-optionnels. Un `kcal_100g NULL` (sel, eau) est traité comme 0 kcal — l'ingrédient est considéré mappé.
 
 ---
 
@@ -219,6 +217,25 @@ Extension du modèle User Django. Un profil par utilisateur.
 | `dinner_start` | `TimeField` | non | `20:30` | Début dîner pour export Google Calendar |
 | `dinner_end` | `TimeField` | non | `21:30` | Fin dîner pour export Google Calendar |
 | `portions_factor` | `FloatField` | non | `1.0` | Facteur de portion individuel pour le calcul nutritionnel personnalisé. Adulte référence = 1.0 ; ado garçon 15–16 ans ≈ 1.3 ; ado fille 13 ans ≈ 0.9. Configurable librement dans le profil. |
+| `breakfast_kcal` | `PositiveIntegerField` | non | `500` | Apport habituel petit-déjeuner (kcal) — non géré par le planning |
+| `lunch_kcal_target` | `PositiveIntegerField` | non | `650` | Cible kcal déjeuner — utilisée comme référence par `bilan_par_membre()` |
+| `snack_kcal` | `PositiveIntegerField` | non | `200` | Apport habituel collation (kcal) — non géré par le planning |
+| `dinner_kcal_target` | `PositiveIntegerField` | non | `650` | Cible kcal dîner — utilisée comme référence par `bilan_par_membre()` |
+| `other_kcal` | `PositiveIntegerField` | non | `0` | Autres apports journaliers (kcal) — non gérés par le planning |
+| `profile_type` | `CharField(20)` | non | `''` | Profil type PNNS sélectionné (`homme`, `femme`, `ado_garcon`, `ado_fille`, `enfant`, `senior`) — pré-sélectionne le dropdown au rechargement |
+| `breakfast_prot` | `PositiveIntegerField` | non | `15` | Apport protéines petit-déjeuner (g) — non géré par le planning |
+| `lunch_prot_target` | `PositiveIntegerField` | non | `25` | Cible protéines déjeuner (g) — utilisée par `bilan_par_membre()` |
+| `snack_prot` | `PositiveIntegerField` | non | `8` | Apport protéines collation (g) — non géré par le planning |
+| `dinner_prot_target` | `PositiveIntegerField` | non | `25` | Cible protéines dîner (g) — utilisée par `bilan_par_membre()` |
+| `other_prot` | `PositiveIntegerField` | non | `2` | Autres apports protéines (g) — non gérés par le planning |
+
+**Propriétés calculées nutritionnelles** :
+- `daily_kcal_total` : somme des 5 apports kcal journaliers
+- `daily_prot_total` : somme des 5 apports protéines journaliers
+- `planned_kcal_per_day` : `lunch_kcal_target + dinner_kcal_target`
+- `planned_prot_per_day` : `lunch_prot_target + dinner_prot_target`
+
+**Sélecteur profil type PNNS** (page `/profil/`) : 6 profils prédéfinis avec répartition par repas (25% petit-dej / 35% déj / 10% collation / 30% dîner). Le choix est sauvegardé dans `profile_type` et pré-sélectionné au rechargement. Les colonnes "Référence PNNS" des deux tableaux (kcal et protéines) se mettent à jour dynamiquement. Le bouton "Appliquer ces valeurs" pré-remplit les inputs sans sauvegarder.
 
 **Propriété calculée `rank`** : retourne `(level, name)` — calculée à partir du rôle et des contributions (non stockée en base).
 
@@ -245,16 +262,20 @@ Catalogue global partagé entre toutes les familles.
 | `health_tags` | `JSONField` | non | `[]` | Ex. `["leger", "proteine"]` |
 | `complexity` | `CharField(20)` | non | `"simple"` | `simple` / `intermediaire` / `elabore` |
 | `protein_type` | `CharField(20)` | oui | `null` | Protéine principale : `boeuf` / `volaille` / `porc` / `poisson` / `oeufs` / `legumineuses` / `autre` / `aucune`. Utilisé par l'algorithme de suggestions pour assurer la variété. |
-| `calories_per_serving` | `FloatField` | oui | — | Kcal par portion (calculé) |
+| `calories_per_serving` | `FloatField` | oui | — | Kcal par portion (calculé via Ciqual) |
+| `kcal_per_100g_raw` | `FloatField` | oui | — | Kcal pour 100g brut (total kcal / total poids ingrédients avant cuisson × 100) |
 | `proteins_per_serving` | `FloatField` | oui | — | Protéines (g) par portion (calculé) |
-| `carbs_per_serving` | `FloatField` | oui | — | Glucides (g) par portion (calculé) |
+| `carbs_per_serving` | `FloatField` | oui | — | Glucides totaux (g) par portion (calculé) |
+| `sugars_per_serving` | `FloatField` | oui | — | dont sucres (g) par portion (calculé — sous-ensemble des glucides) |
 | `fats_per_serving` | `FloatField` | oui | — | Lipides (g) par portion (calculé) |
+| `nutrition_status` | `CharField(10)` | non | `'missing'` | Statut du calcul nutritionnel : `ok` / `partial` / `missing` |
 | `created_by` | `ForeignKey(User)` | non | — | Auteur |
 | `actif` | `BooleanField` | non | `True` | Soft delete |
 | `created_at` | `DateTimeField` | non | auto | Date de création |
 
 **Tri par défaut** : `["-created_at"]`
 **Soft delete** : `actif=False` masque la recette du catalogue sans suppression physique.
+**`nutrition_status`** mis à jour automatiquement à chaque sauvegarde de recette et par `recalculate_nutrition`.
 
 ---
 
@@ -278,42 +299,69 @@ Ingrédient d'une recette, rattaché à un groupe.
 | Champ | Type Django | Nullable | Défaut | Description |
 |-------|-------------|----------|--------|-------------|
 | `id` | `BigAutoField` | non | auto | Clé primaire |
-| `recipe` | `ForeignKey(Recipe)` | non | — | Recette parente |
-| `group` | `ForeignKey(IngredientGroup)` | oui | — | Groupe (optionnel) |
+| `recipe` | `ForeignKey(Recipe)` | non | — | Recette parente (`CASCADE`) |
+| `group` | `ForeignKey(IngredientGroup)` | oui | — | Groupe (`SET_NULL` — voir note) |
 | `name` | `CharField(200)` | non | — | Nom de l'ingrédient |
 | `quantity` | `FloatField` | oui | — | Quantité (relative à `base_servings`) — valeur basse si fourchette |
-| `quantity_note` | `CharField(50)` | oui | — | Précision libre sur la quantité (ex. "150–200g", "2 à 3 sachets") |
+| `quantity_note` | `CharField(50)` | oui | — | Précision libre sur la quantité (ex. "150–200g", "selon votre goût"). Affiché à la place de `quantity + unit` quand renseigné. |
 | `unit` | `CharField(50)` | oui | — | Unité (g, ml, c. à soupe…) |
-| `is_optional` | `BooleanField` | non | `False` | Ingrédient optionnel |
-| `category` | `CharField(50)` | oui | — | Catégorie courses (viandes, légumes, épicerie…) |
-| `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Correspondance dans le référentiel ANSES Ciqual 2020 (ou référence CUST) |
-| `calories` | `FloatField` | oui | — | Kcal pour la quantité définie (calculé depuis Ciqual si ref présente) |
+| `is_optional` | `BooleanField` | non | `False` | Ingrédient optionnel — inclus dans le calcul nutritionnel, exclu du `nutrition_status` |
+| `category` | `CharField(50)` | oui | — | Catégorie courses — valeur normalisée parmi : `épicerie`, `légumes`, `crèmerie`, `viandes`, `poissonnerie`, `boulangerie`, `surgelés`, `boissons`, `autre`. Champ select dans le formulaire (plus de saisie libre). |
+| `known_ingredient` | `ForeignKey(KnownIngredient)` | oui | — | Lien vers la base de connaissance (`SET_NULL`) |
+| `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Référence Ciqual dérivée de `known_ingredient.ciqual_ref` à la sauvegarde |
+| `calories` | `FloatField` | oui | — | Kcal calculés pour la quantité définie (cache — source de vérité : Ciqual) |
 | `proteins` | `FloatField` | oui | — | Protéines (g) |
 | `carbs` | `FloatField` | oui | — | Glucides (g) |
 | `fats` | `FloatField` | oui | — | Lipides (g) |
 | `order` | `PositiveIntegerField` | non | `0` | Ordre dans le groupe |
 
+> **Note `group` SET_NULL** : `Ingredient.group` utilise `on_delete=SET_NULL`. La suppression d'un groupe orphelinise les ingrédients (group=NULL) sans les supprimer. `sauvegarder_recette_depuis_post()` supprime explicitement `recipe.ingredients.all()` avant de supprimer les groupes pour éviter toute accumulation.
+
 ---
 
 ### 4.6b `IngredientRef`
 
-Référentiel nutritionnel ANSES Ciqual 2020 — table en lecture seule (importée via `import_ciqual`).
+Référentiel nutritionnel ANSES Ciqual — importé depuis le fichier XLS retravaillé `CIRQUAL_MENU_APP.xls`.
+Modifiable via la page `/management/ciqual/`. Les entrées personnalisées ont un code `CUSTOM-XXXX`.
 
 | Champ | Type Django | Nullable | Défaut | Description |
 |-------|-------------|----------|--------|-------------|
 | `id` | `BigAutoField` | non | auto | Clé primaire |
-| `ciqual_code` | `CharField(10)` | non | — | Code Ciqual unique (ex. `"22000"`) ou code personnalisé (ex. `"CUST001"`) |
+| `ciqual_code` | `CharField(10)` | non | — | Code Ciqual unique (ex. `"22000"` ou `"CUSTOM-0001"`) |
 | `nom_fr` | `CharField(300)` | non | — | Nom officiel Ciqual (ex. "Œuf entier, cru") |
 | `nom_normalise` | `CharField(300)` | non | — | Nom normalisé pour recherche (ascii, minuscules) |
+| `synonymes` | `TextField` | oui | `""` | Noms courants séparés par virgules (ex. "steak,bœuf haché") — boostés dans l'autocomplete |
 | `groupe` | `CharField(100)` | oui | — | Groupe alimentaire Ciqual |
 | `sous_groupe` | `CharField(100)` | oui | — | Sous-groupe Ciqual |
-| `kcal_100g` | `FloatField` | oui | — | Énergie (kcal/100g) |
+| `kcal_100g` | `FloatField` | oui | — | Énergie (kcal/100g) — NULL pour sel, eau, etc. → traité comme 0 kcal |
 | `proteines_100g` | `FloatField` | oui | — | Protéines (g/100g) |
 | `glucides_100g` | `FloatField` | oui | — | Glucides (g/100g) |
+| `sucres_100g` | `FloatField` | oui | — | Sucres simples (g/100g) |
 | `lipides_100g` | `FloatField` | oui | — | Lipides (g/100g) |
+| `ag_satures_100g` | `FloatField` | oui | — | Acides gras saturés (g/100g) |
+| `fibres_100g` | `FloatField` | oui | — | Fibres alimentaires (g/100g) |
+| `sel_100g` | `FloatField` | oui | — | Sel (g/100g) |
 | `default_weight_g` | `FloatField` | oui | — | Poids par défaut pour unités dénombrables (ex. 1 œuf = 60g) |
 | `protein_type` | `CharField(20)` | oui | — | Type de protéine (`boeuf`, `volaille`, `poisson`, etc.) |
 | `shopping_category` | `CharField(50)` | oui | — | Catégorie liste de courses |
+
+### 4.6c `KnownIngredient`
+
+Base de connaissance des ingrédients utilisés dans les recettes. Intermédiaire entre `Ingredient` et `IngredientRef`. Enrichie automatiquement à chaque sauvegarde de recette (`_sync_known_ingredient`).
+
+| Champ | Type Django | Nullable | Défaut | Description |
+|-------|-------------|----------|--------|-------------|
+| `id` | `BigAutoField` | non | auto | Clé primaire |
+| `name` | `CharField(200)` | non | — | Nom de l'ingrédient (unique) |
+| `nom_normalise` | `CharField(200)` | non | — | Calculé automatiquement via `_normaliser_nom(name)` à chaque save |
+| `synonymes` | `TextField` | oui | `""` | Noms alternatifs séparés par virgules — utilisés dans l'autocomplete |
+| `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Correspondance Ciqual (`SET_NULL`) |
+| `default_unit` | `CharField(20)` | non | `'g'` | Unité pré-remplie dans le formulaire recette |
+| `created_at` | `DateTimeField` | non | auto | Date de création |
+
+**Propriétés calculées** : `kcal_100g`, `proteines_100g` — délèguent à `ciqual_ref`.
+
+**Autocomplete** (`GET /api/ingredients/connus/?q=`) : recherche sur `nom_normalise` et `synonymes`, triée par pertinence (startswith > contains > synonyme).
 
 ---
 
@@ -367,19 +415,24 @@ Avis d'un utilisateur sur une recette. Plusieurs avis possibles par utilisateur 
 
 ### 4.10 `WeekPlan`
 
-Planning hebdomadaire d'une famille.
+Planning par période d'une famille. Les périodes sont des objets indépendants à durée variable (1–7 jours).
 
 | Champ | Type Django | Nullable | Défaut | Description |
 |-------|-------------|----------|--------|-------------|
 | `id` | `BigAutoField` | non | auto | Clé primaire |
 | `family` | `ForeignKey(Family)` | non | — | Famille |
-| `period_start` | `DateField` | non | — | Début de la période (paramétrable) |
-| `period_end` | `DateField` | non | — | Fin de la période |
-| `status` | `CharField(20)` | non | `"draft"` | `draft` / `published` |
+| `period_start` | `DateField` | non | — | Premier jour de la fenêtre de 7 jours |
+| `period_end` | `DateField` | non | — | Dernier jour actif de la période |
+| `active_dates` | `JSONField` | non | `[]` | Liste de dates ISO actives (`["2026-05-04", ...]`). Si vide : tous les jours de `period_start` à `period_end`. |
+| `status` | `CharField(20)` | non | `"draft"` | `draft` / `published` / `finished` |
+| `present_members` | `ManyToManyField(User)` | — | — | Membres de la famille présents sur la période |
+| `guests` | `JSONField` | non | `[]` | Noms des invités ponctuels (liste de strings) |
 | `created_by` | `ForeignKey(User)` | non | — | Cuisinier auteur |
 | `created_at` | `DateTimeField` | non | auto | Date de création |
 
-**Contrainte DB** : `(family, period_start)` unique — une seule planification par famille par période de départ.
+**Contrainte DB** : `(family, period_start)` unique.
+
+**Méthode `get_active_dates()`** : retourne les dates actives triées. Si `active_dates` est rempli, parse les ISO strings. Sinon, génère tous les jours de `period_start` à `period_end` (rétrocompatibilité).
 
 ---
 
@@ -394,13 +447,16 @@ Repas planifié dans un WeekPlan.
 | `date` | `DateField` | non | — | Date du repas |
 | `meal_time` | `CharField(10)` | non | — | `lunch` / `dinner` |
 | `recipe` | `ForeignKey(Recipe)` | oui | `null` | Recette (null si créneau vide) |
-| `servings_count` | `PositiveIntegerField` | oui | — | Nombre de parts à préparer |
-| `is_leftovers` | `BooleanField` | non | `False` | Ce repas = restes d'un autre |
-| `source_meal` | `ForeignKey('self')` | oui | `null` | Repas source des restes |
+| `servings_count` | `PositiveIntegerField` | oui | — | Nombre de parts à préparer (calculé = len(meal_members) + guest_count) |
+| `meal_members` | `ManyToManyField(User)` | — | — | Membres de la famille présents à ce repas spécifique (peut différer de la présence globale de la période) |
+| `guest_count` | `PositiveIntegerField` | non | `0` | Nombre d'invités ponctuels à ce repas |
+| `absent` | `BooleanField` | non | `False` | Créneau marqué "personne ne mange à la maison" — exclu du bilan et des courses |
+| `is_leftovers` | `BooleanField` | non | `False` | *(réservé — concept retiré du planning UI, champ conservé pour compatibilité)* |
+| `source_meal` | `ForeignKey('self')` | oui | `null` | *(réservé — lié à is_leftovers)* |
 | `google_event_id` | `CharField(200)` | non | `""` | ID de l'événement Google Calendar créé (vide si non exporté) |
 
 **Contrainte DB** : `(week_plan, date, meal_time)` unique.
-**Règle** : si `is_leftovers=True`, ce repas n'est pas pris en compte dans la génération de la liste de courses.
+**Règle `absent`** : un créneau `absent=True` est ignoré dans la liste de courses et dans le bilan variété, mais compte comme un repas cible dans le bilan nutritionnel par membre (proxy = `calories_dinner_target × portions_factor`).
 
 ---
 
@@ -413,7 +469,7 @@ Proposition d'un Convive pour un repas à venir.
 | `id` | `BigAutoField` | non | auto | Clé primaire |
 | `family` | `ForeignKey(Family)` | non | — | Famille |
 | `recipe` | `ForeignKey(Recipe)` | non | — | Recette proposée |
-| `proposed_by` | `ForeignKey(User)` | non | — | Convive auteur |
+| `proposed_by` | `ForeignKey(User)` | non | — | Auteur de la proposition (tout membre de la famille) |
 | `message` | `TextField` | oui | — | Message optionnel |
 | `week_plan` | `ForeignKey(WeekPlan)` | oui | `null` | Lié à un planning si déjà créé |
 | `created_at` | `DateTimeField` | non | auto | Date de la proposition |
@@ -534,16 +590,16 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 - `health_tags` : multi-select, optionnel
 - `complexity` : choix, obligatoire
 - Groupes d'ingrédients : ajout dynamique (vanilla JS)
-- Ingrédients par groupe : nom + quantité + unité + optionnel + catégorie
+- Ingrédients par groupe : `Ingrédient | Ex. 150-200g | Qté | Unité | Catégorie (select) | Opt.` — la quantité libre (`quantity_note`) est affichée en priorité sur qty+unité
 - Étapes : ajout dynamique, instruction + note chef + timer optionnel
 - Sections libres : ajout dynamique
 
 **Règles de gestion** :
 1. La photo est uploadée vers Cloudinary via `integrations/cloudinary.py` → l'URL retournée est stockée dans `photo_url`
-2. À la saisie de chaque ingrédient, une requête AJAX interroge `services.rechercher_ciqual()` (base Ciqual locale) et propose les correspondances dans une dropdown
-3. Si un `IngredientRef` est sélectionné, les macros de l'ingrédient sont recalculées depuis Ciqual (quantité → grammes → facteur × kcal/100g)
-4. Les macros de la recette (`calories_per_serving` etc.) sont recalculées et sauvegardées à chaque enregistrement via `services.calculer_macros_recette()`
-4. Le calcul : somme des macros de tous les ingrédients / `base_servings`
+2. À la saisie de chaque ingrédient (debounce 350ms), une requête AJAX interroge `services.rechercher_connus()` (base `KnownIngredient`) et propose les correspondances dans une dropdown avec badge kcal/100g. Si kcal=NULL (sel, eau), affiche "Ciqual ✓". Si kcal=0, affiche "0 kcal/100g".
+3. Si un `KnownIngredient` est sélectionné, son `ciqual_ref` est résolu et les macros sont calculées (quantité → grammes → facteur × kcal/100g)
+4. Les macros de la recette sont recalculées via `services.calculer_macros_recette()` à chaque enregistrement : calcul direct depuis `ciqual_ref`, tous les ingrédients inclus (optionnels compris)
+5. `Recipe.nutrition_status` est mis à jour simultanément : `ok` / `partial` / `missing`
 
 **Gestion des erreurs** :
 - Objet introuvable → `get_object_or_404` → HTTP 404
@@ -603,23 +659,53 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 
 ---
 
-### 5.8 Planning hebdomadaire
+### 5.8 Planning par période
 
-**URL** :
-- `GET /planning/` → `menu:planning` (semaine courante ou prochaine)
-- `GET /planning/<year>/<week>/` → `menu:planning_semaine`
+**URLs** :
+- `GET /planning/` → `menu:planning` — redirige vers la période en cours (ou `creer_periode` si aucune)
+- `GET /planning/creer/` → `menu:creer_periode` — formulaire de création d'une période
+- `GET /planning/<id>/` → `menu:planning_periode` — affiche la période par son ID
 
-**Vue** : `planning(request)` / `planning_semaine(request, year, week)`
-**Template** : `menu/planning/semaine.html`
-**Accès** : tout membre de la famille
+**Vues** : `planning`, `creer_periode`, `planning_periode`
+**Templates** : `menu/planning/semaine.html`, `menu/planning/creer_periode.html`
+**Accès** : tout membre de la famille (création et modification réservées au Cuisinier)
 
-**Contenu affiché** :
-- Grille 7 jours × 2 repas (midi / soir), créneaux vides autorisés
-- Statut du planning (Brouillon / Publié)
-- Propositions des Convives en attente (visibles par le Cuisinier)
-- Indicateurs nutritionnels de la semaine (calories / protéines cumulés)
+---
 
-**Création automatique du WeekPlan** : si aucun plan n'existe pour la semaine demandée, `planning_semaine` le crée automatiquement en `draft`. `created_by` est toujours un Cuisinier — si l'utilisateur courant est un Convive, le premier Cuisinier de la famille est utilisé comme auteur.
+**Création d'une période (`creer_periode`)** :
+- La `suggested_start` est calculée : lendemain de la fin de la dernière période, ou aujourd'hui
+- Le paramètre GET `?after=YYYY-MM-DD` force `suggested_start = after + 1 jour` (utilisé par le bouton `+` de navigation)
+- Affiche 7 jours depuis `suggested_start` en ordre chronologique, tous pré-cochés
+- L'utilisateur peut décocher les jours non souhaités
+- Les jours sélectionnés sont stockés dans `active_dates` (liste de dates ISO triées)
+- `period_start = premier jour sélectionné`, `period_end = dernier jour sélectionné`
+- Validation : au moins 1 jour, max 7 jours, pas dans le passé
+
+---
+
+**Modification des jours (`modifier_jours_periode`)** :
+
+`POST /planning/<id>/jours/` → `menu:modifier_jours_periode`
+
+- Met à jour `active_dates` et `period_end`
+- Supprime les `Meal` des dates retirées (transaction atomique)
+- **Cascade automatique** : si `period_end` change ET qu'une période suivante existe en brouillon sans repas, cette période est automatiquement recalée (ses dates sont décalées du même delta)
+
+---
+
+**Affichage (`planning_periode`)** :
+- Sélecteur de jours (Cuisinier) : 7 jours depuis `period_start` en ordre chronologique — les jours actifs sont cochés, les autres décochables
+- Navigation prev/next : WeekPlan adjacent par date, identifié par son `id`. La flèche `+` (dernier plan) pointe vers `creer_periode?after=<period_end>`
+- Grille : uniquement les `active_dates` × 2 créneaux (midi / soir)
+- Bloc Présence : membres famille (M2M) + invités ponctuels — AJAX auto-save
+- Bilan équilibre (Cuisinier) : poisson, végétarien, viande blanche, viande rouge, absents
+- Bilan nutritionnel par membre (Cuisinier : tous les membres ; Convive : son propre bilan uniquement) : deux barres de progression distinctes — kcal (rouge/statut) et protéines (bleu/statut). Affichage : `🔥 X kcal` / `Cible : Y kcal · Z%`. Calculé par `services.bilan_par_membre()` :
+  - Hors planning (petit-dej, collation, autres) : valeurs fixes du profil ajoutées chaque jour sans condition
+  - Repas planifié avec recette + membre présent : kcal/prot de la recette × `portions_factor`
+  - Repas `absent` : cible du créneau précis (`lunch_kcal_target` ou `dinner_kcal_target`) × `portions_factor`
+  - Créneau sans repas ou membre non présent : 0
+  - Cible totale : `daily_kcal_total × nb_jours` (tous créneaux) / `daily_prot_total × nb_jours`
+- Backlog propositions famille
 
 ---
 
@@ -632,41 +718,67 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 **Règles de gestion** :
 1. Crée ou met à jour un `Meal` pour une date + créneau donnés
 2. Si `recipe=None` → créneau vide (cantine, repas extérieur)
-3. Si `is_leftovers=True` → `source_meal` obligatoire
-4. Un créneau "restes" n'est pas pris en compte dans la liste de courses
+3. Si `absent=True` → créneau marqué absent (personne ne mange à la maison)
+4. `member_ids` : liste d'IDs User filtrée aux membres de la famille — `servings_count = len(member_ids) + guest_count`
+5. `meal_members` mis à jour en M2M après `update_or_create`
 
 **Réponse** :
-- `{"ok": true, "meal_id": 42, "recipe_title": "Hachis Parmentier"}`
+- `{"ok": true, "meal_id": 42, "recipe_title": "Hachis Parmentier", "servings_count": 2, "meal_member_ids": [1, 3], "guest_count": 0}`
 
 ---
 
-### 5.10 Publication du planning
+### 5.10 Statuts du planning et transitions
 
-**URL** : `POST /planning/<id>/publier/` → `menu:publier_planning`
-**Vue** : `publier_planning(request, id)`
-**Accès** : Cuisinier uniquement
+| Statut | Label | Boutons Cuisinier |
+|--------|-------|-------------------|
+| `draft` | ✏️ Brouillon | ✓ Valider le menu |
+| `published` | ✅ Validé | 🛒 Publier les courses · ✏️ Modifier |
+| `finished` | 🏁 Terminé | ✏️ Modifier |
 
-**Règles de gestion** :
-1. Passe `WeekPlan.status` de `draft` à `published`
-2. La liste de courses n'est **pas** générée automatiquement — le Cuisinier la génère manuellement depuis le toolbar du planning via `POST /courses/generer/<plan_id>/`
+**Transitions** :
+- `draft → published` : `POST /planning/<id>/valider/` → `menu:valider_planning`
+- `published → finished` : `POST /courses/generer/<id>/` → génère la ShoppingList ET passe en `finished`
+- `published/finished → draft` : `POST /planning/<id>/rouvrir/` → `menu:rouvrir_planning` — supprime la ShoppingList si le statut était `finished`
 
-**Réponse** :
-- Succès : redirection vers `/planning/<year>/<week>/` + message flash "Menu publié"
+**Présence** : `POST /planning/<id>/presence/` → `menu:maj_presence` (AJAX JSON)
+- Met à jour `present_members` (M2M User) et `guests` (JSONField liste de noms libres)
+- Auto-save à chaque changement (pas de bouton Valider)
 
 ---
 
-### 5.11 Propositions de repas
+### 5.11 Propositions de repas (backlog famille)
 
-**URL** : `POST /planning/<id>/proposer/` → `menu:proposer_repas`
-**Vue** : `proposer_repas(request, plan_id)`
-**Accès** : Convive uniquement (les Cuisiniers modifient le planning directement)
+Les propositions fonctionnent comme un **backlog persistant** : elles ne sont pas liées à une semaine spécifique et restent visibles jusqu'à ce que le Cuisinier les place ou les ignore.
+
+**Deux points d'entrée pour proposer :**
+
+| URL | Nom | Description |
+|-----|-----|-------------|
+| `POST /recettes/<id>/proposer/` | `menu:creer_proposition_recette` | Depuis la fiche recette — bouton "💡 Proposer" |
+| `POST /planning/<plan_id>/proposer/` | `menu:proposer_repas` | Depuis le planning — dialog avec recherche |
+
+**Accès** : Tout membre de la famille (Cuisinier inclus).
 
 **Règles de gestion** :
-1. Crée un `MealProposal` lié à la famille et au planning
-2. Un Cuisinier qui tente de proposer reçoit une erreur 403 — il doit utiliser `modifier_meal` directement
+1. Crée un `MealProposal` avec `week_plan=None` — non lié à une semaine
+2. Pas de notification email
+3. Tous les Convives de la famille voient toutes les propositions en attente (pas uniquement les leurs)
+4. Chaque Convive ne peut annuler que ses propres propositions
+
+**Vue planning — section "Propositions de la famille" (Convive) :**
+- Affiche toutes les propositions en attente de la famille avec le prénom du proposant
+- Bouton "✕ Annuler" visible uniquement sur les propositions de l'utilisateur connecté
+
+**Vue planning — section "💡 Propositions" (Cuisinier) :**
+- Affiche tout le backlog famille (`week_plan__isnull=True`)
+- Sélecteur de créneau + bouton "✓ Placer" → appelle `modifier_meal` puis supprime la proposition
+- Bouton "✕ Ignorer" → supprime la proposition du backlog
+
+**URL suppression** : `POST /planning/proposition/<id>/supprimer/` → `menu:supprimer_proposition`
+Accessible au Cuisinier (ignorer) et au Convive proposant (annuler). Vérifié côté serveur.
 
 **Réponse** :
-- Succès : `{"ok": true}` + mise à jour de l'UI
+- Succès : `{"ok": true}` + mise à jour de l'UI sans rechargement
 
 ---
 
@@ -803,14 +915,16 @@ Comportement :
 ### États de `WeekPlan`
 
 ```
-DRAFT ──[publier_planning]──► PUBLISHED
+DRAFT ──[valider_planning]──► PUBLISHED ──[generer_courses]──► FINISHED
+  ▲                               │                                │
+  └───────────[rouvrir_planning]──┘────────────────────────────────┘
 ```
 
 | Transition | Vue | Conditions |
 |------------|-----|------------|
-| `DRAFT` → `PUBLISHED` | `publier_planning` | Cuisinier de la famille, au moins 1 Meal non vide |
-
-**Transition interdite** : `PUBLISHED` → `DRAFT` non prévue (modification directe possible).
+| `DRAFT` → `PUBLISHED` | `valider_planning` | Cuisinier de la famille |
+| `PUBLISHED` → `FINISHED` | `generer_courses` | Cuisinier, génère la ShoppingList |
+| `PUBLISHED/FINISHED` → `DRAFT` | `rouvrir_planning` | Cuisinier — supprime ShoppingList si `FINISHED` |
 
 ---
 
@@ -844,7 +958,7 @@ Photos supplémentaires d'une recette (galerie). La photo principale reste `Reci
 | `recipe` | `ForeignKey(Recipe)` | non | — | Recette parente |
 | `photo_url` | `URLField` | non | — | URL Cloudinary |
 | `caption` | `CharField(100)` | oui | — | Légende optionnelle |
-| `is_main` | `BooleanField` | non | `False` | Photo mise en avant dans la galerie (≠ `Recipe.photo_url`) |
+| `is_main` | `BooleanField` | non | `False` | Photo principale : quand promue, met aussi à jour `Recipe.photo_url` |
 | `order` | `PositiveIntegerField` | non | `0` | Ordre d'affichage |
 | `uploaded_by` | `ForeignKey(User)` | oui | `null` | Auteur de l'upload — `SET_NULL` si l'utilisateur est supprimé (préserve la photo) |
 | `actif` | `BooleanField` | non | `True` | Soft delete — retrait par le Cuisinier |
@@ -1012,16 +1126,61 @@ Affichées dans la vue planning (`planning_semaine`). Jamais bloquantes, jamais 
 **URL** : `POST /recettes/<id>/photos/<photo_id>/promouvoir/` → `menu:promouvoir_photo_recette`
 
 - Retirer : passe `actif=False` (soft delete)
-- Promouvoir : passe `is_main=True` sur cette photo, `False` sur les autres
+- Promouvoir : passe `is_main=True` sur cette photo, `False` sur les autres **ET** met à jour `Recipe.photo_url` avec l'URL de cette photo → la photo devient la photo principale visible dans la liste des recettes et l'en-tête de la fiche
 
 **Affichage dans `detail_recette` :**
 - Carousel vanilla JS sous la photo principale (`menu/js/galerie.js`)
 - Navigation gauche/droite, indicateur de position
 - Légende optionnelle affichée sous chaque photo
 
+**Optimisation bande passante Cloudinary :**
+L'URL brute est stockée en base. Le filtre template `cloudinary_img` (dans `menu_extras.py`) insère les paramètres de transformation dans l'URL à l'affichage — Cloudinary génère la version optimisée au premier appel et la met en cache.
+
+| Preset | Transformation | Contexte |
+|--------|---------------|---------|
+| `card` | `f_auto,q_auto,w_600,c_limit` | Vignettes catalogue |
+| `header` | `f_auto,q_auto,w_1200,c_limit` | Photo principale fiche recette |
+| `gallery` | `f_auto,q_auto,w_900,c_limit` | Carousel galerie |
+| `thumb` | `f_auto,q_auto,w_300,c_limit` | Miniature formulaire |
+
+Usage : `{{ photo.photo_url|cloudinary_img:"gallery" }}`
+
 **Gestion des erreurs** :
 - Upload Cloudinary échoué → message flash, pas de `RecipePhoto` créé
 - Photo non trouvée → `get_object_or_404` → HTTP 404
+
+---
+
+---
+
+## 5.22 Page Management (Chef Étoilé / Staff uniquement)
+
+**URL** : `GET /management/` → `menu:management_page`
+**Accès** : `is_staff` ou `role = chef_etoile`
+
+### Actions disponibles
+
+| Action | URL | Méthode | Description |
+|--------|-----|---------|-------------|
+| 🏗️ Construire la base | `POST /management/actions/build/` | POST | Lance `build_known_ingredients` — construit `KnownIngredient` depuis les noms d'ingrédients des recettes existantes |
+| 🔗 Lier les recettes | `POST /management/actions/link/` | POST | Lance `match_ingredients` — associe `Ingredient` aux `KnownIngredient` existants |
+| 🔄 Recalculer les macros | `POST /management/actions/recalculate/` | POST | Lance `recalculate_nutrition` — purge orphelins + recalcule toutes les macros |
+| 📥 Import Ciqual | `POST /management/actions/import-ciqual/` | POST | Upload XLS → `import_ciqual --wipe` (efface et réimporte la table) |
+| 🧹 Nettoyer Ciqual | `POST /management/actions/clean-ciqual/` | POST | Lance `clean_ciqual` — supprime plats composés et entrées sans kcal |
+| 🗑️ Vider les recettes | `POST /management/actions/reset-recipes/` | POST | `reset_mode=recipes` — supprime Recipe + WeekPlan, conserve KnownIngredient |
+| ⚠️ Reset complet | `POST /management/actions/reset-recipes/` | POST | `reset_mode=full` — supprime Recipe + KnownIngredient + WeekPlan |
+
+Toutes les actions mutantes utilisent `@require_POST` et affichent un résumé via message flash.
+
+### Référentiel Ciqual (CRUD)
+
+**URL** : `GET /management/ciqual/` → `menu:gestion_ciqual_ref`
+
+- Liste paginée (50/page) avec recherche texte et filtre par groupe alimentaire
+- Chaque ligne est éditable inline (JS + AJAX `POST /management/ciqual/<ref_id>/`)
+- Ajout d'une nouvelle entrée (formulaire collapsible, code `CUSTOM-XXXX` auto)
+- Suppression avec confirmation (`POST /management/ciqual/<ref_id>/supprimer/`) — `SET_NULL` sur `KnownIngredient.ciqual_ref`
+- Les entrées personnalisées sont distinguées par un badge "perso"
 
 ---
 
@@ -1051,8 +1210,19 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0004_nutrition_config` | 2026-04-26 | Modèle `NutritionConfig` singleton PNNS |
 | `0005_recipe_photos` | 2026-04-26 | Modèle `RecipePhoto` — galerie photos recette |
 | `0006_meal_absent_field` | 2026-04-27 | `Meal.absent` BooleanField (étape 25 — créneaux sans repas) |
-| `0007_ciqual_ingredientref` | 2026-04-29 | Modèle `IngredientRef` (3185 entrées Ciqual 2020) + `Ingredient.ciqual_ref` FK |
-| `0008_remove_openfoodfacts_id` | 2026-04-29 | Suppression `Ingredient.openfoodfacts_id` (remplacé par `ciqual_ref`) |
+| `0007_ciqual_ingredientref` | 2026-04-29 | Modèle `IngredientRef` (Ciqual 2020) + `Ingredient.ciqual_ref` FK |
+| `0008_remove_openfoodfacts_id` | 2026-04-30 | Suppression du champ legacy Open Food Facts |
+| `0009_synonymes_ingredientref` | 2026-04-30 | `IngredientRef.synonymes` TextField |
+| `0010_known_ingredient` | 2026-05-01 | Modèle `KnownIngredient` — base de connaissance ingrédients |
+| `0011_known_ingredient_fk_and_default_unit` | 2026-05-01 | `Ingredient.known_ingredient` FK + `KnownIngredient.default_unit` |
+| `0012_recipe_nutrition_status` | 2026-05-02 | `Recipe.nutrition_status` CharField (`ok`/`partial`/`missing`) |
+| `0013_ingredientref_new_nutrition_fields` | 2026-05-02 | `IngredientRef` : `sucres_100g`, `fibres_100g`, `ag_satures_100g`, `sel_100g` |
+| `0014_sugars_per_serving` | 2026-05-04 | `Recipe.sugars_per_serving` FloatField — sucres par portion |
+| `0016_kcal_per_100g_raw` | 2026-05-04 | `Recipe.kcal_per_100g_raw` FloatField — kcal pour 100g brut |
+| `0015_weekplan_flexible_periods` | 2026-05-04 | `WeekPlan` : `active_dates` JSONField, `guests` JSONField, `present_members` M2M, statut `finished` ajouté |
+| `0017_meal_members_and_guests` | 2026-05-05 | `Meal.meal_members` ManyToManyField(User) + `Meal.guest_count` PositiveIntegerField |
+| `0018_userprofile_nutrition_targets` | 2026-05-05 | `UserProfile` : 5 champs kcal par repas + `daily_prot_target` (remplacé en 0019) |
+| `0019_userprofile_prot_fields_and_profile_type` | 2026-05-05 | `UserProfile` : suppression `daily_prot_target`, ajout 5 champs protéines par repas + `profile_type` |
 
 ---
 
@@ -1075,7 +1245,18 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v3.0 | 2026-04-26 | Revue de code — B1 WeekPlan created_by, B2 prefetch photos, B3 profil N+1, S1-S3 spec, Q1-Q2 qualité |
 | v3.1 | 2026-04-27 | Algo suggestions affiné — PS×WPD, poids dynamiques normalisés, bonus adéquation protéique dim.3, réponse JSON enrichie |
 | v3.2 | 2026-04-29 | Intégration ANSES Ciqual 2020 — IngredientRef (3185 entrées), matching 74.3%, macros recalculées, autocomplete formulaire, suppression Open Food Facts |
-| v3.3 | 2026-04-29 | Revue de code — 28 références CUST (épices/herbes/eau), couverture 99.4%, suppression champ openfoodfacts_id, page audit Ciqual éditable inline |
+| v4.0 | 2026-05-03 | Base de connaissance KnownIngredient — architecture deux couches Ciqual, badges nutrition_status, page CRUD référentiel Ciqual, page Management enrichie, refactoring nutrition unifiée, corrections bugs accumulation calories |
+| v4.1 | 2026-05-03 | Calcul nutritionnel : ingrédients optionnels inclus (ne plus minorer les calories) |
+| v4.2 | 2026-05-04 | Sucres par portion (`sugars_per_serving`) — affiché en fiche recette sous les glucides |
+| v4.3 | 2026-05-04 | Kcal / 100g brut (`kcal_per_100g_raw`) — affiché en fiche recette, ordre macros réorganisé (kcal portion → kcal/100g → protéines → lipides → glucides → dont sucres) |
+| v4.2 | 2026-05-04 | Galerie photos opérationnelle — Cloudinary configuré, filtre `cloudinary_img` (4 presets) pour optimisation bande passante à l'affichage |
+| v4.3 | 2026-05-04 | Propositions en backlog famille — persistantes (week_plan=None), visibles par tous les Convives, bouton "Proposer" sur fiche recette, sans email |
+| v4.4 | 2026-05-04 | "Mettre en avant" une photo de galerie met à jour `Recipe.photo_url` — photo visible dans la liste et l'en-tête |
+| v4.4 | 2026-05-04 | Fiche recette : Retour/Proposer/Mode Cuisine en haut, Famille/Modifier en bas — bouton Proposer ouvert à tous les membres de la famille |
+| v5.0 | 2026-05-04 | Planning par périodes flexibles : `active_dates`, statut `finished`, présence membres/invités (AJAX auto-save), viande blanche + sucres dans le bilan, navigation par `plan_id`, cascade recalage période suivante |
+| v5.1 | 2026-05-05 | Bilan nutritionnel par membre : `Meal.meal_members` M2M + `guest_count`, `bilan_par_membre()`, dialog repas avec checkboxes membres + champ invités, deux barres de progression (kcal rouge / prot bleue) par membre, repas absent proxy 1 repas cible |
+| v5.1 | 2026-05-05 | Catégorie ingrédient normalisée : texte libre → select 9 valeurs (`épicerie`, `légumes`, `crèmerie`, `viandes`, `poissonnerie`, `boulangerie`, `surgelés`, `boissons`, `autre`). Ordre colonnes formulaire recette réorganisé. |
+| v5.2 | 2026-05-05 | Profil nutritionnel personnel : 5 champs kcal par repas + `profile_type`, sélecteur PNNS 6 profils avec références dynamiques, deux tableaux séparés kcal/protéines. `bilan_par_membre()` intègre les repas hors planning depuis le profil, cible = `daily_kcal_total × nb_jours`. Affichage bilan : "Cible : X kcal · Y%". Migrations 0018–0019. |
 
 ### Détail v2.0
 

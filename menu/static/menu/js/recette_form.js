@@ -1,4 +1,17 @@
 /* recette_form.js — formulaire recette dynamique (vanilla JS) */
+
+const ING_CATEGORIES = [
+    ['épicerie',     'Épicerie'],
+    ['légumes',      'Légumes'],
+    ['crèmerie',     'Crèmerie'],
+    ['viandes',      'Viandes'],
+    ['poissonnerie', 'Poissonnerie'],
+    ['boulangerie',  'Boulangerie'],
+    ['surgelés',     'Surgelés'],
+    ['boissons',     'Boissons'],
+    ['autre',        'Autre'],
+];
+
 (function () {
     'use strict';
 
@@ -30,16 +43,8 @@
             row.querySelector('.ing-category').name     = `ing_category_${g}_${i}`;
             const optCb = row.querySelector('input[type=checkbox]');
             if (optCb) optCb.name = `ing_optional_${g}_${i}`;
-            const cal = row.querySelector('.ing-calories');
-            if (cal) cal.name = `ing_calories_${g}_${i}`;
-            const prot = row.querySelector('.ing-proteins');
-            if (prot) prot.name = `ing_proteins_${g}_${i}`;
-            const carbs = row.querySelector('.ing-carbs');
-            if (carbs) carbs.name = `ing_carbs_${g}_${i}`;
-            const fats = row.querySelector('.ing-fats');
-            if (fats) fats.name = `ing_fats_${g}_${i}`;
-            const ciqualRef = row.querySelector('.ing-ciqual-ref-id');
-            if (ciqualRef) ciqualRef.name = `ing_ciqual_ref_id_${g}_${i}`;
+            const ciqualRef = row.querySelector('.ing-known-id');
+            if (ciqualRef) ciqualRef.name = `ing_known_id_${g}_${i}`;
         });
         const ingCount = groupEl.querySelector('.ing-count');
         if (ingCount) { ingCount.name = `group_ing_count_${g}`; ingCount.value = rows.length; }
@@ -101,19 +106,18 @@
                 <input type="text" name="ing_name_${g}_${i}" placeholder="Ingrédient *" class="ing-name" autocomplete="off">
                 <span class="ciqual-badge" hidden></span>
             </div>
-            <input type="number" name="ing_qty_${g}_${i}"      placeholder="Qté" step="any" class="ing-qty">
             <input type="text"   name="ing_qty_note_${g}_${i}" placeholder="Ex. 150–200g" class="ing-qty-note">
+            <input type="number" name="ing_qty_${g}_${i}"      placeholder="Qté" step="any" class="ing-qty">
             <input type="text"   name="ing_unit_${g}_${i}"     placeholder="Unité" class="ing-unit">
-            <input type="text"   name="ing_category_${g}_${i}" placeholder="Catégorie" class="ing-category">
+            <select name="ing_category_${g}_${i}" class="ing-category">
+                <option value="">Catégorie</option>
+                ${ING_CATEGORIES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+            </select>
             <label class="ing-optional-label">
                 <input type="checkbox" name="ing_optional_${g}_${i}"> Opt.
             </label>
             <button type="button" class="btn-icon btn-remove-ing" title="Supprimer">✕</button>
-            <input type="hidden" name="ing_calories_${g}_${i}" value="" class="ing-calories">
-            <input type="hidden" name="ing_proteins_${g}_${i}" value="" class="ing-proteins">
-            <input type="hidden" name="ing_carbs_${g}_${i}"    value="" class="ing-carbs">
-            <input type="hidden" name="ing_fats_${g}_${i}"     value="" class="ing-fats">
-            <input type="hidden" name="ing_ciqual_ref_id_${g}_${i}" value="" class="ing-ciqual-ref-id">`;
+            <input type="hidden" name="ing_known_id_${g}_${i}" value="" class="ing-known-id">`;
         return div;
     }
 
@@ -176,11 +180,11 @@
         return div;
     }
 
-    // ── Autocomplete Ciqual ──────────────────────────────────────────────────
+    // ── Autocomplete base de connaissance ───────────────────────────────────
 
-    async function fetchCiqual(q) {
+    async function fetchConnus(q) {
         try {
-            const resp = await fetch(`/api/ingredients/ciqual/?q=${encodeURIComponent(q)}`);
+            const resp = await fetch(`/api/ingredients/connus/?q=${encodeURIComponent(q)}`);
             const data = await resp.json();
             return data.ok ? data.results : [];
         } catch {
@@ -200,15 +204,16 @@
         results.forEach(item => {
             const li = document.createElement('li');
             li.className = 'ciqual-dropdown__item';
-            const kcal = item.kcal_100g != null ? ` — ${item.kcal_100g} kcal/100g` : '';
-            li.textContent = item.nom_fr + kcal;
-            li.dataset.ciqualId      = item.id;
-            li.dataset.cal100        = item.kcal_100g         ?? '';
-            li.dataset.prot100       = item.proteines_100g    ?? '';
-            li.dataset.carbs100      = item.glucides_100g     ?? '';
-            li.dataset.fats100       = item.lipides_100g      ?? '';
-            li.dataset.defaultWeight = item.default_weight_g  ?? '';
-            li.dataset.label         = item.nom_fr;
+            const kcal = item.kcal_100g != null ? ` — ${Math.round(item.kcal_100g)} kcal/100g` : '';
+            li.textContent = item.name + kcal;
+            li.dataset.knownId       = item.id               ?? '';
+            li.dataset.cal100        = item.kcal_100g        ?? '';
+            li.dataset.prot100       = item.proteines_100g   ?? '';
+            li.dataset.carbs100      = item.glucides_100g    ?? '';
+            li.dataset.fats100       = item.lipides_100g     ?? '';
+            li.dataset.defaultWeight = item.default_weight_g ?? '';
+            li.dataset.defaultUnit   = item.default_unit     ?? 'g';
+            li.dataset.label         = item.name;
             ul.appendChild(li);
         });
         wrap.appendChild(ul);
@@ -219,7 +224,7 @@
         const wrap = nameInput.closest('.ing-name-wrap');
         if (!wrap) return;
         if (q.length < 2) { closeCiqualDropdown(wrap); return; }
-        const results = await fetchCiqual(q);
+        const results = await fetchConnus(q);
         showCiqualDropdown(wrap, results);
     }, 350);
 
@@ -240,20 +245,26 @@
             const ingRow = li.closest('.ing-row');
             if (!wrap || !ingRow) return;
             ingRow.querySelector('.ing-name').value = li.dataset.label;
-            const refInput = ingRow.querySelector('.ing-ciqual-ref-id');
-            if (refInput) refInput.value = li.dataset.ciqualId;
+            const refInput = ingRow.querySelector('.ing-known-id');
+            if (refInput) refInput.value = li.dataset.knownId;
             // Stocker macros/100g sur la ligne pour feedback visuel futur
             ingRow.dataset.cal100   = li.dataset.cal100;
             ingRow.dataset.prot100  = li.dataset.prot100;
             ingRow.dataset.carbs100 = li.dataset.carbs100;
             ingRow.dataset.fats100  = li.dataset.fats100;
+            // Unité par défaut : pré-rempli seulement si le champ est vide
+            const unitInput = ingRow.querySelector('.ing-unit');
+            if (unitInput && !unitInput.value.trim()) {
+                unitInput.value = li.dataset.defaultUnit || 'g';
+            }
             closeCiqualDropdown(wrap);
             // Afficher indicateur de correspondance Ciqual
             const badge = wrap.querySelector('.ciqual-badge');
             if (badge) {
-                badge.textContent = li.dataset.cal100
-                    ? `${li.dataset.cal100} kcal/100g`
-                    : 'Ciqual';
+                // Tester !== '' pour distinguer "0 kcal" (sel, eau) de "pas de donnée"
+                badge.textContent = li.dataset.cal100 !== ''
+                    ? `${Math.round(Number(li.dataset.cal100))} kcal/100g`
+                    : 'Ciqual ✓';
                 badge.hidden = false;
             }
             return;

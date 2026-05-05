@@ -7,56 +7,227 @@
     "cook_time": 40,
     "category": "plat",
     "cuisine_type": "française",
-    "seasons": ["automne", "hiver"],
-    "health_tags": ["equilibre"],
+    "seasons": [
+      "automne",
+      "hiver"
+    ],
+    "health_tags": [
+      "equilibre"
+    ],
     "complexity": "intermediaire",
     "calories_per_serving": null,
     "proteins_per_serving": null,
     "carbs_per_serving": null,
     "fats_per_serving": null,
-
     "ingredient_groups": [
       {
         "name": "Base viande — le cœur du goût",
         "order": 1,
         "ingredients": [
-          { "order": 1,  "name": "steak haché",               "quantity": 1200, "unit": "g",         "is_optional": false, "category": "viandes",  "openfoodfacts_id": null },
-          { "order": 2,  "name": "oignons",                   "quantity": 2,    "unit": null,        "is_optional": false, "category": "légumes",  "openfoodfacts_id": null },
-          { "order": 3,  "name": "carottes",                  "quantity": 3,    "unit": null,        "is_optional": false, "category": "légumes",  "openfoodfacts_id": null },
-          { "order": 4,  "name": "gousses d'ail",             "quantity": 2,    "unit": null,        "is_optional": false, "category": "légumes",  "openfoodfacts_id": null },
-          { "order": 5,  "name": "concentré de tomate",       "quantity": 3,    "unit": "c. à soupe","is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 6,  "name": "vin rouge",                 "quantity": 10,   "unit": "cl",        "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 7,  "name": "bouillon de bœuf",          "quantity": 20,   "unit": "cl",        "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 8,  "name": "sauce soja",                "quantity": 1,    "unit": "c. à soupe","is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 9,  "name": "sucre",                     "quantity": 1,    "unit": "c. à café", "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 10, "name": "huile d'olive",             "quantity": null,  "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 11, "name": "sel",                       "quantity": null,  "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 12, "name": "poivre",                    "quantity": null,  "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 13, "name": "thym ou herbes de Provence","quantity": null,  "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 14, "name": "champignons de Paris (hachés très fins)", "quantity": 175, "unit": "g", "is_optional": true, "category": "légumes", "openfoodfacts_id": null }
+          {
+            "order": 1,
+            "name": "steak haché",
+            "quantity": 1200,
+            "unit": "g",
+            "is_optional": false,
+            "category": "viandes",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 2,
+            "name": "oignons",
+            "quantity": 2,
+            "unit": null,
+            "is_optional": false,
+            "category": "légumes",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 3,
+            "name": "carottes",
+            "quantity": 3,
+            "unit": null,
+            "is_optional": false,
+            "category": "légumes",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 4,
+            "name": "gousses d'ail",
+            "quantity": 2,
+            "unit": null,
+            "is_optional": false,
+            "category": "légumes",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 5,
+            "name": "concentré de tomate",
+            "quantity": 3,
+            "unit": "c. à soupe",
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 6,
+            "name": "vin rouge",
+            "quantity": 10,
+            "unit": "cl",
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 7,
+            "name": "bouillon de bœuf",
+            "quantity": 20,
+            "unit": "cl",
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 8,
+            "name": "sauce soja",
+            "quantity": 1,
+            "unit": "c. à soupe",
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 9,
+            "name": "sucre",
+            "quantity": 1,
+            "unit": "c. à café",
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 10,
+            "name": "huile d'olive",
+            "quantity": null,
+            "unit": null,
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 11,
+            "name": "sel",
+            "quantity": null,
+            "unit": null,
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 12,
+            "name": "poivre",
+            "quantity": null,
+            "unit": null,
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 13,
+            "name": "thym ou herbes de Provence",
+            "quantity": null,
+            "unit": null,
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 14,
+            "name": "champignons de Paris (hachés très fins)",
+            "quantity": 175,
+            "unit": "g",
+            "is_optional": true,
+            "category": "légumes",
+            "openfoodfacts_id": null
+          }
         ]
       },
       {
         "name": "Purée mousseline améliorée",
         "order": 2,
         "ingredients": [
-          { "order": 1, "name": "sachets de purée mousseline", "quantity": 2,   "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null },
-          { "order": 2, "name": "lait",                        "quantity": null, "unit": null,       "is_optional": false, "category": "crémerie", "openfoodfacts_id": null },
-          { "order": 3, "name": "beurre",                      "quantity": 40,   "unit": "g",        "is_optional": false, "category": "crémerie", "openfoodfacts_id": null },
-          { "order": 4, "name": "jaune d'œuf",                 "quantity": 1,    "unit": null,       "is_optional": false, "category": "crémerie", "openfoodfacts_id": null },
-          { "order": 5, "name": "muscade",                     "quantity": null, "unit": null,       "is_optional": false, "category": "épicerie", "openfoodfacts_id": null }
+          {
+            "order": 1,
+            "name": "sachets de purée mousseline",
+            "quantity": 2,
+            "unit": null,
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 2,
+            "name": "lait",
+            "quantity": null,
+            "unit": null,
+            "is_optional": false,
+            "category": "crémerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 3,
+            "name": "beurre",
+            "quantity": 40,
+            "unit": "g",
+            "is_optional": false,
+            "category": "crémerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 4,
+            "name": "jaune d'œuf",
+            "quantity": 1,
+            "unit": null,
+            "is_optional": false,
+            "category": "crémerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 5,
+            "name": "muscade",
+            "quantity": null,
+            "unit": null,
+            "is_optional": false,
+            "category": "épicerie",
+            "openfoodfacts_id": null
+          }
         ]
       },
       {
         "name": "Fromage & finition",
         "order": 3,
         "ingredients": [
-          { "order": 1, "name": "cheddar râpé (ou fromage à burger)", "quantity": null, "unit": null, "is_optional": true,  "category": "crémerie", "openfoodfacts_id": null },
-          { "order": 2, "name": "beurre (noisettes pour la finition)", "quantity": null, "unit": null, "is_optional": false, "category": "crémerie", "openfoodfacts_id": null }
+          {
+            "order": 1,
+            "name": "cheddar râpé (ou fromage à burger)",
+            "quantity": null,
+            "unit": null,
+            "is_optional": true,
+            "category": "crémerie",
+            "openfoodfacts_id": null
+          },
+          {
+            "order": 2,
+            "name": "beurre (noisettes pour la finition)",
+            "quantity": null,
+            "unit": null,
+            "is_optional": false,
+            "category": "crémerie",
+            "openfoodfacts_id": null
+          }
         ]
       }
     ],
-
     "steps": [
       {
         "order": 1,
@@ -95,7 +266,6 @@
         "timer_seconds": 2100
       }
     ],
-
     "sections": [
       {
         "section_type": "critique",

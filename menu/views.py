@@ -21,8 +21,9 @@ from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
-from .models import Family, Ingredient, IngredientRef, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, IngredientRef, KnownIngredient, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
+    bilan_par_membre,
     bilan_planning,
     calculer_alertes_planning,
     calculer_macros_recette,
@@ -34,10 +35,23 @@ from .services import (
     notifier_nouvelle_proposition,
     notifier_planning_publie,
     rechercher_ciqual,
+    rechercher_connus,
     restaurer_backup,
     sauvegarder_recette_depuis_post,
     suggerer_recettes,
 )
+
+ING_CATEGORIES = [
+    ('épicerie',     'Épicerie'),
+    ('légumes',      'Légumes'),
+    ('crèmerie',     'Crèmerie'),
+    ('viandes',      'Viandes'),
+    ('poissonnerie', 'Poissonnerie'),
+    ('boulangerie',  'Boulangerie'),
+    ('surgelés',     'Surgelés'),
+    ('boissons',     'Boissons'),
+    ('autre',        'Autre'),
+]
 
 logger = logging.getLogger("menu")
 
@@ -156,7 +170,8 @@ def inscription(request):
         login(request, user, backend="django.contrib.auth.backends.ModelBackend")
         messages.success(request, "Bienvenue !")
         logger.info("Nouvel utilisateur inscrit : %s (rôle : %s)", user.email, cd["role"])
-        return redirect("menu:home")
+        next_url = request.GET.get("next", "")
+        return redirect(next_url if next_url.startswith("/") else "menu:home")
 
     return render(request, "menu/auth/inscription.html", {"form": form})
 
@@ -209,6 +224,13 @@ def rejoindre_famille(request, token):
 
 @login_required
 def rejoindre_famille_page(request):
+    if request.method == "POST":
+        import re
+        invite_link = request.POST.get("invite_link", "").strip()
+        match = re.search(r"famille/inviter/([0-9a-f-]{36})", invite_link)
+        if not match:
+            return render(request, "menu/auth/rejoindre.html", {"error": "Lien invalide. Vérifiez l'URL copiée."})
+        return redirect("menu:rejoindre_famille", token=match.group(1))
     return render(request, "menu/auth/rejoindre.html")
 
 
@@ -249,6 +271,8 @@ def profil(request):
         "famille_members":      famille_members,
         "google_connected":     google_connected,
         "dietary_tag_choices":  DIETARY_TAG_CHOICES,
+        "rank_cuisinier":       UserProfile._RANK_CUISINIER,
+        "rank_convive":         UserProfile._RANK_CONVIVE,
     }
     return render(request, "menu/profil.html", ctx)
 
@@ -384,141 +408,225 @@ def _get_profile(request):
         return None
 
 
-# ─── Planning hebdomadaire ────────────────────────────────────────────────────
+# ─── Planning par période ─────────────────────────────────────────────────────
 
 @login_required
 def planning(request):
-    """Redirige vers le planning de la semaine courante."""
+    """Redirige vers la période en cours ou la création si aucune n'existe."""
     profile = _get_profile(request)
-    if not profile:
+    if not profile or not profile.family:
         return redirect("menu:rejoindre_famille_page")
-    if not profile.family:
-        return redirect("menu:rejoindre_famille_page")
-    iso = date.today().isocalendar()
-    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+    today = date.today()
+    plan = (
+        WeekPlan.objects
+        .filter(family=profile.family, period_end__gte=today)
+        .order_by("period_start")
+        .first()
+    )
+    if not plan:
+        plan = (
+            WeekPlan.objects
+            .filter(family=profile.family)
+            .order_by("-period_end")
+            .first()
+        )
+    if plan:
+        return redirect("menu:planning_periode", plan_id=plan.id)
+    return redirect("menu:creer_periode")
 
 
 @login_required
-def planning_semaine(request, year, week):
+def creer_periode(request):
+    """GET : formulaire de création d'une période. POST : crée le WeekPlan."""
     profile = _get_profile(request)
-    if not profile:
+    if not profile or not profile.family:
         return redirect("menu:rejoindre_famille_page")
-    if not profile.family:
-        return redirect("menu:rejoindre_famille_page")
-
-    try:
-        week_start = date.fromisocalendar(year, week, 1)   # lundi
-    except ValueError:
+    if not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
         return redirect("menu:planning")
-    week_end = week_start + timedelta(days=6)              # dimanche
 
-    # Rôle déterminé tôt — nécessaire pour la création du WeekPlan
-    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
+    today = date.today()
 
-    # Créer le WeekPlan s'il n'existe pas encore.
-    # `created_by` DOIT être un Cuisinier — si l'utilisateur est un Convive,
-    # on utilise le premier Cuisinier de la famille pour respecter la contrainte métier.
-    if is_cuisinier:
-        plan_creator = request.user
+    if request.method == "POST":
+        jours_raw = request.POST.getlist("jours")  # liste de "YYYY-MM-DD"
+        if not jours_raw:
+            messages.error(request, "Sélectionne au moins un jour.")
+            return redirect("menu:creer_periode")
+
+        try:
+            jours = sorted(set([date.fromisoformat(d) for d in jours_raw]))
+        except ValueError:
+            messages.error(request, "Dates invalides.")
+            return redirect("menu:creer_periode")
+
+        if jours[0] < today:
+            messages.error(request, "Impossible de créer une période dans le passé.")
+            return redirect("menu:creer_periode")
+        if len(jours) > 14:
+            messages.error(request, "Une période ne peut pas dépasser 14 jours.")
+            return redirect("menu:creer_periode")
+
+        period_start = jours[0]
+        period_end   = jours[-1]
+
+        if WeekPlan.objects.filter(family=profile.family, period_start=period_start).exists():
+            messages.error(request, "Une période commençant ce jour existe déjà.")
+            return redirect("menu:creer_periode")
+
+        plan = WeekPlan.objects.create(
+            family=profile.family,
+            period_start=period_start,
+            period_end=period_end,
+            active_dates=[d.isoformat() for d in jours],
+            created_by=request.user,
+            status="draft",
+        )
+        return redirect("menu:planning_periode", plan_id=plan.id)
+
+    # GET — calcule la date de départ suggérée
+    after_str = request.GET.get("after")
+    if after_str:
+        try:
+            suggested_start = date.fromisoformat(after_str) + timedelta(days=1)
+        except ValueError:
+            suggested_start = today
     else:
-        cuisinier_profile = (
-            UserProfile.objects
-            .filter(family=profile.family, role__in=["cuisinier", "chef_etoile"])
-            .select_related("user")
+        last_plan = (
+            WeekPlan.objects
+            .filter(family=profile.family)
+            .order_by("-period_end")
             .first()
         )
-        plan_creator = cuisinier_profile.user if cuisinier_profile else request.user
+        if last_plan and last_plan.period_end >= today:
+            suggested_start = last_plan.period_end + timedelta(days=1)
+        else:
+            suggested_start = today
 
-    with transaction.atomic():
-        plan, _ = WeekPlan.objects.get_or_create(
-            family=profile.family,
-            period_start=week_start,
-            defaults={
-                "period_end": week_end,
-                "created_by": plan_creator,
-                "status": "draft",
-            },
-        )
+    JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 
-    # Repas de la semaine
-    meals_qs = (
+    # 7 jours depuis suggested_start, ordre chronologique
+    candidate_days_info = [
+        {"date": suggested_start + timedelta(days=i), "label": JOURS_FR[(suggested_start + timedelta(days=i)).weekday()], "iso": (suggested_start + timedelta(days=i)).isoformat()}
+        for i in range(7)
+    ]
+
+    return render(request, "menu/planning/creer_periode.html", {
+        "today_iso": today.isoformat(),
+        "suggested_start": suggested_start,
+        "candidate_days": candidate_days_info,
+    })
+
+
+@login_required
+def planning_periode(request, plan_id):
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return redirect("menu:rejoindre_famille_page")
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+    is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
+
+    active_dates = plan.get_active_dates()
+
+    meals_qs = list(
         Meal.objects.filter(week_plan=plan)
-        .select_related("recipe", "source_meal__recipe")
+        .select_related("recipe")
+        .prefetch_related("meal_members")
     )
     meal_by_slot = {(m.date, m.meal_time): m for m in meals_qs}
 
-    # Construction de la grille
     JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
-    grid = []
-    for i in range(7):
-        d = week_start + timedelta(days=i)
-        grid.append({
+
+    def _member_ids_json(meal):
+        if meal is None:
+            return '[]'
+        return json.dumps(list(meal.meal_members.values_list('id', flat=True)))
+
+    grid = [
+        {
             "date": d,
-            "day_name": JOURS_FR[i],
+            "day_name": JOURS_FR[d.weekday()],
             "lunch": meal_by_slot.get((d, "lunch")),
+            "lunch_member_ids": _member_ids_json(meal_by_slot.get((d, "lunch"))),
+            "lunch_guest_count": (meal_by_slot.get((d, "lunch")).guest_count if meal_by_slot.get((d, "lunch")) else 0),
             "dinner": meal_by_slot.get((d, "dinner")),
-        })
+            "dinner_member_ids": _member_ids_json(meal_by_slot.get((d, "dinner"))),
+            "dinner_guest_count": (meal_by_slot.get((d, "dinner")).guest_count if meal_by_slot.get((d, "dinner")) else 0),
+        }
+        for d in active_dates
+    ]
 
-    # Indicateurs nutritionnels de la semaine (hors créneaux absent)
-    total_calories = total_proteins = 0.0
-    for m in meals_qs:
-        if not m.is_leftovers and not m.absent and m.recipe:
-            n = m.servings_count or m.recipe.base_servings or 1
-            total_calories += (m.recipe.calories_per_serving or 0) * n
-            total_proteins += (m.recipe.proteins_per_serving or 0) * n
-
-    # Propositions visibles par le Cuisinier
+    # Backlog propositions famille
     proposals = []
+    user_proposals = []
     if is_cuisinier:
         proposals = list(
-            MealProposal.objects.filter(week_plan=plan)
+            MealProposal.objects.filter(family=profile.family, week_plan__isnull=True)
+            .select_related("recipe", "proposed_by")
+            .order_by("-created_at")
+        )
+    else:
+        user_proposals = list(
+            MealProposal.objects.filter(family=profile.family, week_plan__isnull=True)
             .select_related("recipe", "proposed_by")
             .order_by("-created_at")
         )
 
-    # Propositions du Convive connecté pour cette semaine
-    user_proposals = []
-    if not is_cuisinier:
-        user_proposals = list(
-            MealProposal.objects.filter(week_plan=plan, proposed_by=request.user)
-            .select_related("recipe")
-            .order_by("-created_at")
-        )
+    # Navigation prev/next par date
+    prev_plan = (
+        WeekPlan.objects
+        .filter(family=profile.family, period_end__lt=plan.period_start)
+        .order_by("-period_end")
+        .first()
+    )
+    next_plan = (
+        WeekPlan.objects
+        .filter(family=profile.family, period_start__gt=plan.period_end)
+        .order_by("period_start")
+        .first()
+    )
 
-    # Navigation prev/next
-    prev_monday = week_start - timedelta(days=7)
-    next_monday = week_start + timedelta(days=7)
-    prev_iso = prev_monday.isocalendar()
-    next_iso = next_monday.isocalendar()
+    # Présence
+    family_members = list(
+        UserProfile.objects
+        .filter(family=profile.family)
+        .select_related("user")
+        .order_by("user__first_name")
+    )
+    present_member_ids = set(plan.present_members.values_list("id", flat=True))
+
+    # Sélecteur de jours : 7 jours depuis period_start, ordre chronologique
+    active_dates_iso = set(plan.active_dates) if plan.active_dates else {d.isoformat() for d in active_dates}
+
+    periode_candidate_days = [
+        {"date": plan.period_start + timedelta(days=i), "label": JOURS_FR[(plan.period_start + timedelta(days=i)).weekday()], "iso": (plan.period_start + timedelta(days=i)).isoformat()}
+        for i in range(7)
+    ]
 
     ctx = {
         "plan": plan,
         "grid": grid,
-        "week_start": week_start,
-        "week_end": week_end,
-        "year": year,
-        "week": week,
-        "prev_year": prev_iso[0],
-        "prev_week": prev_iso[1],
-        "next_year": next_iso[0],
-        "next_week": next_iso[1],
-        "total_calories": round(total_calories) if total_calories else None,
-        "total_proteins": round(total_proteins, 1) if total_proteins else None,
+        "period_start": plan.period_start,
+        "period_end": plan.period_end,
+        "prev_plan": prev_plan,
+        "next_plan": next_plan,
         "proposals": proposals,
         "user_proposals": user_proposals,
         "is_cuisinier": is_cuisinier,
-        # Pour le dialog "restes" : tous les repas avec recette de cette semaine
         "meals_avec_recette": [
-            {"id": m.id, "label": f"{m.date} {'Midi' if m.meal_time == 'lunch' else 'Soir'} — {m.recipe.title}"}
-            for m in meals_qs if m.recipe and not m.is_leftovers
+            {"id": m.id, "label": f"{JOURS_FR[m.date.weekday()]} {'Midi' if m.meal_time == 'lunch' else 'Soir'} — {m.recipe.title}"}
+            for m in meals_qs if m.recipe
         ],
-        # Lien courses
         "has_shopping_list": ShoppingList.objects.filter(week_plan=plan).exists(),
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
-        # Alertes équilibre (nudges) — Cuisinier uniquement
-        "alertes_planning": calculer_alertes_planning(plan, profile.family) if is_cuisinier else [],
-        # Bilan équilibre — Cuisinier uniquement
         "bilan": bilan_planning(plan) if is_cuisinier else None,
+        "bilan_membres": bilan_par_membre(plan) if is_cuisinier else [m for m in bilan_par_membre(plan) if m['user_id'] == request.user.id],
+        "present_member_ids_json": json.dumps(list(present_member_ids)),
+        "family_members": family_members,
+        "present_member_ids": present_member_ids,
+        "guests": plan.guests,
+        "periode_candidate_days": periode_candidate_days,
+        "active_dates_iso": active_dates_iso,
     }
     return render(request, "menu/planning/semaine.html", ctx)
 
@@ -559,8 +667,6 @@ def modifier_meal(request, plan_id):
             defaults={
                 "recipe": None,
                 "servings_count": None,
-                "is_leftovers": False,
-                "source_meal": None,
                 "absent": True,
             },
         )
@@ -579,30 +685,26 @@ def modifier_meal(request, plan_id):
         if not recipe:
             return JsonResponse({"ok": False, "error": "Recette introuvable", "code": "NO_RECIPE"}, status=404)
 
-    is_leftovers = bool(body.get("is_leftovers", False))
-    source_meal = None
-    if is_leftovers:
-        src_id = body.get("source_meal_id")
-        if src_id:
-            source_meal = Meal.objects.filter(id=src_id, week_plan=plan).first()
+    member_ids = [int(i) for i in body.get("member_ids", []) if str(i).isdigit()]
+    guest_count = max(int(body.get("guest_count") or 0), 0)
+    servings = len(member_ids) + guest_count or plan.present_members.count() or 1
 
-    try:
-        servings = int(body.get("servings_count") or 0) or (recipe.base_servings if recipe else None)
-    except (ValueError, TypeError):
-        servings = recipe.base_servings if recipe else None
-
-    meal, _ = Meal.objects.update_or_create(
+    meal, created = Meal.objects.update_or_create(
         week_plan=plan,
         date=meal_date,
         meal_time=meal_time,
         defaults={
             "recipe": recipe,
             "servings_count": servings,
-            "is_leftovers": is_leftovers,
-            "source_meal": source_meal,
-            "absent": False,  # toute sauvegarde de recette lève l'absence
+            "guest_count": guest_count,
+            "absent": False,
         },
     )
+    # Valider les member_ids (doivent appartenir à la famille)
+    valid_member_ids = list(
+        plan.family.members.filter(user_id__in=member_ids).values_list('user_id', flat=True)
+    )
+    meal.meal_members.set(valid_member_ids)
 
     return JsonResponse({
         "ok": True,
@@ -611,8 +713,9 @@ def modifier_meal(request, plan_id):
         "recipe_id": recipe.id if recipe else None,
         "recipe_title": recipe.title if recipe else None,
         "servings_count": meal.servings_count,
-        "is_leftovers": meal.is_leftovers,
         "calories_per_serving": recipe.calories_per_serving if recipe else None,
+        "meal_member_ids": list(meal.meal_members.values_list('id', flat=True)),
+        "guest_count": meal.guest_count,
     })
 
 
@@ -687,13 +790,14 @@ def bilan_planning_ajax(request, plan_id):
 
     plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
     data = bilan_planning(plan)
-    return JsonResponse({"ok": True, "bilan": data})
+    membres = bilan_par_membre(plan)
+    return JsonResponse({"ok": True, "bilan": data, "membres": membres})
 
 
 @require_POST
 @login_required
-def publier_planning(request, plan_id):
-    """Publie un WeekPlan (brouillon → publié)."""
+def valider_planning(request, plan_id):
+    """Valide un WeekPlan (brouillon → publié)."""
     profile = _get_profile(request)
     if not profile or not _verifier_cuisinier(request):
         messages.error(request, "Réservé aux Cuisiniers.")
@@ -701,19 +805,132 @@ def publier_planning(request, plan_id):
 
     plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
 
-    if plan.status == "published":
-        messages.warning(request, "Ce planning est déjà publié.")
+    if plan.status in ("published", "finished"):
+        messages.warning(request, "Ce planning est déjà validé.")
     elif not plan.meals.filter(recipe__isnull=False).exists():
-        messages.error(request, "Impossible de publier un planning vide (aucune recette planifiée).")
+        messages.error(request, "Impossible de valider un planning vide (aucune recette planifiée).")
     else:
         plan.status = "published"
         plan.save(update_fields=["status"])
-        messages.success(request, "Menu publié ! Vous pouvez maintenant générer la liste de courses.")
-        logger.info("Planning %d publié par %s.", plan.id, request.user.email)
+        messages.success(request, "Menu validé ! Vous pouvez maintenant générer la liste de courses.")
+        logger.info("Planning %d validé par %s.", plan.id, request.user.email)
         notifier_planning_publie(plan)
 
-    iso = plan.period_start.isocalendar()
-    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+    return redirect("menu:planning_periode", plan_id=plan.id)
+
+
+@require_POST
+@login_required
+def rouvrir_planning(request, plan_id):
+    """Repasse un WeekPlan en brouillon. Supprime la liste de courses si statut était finished."""
+    profile = _get_profile(request)
+    if not profile or not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:planning")
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    if plan.status == "finished":
+        ShoppingList.objects.filter(week_plan=plan).delete()
+        messages.info(request, "Liste de courses supprimée. Planning repassé en brouillon.")
+    elif plan.status == "published":
+        messages.info(request, "Planning repassé en brouillon.")
+    else:
+        messages.warning(request, "Le planning est déjà en brouillon.")
+        return redirect("menu:planning_periode", plan_id=plan.id)
+
+    plan.status = "draft"
+    plan.save(update_fields=["status"])
+    logger.info("Planning %d réouvert par %s.", plan.id, request.user.email)
+    return redirect("menu:planning_periode", plan_id=plan.id)
+
+
+@require_POST
+@login_required
+def maj_presence(request, plan_id):
+    """AJAX : met à jour les membres présents et invités d'une période."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return JsonResponse({"ok": False, "error": "Famille requise"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({"ok": False, "error": "JSON invalide"}, status=400)
+
+    member_ids = body.get("member_ids", [])
+    guests = [g.strip() for g in body.get("guests", []) if g.strip()]
+
+    valid_ids = set(
+        UserProfile.objects
+        .filter(family=profile.family, user_id__in=member_ids)
+        .values_list("user_id", flat=True)
+    )
+    with transaction.atomic():
+        plan.present_members.set(valid_ids)
+        plan.guests = guests
+        plan.save(update_fields=["guests"])
+
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+@login_required
+def modifier_jours_periode(request, plan_id):
+    """Met à jour les jours actifs d'une période (active_dates + period_end). Cuisinier uniquement."""
+    profile = _get_profile(request)
+    if not profile or not _verifier_cuisinier(request):
+        messages.error(request, "Réservé aux Cuisiniers.")
+        return redirect("menu:planning_periode", plan_id=plan_id)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+
+    jours_raw = request.POST.getlist("jours")
+    if not jours_raw:
+        messages.error(request, "Sélectionne au moins un jour.")
+        return redirect("menu:planning_periode", plan_id=plan_id)
+
+    try:
+        jours = sorted(set([date.fromisoformat(d) for d in jours_raw]))
+    except ValueError:
+        messages.error(request, "Dates invalides.")
+        return redirect("menu:planning_periode", plan_id=plan_id)
+
+    if len(jours) > 14:
+        messages.error(request, "Maximum 14 jours par période.")
+        return redirect("menu:planning_periode", plan_id=plan_id)
+
+    with transaction.atomic():
+        old_end = plan.period_end
+        plan.active_dates = [d.isoformat() for d in jours]
+        plan.period_end = jours[-1]
+        plan.save(update_fields=["active_dates", "period_end"])
+        Meal.objects.filter(week_plan=plan).exclude(date__in=jours).delete()
+
+        # Si la fin a changé, recaler la période suivante (brouillon sans repas)
+        new_end = jours[-1]
+        if new_end != old_end:
+            next_plan = (
+                WeekPlan.objects
+                .filter(family=profile.family, period_start__gt=plan.period_start)
+                .order_by("period_start")
+                .first()
+            )
+            expected_start = new_end + timedelta(days=1)
+            if (next_plan
+                    and next_plan.period_start != expected_start
+                    and next_plan.status == "draft"
+                    and not Meal.objects.filter(week_plan=next_plan).exists()):
+                delta = expected_start - next_plan.period_start
+                shifted = [d + delta for d in next_plan.get_active_dates()]
+                next_plan.period_start = expected_start
+                next_plan.period_end = shifted[-1]
+                next_plan.active_dates = [d.isoformat() for d in shifted]
+                next_plan.save(update_fields=["period_start", "period_end", "active_dates"])
+
+    return redirect("menu:planning_periode", plan_id=plan_id)
 
 
 @require_POST
@@ -745,9 +962,8 @@ def proposer_repas(request, plan_id):
         recipe=recipe,
         proposed_by=request.user,
         message=message,
-        week_plan=plan,
+        week_plan=None,
     )
-    notifier_nouvelle_proposition(proposal)
 
     return JsonResponse({
         "ok": True,
@@ -755,6 +971,27 @@ def proposer_repas(request, plan_id):
         "recipe_title": recipe.title,
         "proposed_by": request.user.first_name or request.user.email,
     })
+
+
+@require_POST
+@login_required
+def creer_proposition_recette(request, id):
+    """Propose une recette depuis sa fiche. Alimente le backlog famille pour tous les membres."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        messages.error(request, "Vous devez appartenir à une famille pour proposer une recette.")
+        return redirect("menu:detail_recette", id=id)
+
+    recipe = get_object_or_404(Recipe, id=id, actif=True)
+    MealProposal.objects.create(
+        family=profile.family,
+        recipe=recipe,
+        proposed_by=request.user,
+        week_plan=None,
+    )
+    messages.success(request, f"« {recipe.title} » ajouté à tes propositions !")
+    logger.info("Proposition recette '%s' par %s.", recipe.title, request.user.email)
+    return redirect("menu:detail_recette", id=id)
 
 
 @require_POST
@@ -805,7 +1042,7 @@ def api_recettes(request):
 @require_POST
 @login_required
 def generer_courses(request, plan_id):
-    """Génère (ou recrée) la liste de courses d'un planning. Cuisinier uniquement."""
+    """Génère la liste de courses et passe le plan en 'finished'. Cuisinier uniquement."""
     plan = get_object_or_404(WeekPlan, pk=plan_id)
     profile = _get_profile(request)
     if not profile or profile.family != plan.family:
@@ -814,14 +1051,15 @@ def generer_courses(request, plan_id):
     if profile.role not in ("cuisinier", "chef_etoile"):
         messages.error(request, "Réservé au Cuisinier.")
         return redirect("menu:planning")
-    if plan.status != "published":
-        messages.error(request, "Publie d'abord le menu avant de générer la liste de courses.")
-        iso = plan.period_start.isocalendar()
-        return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+    if plan.status not in ("published", "finished"):
+        messages.error(request, "Valide d'abord le menu avant de générer la liste de courses.")
+        return redirect("menu:planning_periode", plan_id=plan.id)
 
     try:
         generer_liste_courses(plan)
-        messages.success(request, "Liste de courses générée !")
+        plan.status = "finished"
+        plan.save(update_fields=["status"])
+        messages.success(request, "Liste de courses générée ! La période est maintenant terminée.")
     except Exception as exc:
         logger.error("generer_courses error plan=%s : %s", plan_id, exc)
         messages.error(request, "Erreur lors de la génération de la liste.")
@@ -853,9 +1091,6 @@ def liste_courses(request, plan_id):
 
     nb_total = sum(len(v) for v in groups.values())
 
-    # Navigation semaine pour les liens retour
-    year, week, _ = plan.period_start.isocalendar()
-
     is_cuisinier = profile.role in ("cuisinier", "chef_etoile")
 
     ctx = {
@@ -864,8 +1099,6 @@ def liste_courses(request, plan_id):
         "groups": groups,
         "nb_total": nb_total,
         "nb_checked": nb_checked,
-        "year": year,
-        "week": week,
         "is_cuisinier": is_cuisinier,
         "google_connected": TokenOAuth.objects.filter(user=request.user, service="google").exists(),
     }
@@ -938,6 +1171,146 @@ def audit_ciqual(request):
         "non_calc":    non_calc,
         "non_mapped":  non_mapped,
     })
+
+
+@login_required
+def gestion_ciqual_ref(request):
+    """Liste paginée + recherche du référentiel Ciqual (IngredientRef)."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return redirect("menu:liste_recettes")
+
+    q      = request.GET.get('q', '').strip()
+    groupe = request.GET.get('groupe', '').strip()
+
+    qs = IngredientRef.objects.all().order_by('nom_fr')
+    if q:
+        qs = qs.filter(Q(nom_fr__icontains=q) | Q(nom_normalise__icontains=q))
+    if groupe:
+        qs = qs.filter(groupe=groupe)
+
+    groupes = (IngredientRef.objects.values_list('groupe', flat=True)
+               .distinct().order_by('groupe'))
+
+    from django.core.paginator import Paginator
+    paginator = Paginator(qs, 50)
+    page      = paginator.get_page(request.GET.get('page', 1))
+
+    return render(request, 'menu/admin/ciqual_ref.html', {
+        'page_obj': page,
+        'q':        q,
+        'groupe':   groupe,
+        'groupes':  groupes,
+        'total':    qs.count(),
+    })
+
+
+@require_POST
+@login_required
+def maj_ciqual_ref(request, ref_id):
+    """AJAX — Crée (ref_id=0) ou met à jour un IngredientRef."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Non autorisé'}, status=403)
+
+    FLOAT_FIELDS = [
+        'kcal_100g', 'proteines_100g', 'glucides_100g', 'lipides_100g',
+        'sucres_100g', 'fibres_100g', 'ag_satures_100g', 'sel_100g',
+    ]
+
+    if ref_id == 0:
+        # Création
+        nom_fr = request.POST.get('nom_fr', '').strip()
+        if not nom_fr:
+            return JsonResponse({'ok': False, 'error': 'Nom requis'}, status=400)
+        from .models import _normaliser_nom
+        ref = IngredientRef(
+            ciqual_code=f'CUSTOM-{IngredientRef.objects.count() + 1:04d}',
+            nom_fr=nom_fr,
+            nom_normalise=_normaliser_nom(nom_fr),
+            groupe=request.POST.get('groupe', 'aides culinaires et ingrédients divers').strip(),
+        )
+    else:
+        ref = get_object_or_404(IngredientRef, pk=ref_id)
+        nom_fr = request.POST.get('nom_fr', '').strip()
+        if nom_fr:
+            from .models import _normaliser_nom
+            ref.nom_fr        = nom_fr
+            ref.nom_normalise = _normaliser_nom(nom_fr)
+        groupe = request.POST.get('groupe', '').strip()
+        if groupe:
+            ref.groupe = groupe
+
+    for field in FLOAT_FIELDS:
+        raw = request.POST.get(field, '').strip()
+        if raw == '':
+            setattr(ref, field, None)
+        else:
+            try:
+                setattr(ref, field, float(raw.replace(',', '.')))
+            except ValueError:
+                pass
+
+    ref.save()
+    return JsonResponse({
+        'ok':   True,
+        'id':   ref.pk,
+        'nom_fr': ref.nom_fr,
+        'kcal': ref.kcal_100g,
+    })
+
+
+@require_POST
+@login_required
+def supprimer_ciqual_ref(request, ref_id):
+    """Supprime un IngredientRef (les KnownIngredient liés passent à ciqual_ref=NULL)."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Non autorisé'}, status=403)
+    ref = get_object_or_404(IngredientRef, pk=ref_id)
+    ref.delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def gestion_synonymes(request):
+    """Page de gestion des synonymes Ciqual — Cuisinier/staff uniquement."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return redirect("menu:liste_recettes")
+
+    q = request.GET.get('q', '').strip()
+    filtre = request.GET.get('filtre', 'tous')
+
+    refs = IngredientRef.objects.annotate(
+        nb_ingredients=Count('ingredients', distinct=True)
+    )
+    if q:
+        refs = refs.filter(
+            Q(nom_fr__icontains=q) | Q(synonymes__icontains=q)
+        )
+    if filtre == 'avec_synonymes':
+        refs = refs.exclude(synonymes='')
+    elif filtre == 'sans_synonymes':
+        refs = refs.filter(synonymes='', nb_ingredients__gt=0)
+
+    refs = refs.order_by('nom_fr')[:200]
+
+    return render(request, "menu/recettes/ciqual_synonymes.html", {
+        'refs': refs,
+        'q': q,
+        'filtre': filtre,
+    })
+
+
+@require_POST
+@login_required
+def maj_synonymes(request, ref_id):
+    """AJAX — Met à jour les synonymes d'un IngredientRef."""
+    if not (request.user.is_staff or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Accès refusé'}, status=403)
+
+    ref = get_object_or_404(IngredientRef, pk=ref_id)
+    synonymes = request.POST.get('synonymes', '').strip()
+    ref.synonymes = synonymes
+    ref.save(update_fields=['synonymes'])
+    return JsonResponse({'ok': True, 'synonymes': ref.synonymes})
 
 
 @require_POST
@@ -1098,6 +1471,11 @@ def detail_recette(request, id):
     pour_toi_cal  = round(recipe.calories_per_serving  * portions_factor, 0) if recipe.calories_per_serving  else None
     pour_toi_prot = round(recipe.proteins_per_serving * portions_factor, 1) if recipe.proteins_per_serving else None
 
+    # Totaux pour la recette entière (utile pour comprendre le calcul par portion)
+    n_servings = recipe.base_servings or 1
+    total_recipe_cal  = round(recipe.calories_per_serving  * n_servings, 0) if recipe.calories_per_serving  else None
+    total_recipe_prot = round(recipe.proteins_per_serving * n_servings, 1) if recipe.proteins_per_serving else None
+
     # Galerie photos — utilise le prefetch filtré (B2)
     gallery_photos = recipe.active_photos
     is_cuisinier_here = bool(profile and profile.role in ("cuisinier", "chef_etoile"))
@@ -1112,6 +1490,8 @@ def detail_recette(request, id):
         "all_reviews": all_reviews_with_rank,
         "pour_toi_cal":  pour_toi_cal,
         "pour_toi_prot": pour_toi_prot,
+        "total_recipe_cal":  total_recipe_cal,
+        "total_recipe_prot": total_recipe_prot,
         "gallery_photos": gallery_photos,
         "is_cuisinier": is_cuisinier_here,
     }
@@ -1205,7 +1585,7 @@ def creer_recette(request):
         messages.success(request, "Recette enregistrée !")
         return redirect("menu:detail_recette", id=recipe.id)
 
-    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": None})
+    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": None, "ING_CATEGORIES": ING_CATEGORIES})
 
 
 @login_required
@@ -1262,7 +1642,7 @@ def modifier_recette(request, id):
     recipe_data.steps_prefetched = recipe.steps.all()
     recipe_data.sections_prefetched = recipe.sections.all()
 
-    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": recipe_data})
+    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": recipe_data, "ING_CATEGORIES": ING_CATEGORIES})
 
 
 @require_POST
@@ -1336,13 +1716,16 @@ def promouvoir_photo_recette(request, id, photo_id):
         return redirect("menu:detail_recette", id=id)
 
     photo = get_object_or_404(RecipePhoto, id=photo_id, recipe_id=id, actif=True)
+    recipe = get_object_or_404(Recipe, id=id)
 
     with transaction.atomic():
         RecipePhoto.objects.filter(recipe_id=id).update(is_main=False)
         photo.is_main = True
         photo.save(update_fields=["is_main"])
+        recipe.photo_url = photo.photo_url
+        recipe.save(update_fields=["photo_url"])
 
-    messages.success(request, "Photo mise en avant dans la galerie.")
+    messages.success(request, "Photo principale mise à jour.")
     return redirect("menu:detail_recette", id=id)
 
 
@@ -1355,10 +1738,260 @@ def _verifier_staff(request):
 
 @login_required
 def backup_page(request):
-    if not _verifier_staff(request):
-        messages.error(request, "Accès réservé aux administrateurs.")
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
+def link_known_ingredients_view(request):
+    """Lance la commande link_known_ingredients via l'UI Management."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('link_known_ingredients', stdout=out)
+    result = out.getvalue()
+    # Extraire les totaux du résultat pour le message flash
+    lines = [l.strip() for l in result.splitlines() if l.strip()]
+    summary = ' · '.join(lines[-4:]) if len(lines) >= 4 else result.strip()
+    messages.success(request, f"🔗 Liaison terminée — {summary}")
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
+def recalculate_nutrition_view(request):
+    """Lance la commande recalculate_nutrition via l'UI Management."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('recalculate_nutrition', stdout=out)
+    result = out.getvalue()
+    lines = [l.strip() for l in result.splitlines() if l.strip()]
+    summary = ' · '.join(lines[-4:]) if len(lines) >= 4 else result.strip()
+    messages.success(request, f"🔄 Recalcul terminé — {summary}")
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
+def build_known_ingredients_view(request):
+    """Lance la commande build_known_ingredients via l'UI Management."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('build_known_ingredients', stdout=out)
+    result = out.getvalue()
+    lines = [l.strip() for l in result.splitlines() if l.strip()]
+    summary = ' · '.join(lines[-3:]) if len(lines) >= 3 else result.strip()
+    messages.success(request, f"🏗️ Base construite — {summary}")
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
+def import_ciqual_view(request):
+    """Upload + import d'un fichier XLS Ciqual via l'UI Management."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+
+    xls_file = request.FILES.get('ciqual_xls')
+    if not xls_file:
+        messages.error(request, "Aucun fichier sélectionné.")
+        return redirect("menu:management_page")
+
+    import tempfile, os
+    from django.core.management import call_command
+    from io import StringIO
+
+    # Écrire le fichier uploadé dans un temp file pour xlrd
+    suffix = '.xls' if xls_file.name.endswith('.xls') else '.xlsx'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        for chunk in xls_file.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    try:
+        out = StringIO()
+        call_command('import_ciqual', file=tmp_path, wipe=True, stdout=out)
+        result = out.getvalue()
+        lines  = [l.strip() for l in result.splitlines() if l.strip()]
+        summary = lines[-1] if lines else result.strip()
+        messages.success(request, f"✅ Ciqual importé — {summary}")
+    except Exception as e:
+        messages.error(request, f"Erreur lors de l'import Ciqual : {e}")
+    finally:
+        os.unlink(tmp_path)
+
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
+def clean_ciqual_view(request):
+    """Lance la commande clean_ciqual (nettoyage plats composés + sans kcal)."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    dry_run = request.POST.get('dry_run') == '1'
+    out = StringIO()
+    call_command('clean_ciqual', stdout=out, dry_run=dry_run)
+    result = out.getvalue()
+    if dry_run:
+        # Afficher le résultat complet en message info pour la simulation
+        messages.info(request, f"🔍 Simulation nettoyage Ciqual :\n{result}")
+    else:
+        lines = [l.strip() for l in result.splitlines() if l.strip()]
+        summary = ' · '.join(lines[-4:]) if len(lines) >= 4 else result.strip()
+        messages.success(request, f"🧹 Ciqual nettoyé — {summary}")
+    return redirect("menu:management_page")
+
+
+@require_POST
+@login_required
+def reset_recipes_view(request):
+    """Supprime les recettes et données associées selon le mode choisi."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
+        return redirect("menu:management_page")
+    from django.core.management import call_command
+    from io import StringIO
+    mode = request.POST.get('reset_mode', 'recipes')  # 'recipes' | 'full'
+    out = StringIO()
+    kwargs = {'stdout': out}
+    if mode == 'full':
+        kwargs['full'] = True
+    call_command('reset_recipes', **kwargs)
+    result = out.getvalue()
+    lines = [l.strip() for l in result.splitlines() if l.strip()]
+    summary = ' · '.join(lines[-3:]) if len(lines) >= 3 else result.strip()
+    messages.success(request, f"🗑️ Reset effectué — {summary}")
+    return redirect("menu:management_page")
+
+
+@login_required
+def management_page(request):
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        messages.error(request, "Accès non autorisé.")
         return redirect("menu:home")
-    return render(request, "menu/admin/backup.html")
+
+    q = request.GET.get('q', '').strip()
+    filtre = request.GET.get('filtre', 'tous')
+
+    ings = KnownIngredient.objects.select_related('ciqual_ref').annotate(
+        nb_recettes=Count('ciqual_ref__ingredients__recipe', distinct=True)
+    )
+    if q:
+        ings = ings.filter(Q(name__icontains=q) | Q(synonymes__icontains=q))
+    if filtre == 'sans_ciqual':
+        ings = ings.filter(ciqual_ref__isnull=True)
+    elif filtre == 'avec_ciqual':
+        ings = ings.filter(ciqual_ref__isnull=False)
+
+    ings = ings.order_by('name')
+
+    return render(request, "menu/admin/management.html", {
+        'ingredients': ings,
+        'q': q,
+        'filtre': filtre,
+        'total': ings.count(),
+        'is_staff': _verifier_staff(request),
+    })
+
+
+@login_required
+def api_connus(request):
+    """Autocomplete ingrédients depuis la base de connaissance."""
+    q = request.GET.get('q', '').strip()
+    results = rechercher_connus(q)
+    return JsonResponse({'ok': True, 'results': results})
+
+
+@require_POST
+@login_required
+def ajouter_known_ingredient(request):
+    """Ajoute un ingrédient dans la base de connaissance."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Accès refusé'}, status=403)
+
+    name = request.POST.get('name', '').strip()
+    ciqual_id = request.POST.get('ciqual_ref_id', '').strip()
+    if not name:
+        return JsonResponse({'ok': False, 'error': 'Nom requis'})
+
+    ciqual_ref = None
+    if ciqual_id:
+        try:
+            ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id))
+        except (IngredientRef.DoesNotExist, ValueError):
+            pass
+
+    from .models import _normaliser_nom
+    nom_norm = _normaliser_nom(name)
+    if KnownIngredient.objects.filter(nom_normalise=nom_norm).exists():
+        return JsonResponse({'ok': False, 'error': 'Ingrédient déjà dans la base'})
+
+    ki = KnownIngredient.objects.create(name=name, ciqual_ref=ciqual_ref)
+    return JsonResponse({
+        'ok': True,
+        'id': ki.pk,
+        'name': ki.name,
+        'ciqual_nom': ciqual_ref.nom_fr if ciqual_ref else None,
+        'kcal_100g': ciqual_ref.kcal_100g if ciqual_ref else None,
+    })
+
+
+@require_POST
+@login_required
+def maj_known_ingredient(request, ki_id):
+    """Met à jour synonymes et/ou ciqual_ref d'un KnownIngredient (AJAX)."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Accès refusé'}, status=403)
+
+    ki = get_object_or_404(KnownIngredient, pk=ki_id)
+    fields = []
+
+    if 'synonymes' in request.POST:
+        ki.synonymes = request.POST.get('synonymes', '').strip()
+        fields.append('synonymes')
+
+    if 'default_unit' in request.POST:
+        ki.default_unit = request.POST.get('default_unit', '').strip() or 'g'
+        fields.append('default_unit')
+
+    if 'ciqual_ref_id' in request.POST:
+        ciqual_id = request.POST.get('ciqual_ref_id', '').strip()
+        if ciqual_id:
+            try:
+                ki.ciqual_ref = IngredientRef.objects.get(pk=int(ciqual_id))
+            except (IngredientRef.DoesNotExist, ValueError):
+                ki.ciqual_ref = None
+        else:
+            ki.ciqual_ref = None
+        fields.append('ciqual_ref')
+
+    if fields:
+        ki.save(update_fields=fields)
+
+    ref = ki.ciqual_ref
+    return JsonResponse({
+        'ok': True,
+        'synonymes': ki.synonymes,
+        'ciqual_nom': ref.nom_fr if ref else None,
+        'kcal_100g': ref.kcal_100g if ref else None,
+        'proteines_100g': ref.proteines_100g if ref else None,
+    })
 
 
 @login_required
@@ -1485,14 +2118,14 @@ def export_calendar(request, plan_id):
 
     if not TokenOAuth.objects.filter(user=request.user, service="google").exists():
         messages.warning(request, "Connecte ton compte Google dans ton profil avant d'exporter.")
-        return redirect("menu:planning_semaine", year=plan.period_start.isocalendar()[0], week=plan.period_start.isocalendar()[1])
+        return redirect("menu:planning_periode", plan_id=plan.id)
 
     try:
         stats = google_calendar_export_planning(request.user, plan)
     except Exception as exc:
         logger.error("export_calendar : erreur pour user %s : %s", request.user.id, exc)
         messages.error(request, "Erreur lors de l'export Google Calendar. Réessaie dans quelques instants.")
-        return redirect("menu:planning_semaine", year=plan.period_start.isocalendar()[0], week=plan.period_start.isocalendar()[1])
+        return redirect("menu:planning_periode", plan_id=plan.id)
 
     total = stats["created"] + stats["updated"]
     parts = []
@@ -1508,8 +2141,7 @@ def export_calendar(request, plan_id):
     else:
         messages.info(request, "📅 Aucun repas avec recette à exporter cette semaine.")
 
-    iso = plan.period_start.isocalendar()
-    return redirect("menu:planning_semaine", year=iso[0], week=iso[1])
+    return redirect("menu:planning_periode", plan_id=plan.id)
 
 
 @require_POST
@@ -1539,6 +2171,35 @@ def modifier_creneaux_calendar(request):
     profile.save(update_fields=["lunch_start", "lunch_end", "dinner_start", "dinner_end"])
     messages.success(request, "Créneaux Google Calendar mis à jour.")
     logger.debug("modifier_creneaux_calendar : créneaux mis à jour pour user %s", request.user.id)
+    return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def modifier_nutrition_targets(request):
+    """Enregistre les cibles caloriques personnelles de l'utilisateur (5 repas + protéines)."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    kcal_fields = ["breakfast_kcal", "lunch_kcal_target", "snack_kcal", "dinner_kcal_target", "other_kcal"]
+    prot_fields = ["breakfast_prot", "lunch_prot_target", "snack_prot", "dinner_prot_target", "other_prot"]
+    all_fields  = kcal_fields + prot_fields
+    try:
+        for field in all_fields:
+            val = int(request.POST.get(field, 0))
+            if val < 0 or val > 5000:
+                raise ValueError(f"Hors plage : {field}")
+            setattr(profile, field, val)
+    except (ValueError, TypeError):
+        messages.error(request, "Valeurs invalides.")
+        return redirect("menu:profil")
+
+    profile_type = request.POST.get("profile_type", "")[:20]
+    profile.profile_type = profile_type
+    profile.save(update_fields=all_fields + ["profile_type"])
+    messages.success(request, "Profil nutritionnel mis à jour.")
     return redirect("menu:profil")
 
 

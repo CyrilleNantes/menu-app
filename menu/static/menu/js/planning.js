@@ -2,18 +2,11 @@
 (function () {
     'use strict';
 
-    const meta      = document.getElementById('planning-meta');
-    const PLAN_ID   = meta ? meta.dataset.planId   : null;
-    const IS_COOK   = meta ? meta.dataset.isCuisinier === 'true' : false;
-    const CSRF      = document.getElementById('csrf-token')?.value || '';
-
-    // Repas avec recette (source pour le select "restes de…")
-    let mealsAvecRecette = [];
-    try {
-        mealsAvecRecette = JSON.parse(
-            document.getElementById('meals-json')?.textContent || '[]'
-        );
-    } catch (e) { /* ignore */ }
+    const meta               = document.getElementById('planning-meta');
+    const PLAN_ID            = meta ? meta.dataset.planId        : null;
+    const IS_COOK            = meta ? meta.dataset.isCuisinier === 'true' : false;
+    const PRESENT_MEMBER_IDS = meta ? (JSON.parse(meta.dataset.presentMembers || '[]')) : [];
+    const CSRF               = document.getElementById('csrf-token')?.value || '';
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -81,10 +74,7 @@
         const dlg            = document.getElementById('dialog-meal');
         const dlgLabel       = document.getElementById('dialog-meal-label');
         const recipeName     = document.getElementById('meal-recipe-name');
-        const servingsInput  = document.getElementById('meal-servings');
-        const leftoversCheck = document.getElementById('meal-is-leftovers');
-        const sourceSection  = document.getElementById('meal-source-section');
-        const sourceSelect   = document.getElementById('meal-source-select');
+        const guestCountInput = document.getElementById('meal-guest-count');
 
         const search = makeSearchDropdown(
             document.getElementById('meal-recipe-search'),
@@ -92,74 +82,62 @@
             ({ title }) => { recipeName.textContent = title; recipeName.classList.remove('text-muted'); }
         );
 
-        // Écoute l'événement émis par "Utiliser" dans le dialog suggestions
         document.getElementById('meal-recipe-search')?.addEventListener('suggestion-select', e => {
             search.setSelected(e.detail.id, e.detail.title);
         });
 
         let currentSlot = {};
 
-        // Ouvrir le dialog en cliquant sur un créneau
         document.querySelectorAll('.meal-slot[data-editable]').forEach(slot => {
             slot.addEventListener('click', function () {
-                // Ne pas ouvrir le dialog si le créneau est absent (géré par btn-unabsent)
                 if (this.dataset.absent === 'true') return;
+                const slotMemberIds = JSON.parse(this.dataset.members || '[]');
+                const effectiveMemberIds = slotMemberIds.length ? slotMemberIds : PRESENT_MEMBER_IDS;
                 currentSlot = {
-                    date:       this.dataset.date,
-                    meal_time:  this.dataset.mealTime,
-                    meal_id:    this.dataset.mealId || null,
-                    recipe_id:  this.dataset.recipeId || null,
+                    date:         this.dataset.date,
+                    meal_time:    this.dataset.mealTime,
+                    meal_id:      this.dataset.mealId || null,
+                    recipe_id:    this.dataset.recipeId || null,
                     recipe_title: this.dataset.recipeTitle || '',
-                    servings:   parseInt(this.dataset.servings) || 4,
-                    is_leftovers: this.dataset.isLeftovers === 'true',
+                    member_ids:   effectiveMemberIds,
+                    guest_count:  parseInt(this.dataset.guests) || 0,
                 };
 
-                // Pré-remplir
                 const label = currentSlot.meal_time === 'lunch' ? 'Midi' : 'Soir';
                 dlgLabel.textContent = `${currentSlot.date} — ${label}`;
 
                 search.setSelected(currentSlot.recipe_id, currentSlot.recipe_title);
-                recipeName.textContent     = currentSlot.recipe_title || 'Aucune recette';
+                recipeName.textContent = currentSlot.recipe_title || 'Aucune recette';
                 recipeName.classList.toggle('text-muted', !currentSlot.recipe_title);
-                servingsInput.value        = currentSlot.servings;
-                leftoversCheck.checked     = currentSlot.is_leftovers;
-                sourceSection.style.display = currentSlot.is_leftovers ? 'block' : 'none';
 
-                // Peupler le select "restes de…"
-                sourceSelect.innerHTML = '<option value="">— choisir —</option>';
-                mealsAvecRecette.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m.id;
-                    opt.textContent = m.label;
-                    sourceSelect.appendChild(opt);
+                // Initialiser les checkboxes membres
+                document.querySelectorAll('.meal-member-cb').forEach(cb => {
+                    cb.checked = currentSlot.member_ids.includes(parseInt(cb.value));
                 });
+                if (guestCountInput) guestCountInput.value = currentSlot.guest_count;
 
                 dlg.showModal();
             });
         });
 
-        // Vider la recette
         document.getElementById('btn-clear-recipe')?.addEventListener('click', () => {
             search.clear();
             recipeName.textContent = 'Aucune recette';
             recipeName.classList.add('text-muted');
         });
 
-        // Toggle restes
-        leftoversCheck.addEventListener('change', function () {
-            sourceSection.style.display = this.checked ? 'block' : 'none';
-        });
-
         // Enregistrer
         document.getElementById('btn-save-meal')?.addEventListener('click', async () => {
             const selected = search.getSelected();
+            const memberIds = [...document.querySelectorAll('.meal-member-cb:checked')]
+                .map(cb => parseInt(cb.value));
+            const guestCount = parseInt(guestCountInput?.value || '0') || 0;
             const body = {
-                date:           currentSlot.date,
-                meal_time:      currentSlot.meal_time,
-                recipe_id:      selected.id ? parseInt(selected.id) : null,
-                servings_count: parseInt(servingsInput.value) || null,
-                is_leftovers:   leftoversCheck.checked,
-                source_meal_id: leftoversCheck.checked ? (parseInt(sourceSelect.value) || null) : null,
+                date:        currentSlot.date,
+                meal_time:   currentSlot.meal_time,
+                recipe_id:   selected.id ? parseInt(selected.id) : null,
+                member_ids:  memberIds,
+                guest_count: guestCount,
             };
 
             try {
@@ -172,11 +150,6 @@
                 if (data.ok) {
                     dlg.close();
                     updateSlotDOM(currentSlot.date, currentSlot.meal_time, data);
-                    // Mettre à jour la liste des repas pour le select "restes de…"
-                    if (data.recipe_id && !mealsAvecRecette.find(m => m.id === data.meal_id)) {
-                        const label = `${currentSlot.date} ${body.meal_time === 'lunch' ? 'Midi' : 'Soir'} — ${data.recipe_title}`;
-                        mealsAvecRecette.push({ id: data.meal_id, label });
-                    }
                     // Réafficher les alertes d'équilibre (le menu a changé)
                     if (typeof window._resetAlertesDismissed === 'function') {
                         window._resetAlertesDismissed();
@@ -207,11 +180,10 @@
 
         // ── Créneau marqué absent ──────────────────────────────────────────
         if (data.absent === true) {
-            slot.dataset.absent = 'true';
+            slot.dataset.absent      = 'true';
             slot.dataset.recipeId    = '';
             slot.dataset.recipeTitle = '';
-            slot.dataset.isLeftovers = 'false';
-            slot.classList.remove('meal-slot--filled', 'meal-slot--leftovers');
+            slot.classList.remove('meal-slot--filled');
             slot.classList.add('meal-slot--absent');
             body.innerHTML = `
                 <span class="meal-slot__absent-label">🏠 Absent</span>
@@ -225,24 +197,23 @@
 
         // ── Absence levée ou recette normale ──────────────────────────────
         slot.dataset.absent      = 'false';
-        slot.dataset.mealId      = data.meal_id  || '';
+        slot.dataset.mealId      = data.meal_id      || '';
         slot.dataset.recipeId    = data.recipe_id    || '';
         slot.dataset.recipeTitle = data.recipe_title || '';
         slot.dataset.servings    = data.servings_count || '';
-        slot.dataset.isLeftovers = data.is_leftovers ? 'true' : 'false';
+        slot.dataset.members     = JSON.stringify(data.meal_member_ids || []);
+        slot.dataset.guests      = data.guest_count || 0;
         slot.classList.remove('meal-slot--absent');
 
         if (data.recipe_title) {
             slot.classList.add('meal-slot--filled');
-            const leftBadge = data.is_leftovers
-                ? '<span class="badge badge--leftovers">Restes</span>' : '';
             const servings = data.servings_count
                 ? `<span>${data.servings_count} pers.</span>` : '';
             body.innerHTML = `
                 <span class="meal-slot__recipe">${escHtml(data.recipe_title)}</span>
-                <div class="meal-slot__meta">${servings}${leftBadge}</div>`;
+                <div class="meal-slot__meta">${servings}</div>`;
         } else {
-            slot.classList.remove('meal-slot--filled', 'meal-slot--leftovers');
+            slot.classList.remove('meal-slot--filled');
             body.innerHTML = `
                 <span class="meal-slot__empty">+ Ajouter</span>
                 <div class="meal-slot__empty-actions">
@@ -255,57 +226,57 @@
                 </div>`;
         }
 
-        if (data.is_leftovers) {
-            slot.classList.add('meal-slot--leftovers');
-        } else {
-            slot.classList.remove('meal-slot--leftovers');
-        }
-
         refreshBilan();
     }
 
     // ── Bilan : refresh AJAX ──────────────────────────────────────────────────
 
     async function refreshBilan() {
-        const bilanEl = document.getElementById('planning-bilan');
-        if (!bilanEl || !PLAN_ID) return;
+        if (!PLAN_ID) return;
         try {
             const resp = await fetch(`/planning/${PLAN_ID}/bilan/`, {
                 headers: { 'X-CSRFToken': CSRF },
             });
             const data = await resp.json();
             if (!data.ok) return;
-            const b = data.bilan;
 
-            // Variété
-            _bilanSetItem(bilanEl, 'bilan-fish',     b.fish_count,     b.fish_ok,     'bilan-item--ok', 'bilan-item--warn');
-            _bilanSetItem(bilanEl, 'bilan-veg',      b.veg_count,      b.veg_ok,      'bilan-item--ok', 'bilan-item--warn');
-            _bilanSetItem(bilanEl, 'bilan-red-meat',  b.red_meat_count, b.red_meat_ok, 'bilan-item--ok', 'bilan-item--warn');
-
-            // Absent
-            const absentEl = bilanEl.querySelector('#bilan-absent');
-            if (absentEl) absentEl.textContent = b.absent_count;
-
-            // Nutrition
-            if (bilanEl.querySelector('#bilan-cal')) {
-                bilanEl.querySelector('#bilan-cal').textContent = b.cal_total;
-            }
-            if (bilanEl.querySelector('#bilan-prot')) {
-                bilanEl.querySelector('#bilan-prot').textContent = b.prot_total;
+            const bilanEl = document.getElementById('planning-bilan');
+            if (bilanEl) {
+                const b = data.bilan;
+                // Variété
+                _bilanSetItem(bilanEl, 'bilan-fish',     b.fish_count,     b.fish_ok,     'bilan-item--ok', 'bilan-item--warn');
+                _bilanSetItem(bilanEl, 'bilan-veg',      b.veg_count,      b.veg_ok,      'bilan-item--ok', 'bilan-item--warn');
+                _bilanSetItem(bilanEl, 'bilan-red-meat',  b.red_meat_count, b.red_meat_ok, 'bilan-item--ok', 'bilan-item--warn');
+                // Absent
+                const absentEl = bilanEl.querySelector('#bilan-absent');
+                if (absentEl) absentEl.textContent = b.absent_count;
             }
 
-            // Barres de progression
-            bilanEl.querySelectorAll('.bilan-progress__bar').forEach(bar => {
-                const isCalBar  = bar.closest('.bilan-item')?.querySelector('#bilan-cal');
-                const isProtBar = bar.closest('.bilan-item')?.querySelector('#bilan-prot');
-                if (isCalBar) {
-                    bar.style.width = `${Math.min(b.cal_pct, 100)}%`;
-                    bar.className = `bilan-progress__bar bilan-progress__bar--${b.cal_status}`;
-                } else if (isProtBar) {
-                    bar.style.width = `${Math.min(b.prot_pct, 100)}%`;
-                    bar.className = `bilan-progress__bar bilan-progress__bar--${b.prot_status}`;
-                }
-            });
+            // Membres
+            if (data.membres) {
+                data.membres.forEach(m => {
+                    const el = document.getElementById(`bilan-membre-${m.user_id}`);
+                    if (!el) return;
+                    const rows = el.querySelectorAll('.bilan-membre__row');
+                    if (rows[0]) {
+                        rows[0].querySelector('.bilan-membre__label').textContent = `🔥 ${m.kcal} kcal`;
+                        rows[0].querySelector('.bilan-membre__hint').textContent  = `Cible : ${m.kcal_target} kcal · ${m.kcal_pct}%`;
+                    }
+                    if (rows[1]) {
+                        rows[1].querySelector('.bilan-membre__label').textContent = `💪 ${m.prot}g prot.`;
+                        rows[1].querySelector('.bilan-membre__hint').textContent  = `Cible : ${m.prot_target}g · ${m.prot_pct}%`;
+                    }
+                    const bars = el.querySelectorAll('.bilan-progress__bar');
+                    if (bars[0]) {
+                        bars[0].style.width = `${m.kcal_pct}%`;
+                        bars[0].className = `bilan-progress__bar bilan-progress__bar--kcal bilan-progress__bar--${m.kcal_status}`;
+                    }
+                    if (bars[1]) {
+                        bars[1].style.width = `${m.prot_pct}%`;
+                        bars[1].className = `bilan-progress__bar bilan-progress__bar--prot bilan-progress__bar--prot-${m.prot_status}`;
+                    }
+                });
+            }
         } catch { /* silencieux — le bilan se mettra à jour au prochain chargement */ }
     }
 
@@ -664,9 +635,7 @@
                 date:           dateStr,
                 meal_time:      mealTime,
                 recipe_id:      recipeId,
-                servings_count: null,
-                is_leftovers:   false,
-                source_meal_id: null,
+                servings_count: NB_PRESENTS,
             };
 
             btn.disabled = true;
@@ -785,4 +754,111 @@
         setTimeout(() => div.remove(), 3500);
     }
 
+})();
+
+// ── Présence ────────────────────────────────────────────────────────────────
+(function () {
+    const meta = document.getElementById('planning-meta');
+    if (!meta) return;
+    const presenceUrl = meta.dataset.presenceUrl;
+    if (!presenceUrl) return;
+
+    const csrf = document.getElementById('csrf-token')?.value || '';
+
+    function getMemberIds() {
+        return [...document.querySelectorAll('.presence-member-cb:checked')]
+            .map(cb => parseInt(cb.dataset.userId, 10));
+    }
+
+    function getGuests() {
+        return [...document.querySelectorAll('.presence-guest-tag')]
+            .map(tag => tag.childNodes[0].textContent.trim())
+            .filter(Boolean);
+    }
+
+    function savePresence() {
+        fetch(presenceUrl, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ member_ids: getMemberIds(), guests: getGuests() }),
+        }).catch(() => {});
+    }
+
+    // Membres famille
+    document.querySelectorAll('.presence-toggle').forEach(label => {
+        label.addEventListener('click', function (e) {
+            e.preventDefault();
+            const cb = label.querySelector('.presence-member-cb');
+            cb.checked = !cb.checked;
+            label.classList.toggle('presence-toggle--active', cb.checked);
+            savePresence();
+        });
+    });
+
+    // Invités — ajout via Entrée
+    const guestInput = document.getElementById('presence-guest-input');
+    const guestContainer = document.getElementById('presence-guests');
+
+    function addGuestTag(name) {
+        const span = document.createElement('span');
+        span.className = 'presence-guest-tag';
+        span.innerHTML = `${name} <button type="button" class="presence-guest-remove" data-name="${name}" aria-label="Supprimer">✕</button>`;
+        span.querySelector('.presence-guest-remove').addEventListener('click', function () {
+            span.remove();
+            savePresence();
+        });
+        guestContainer.insertBefore(span, guestInput);
+    }
+
+    if (guestInput) {
+        guestInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                const name = guestInput.value.trim();
+                if (name) { addGuestTag(name); guestInput.value = ''; savePresence(); }
+            }
+        });
+    }
+
+    // Suppression invités existants (rendu serveur)
+    document.querySelectorAll('.presence-guest-remove').forEach(btn => {
+        btn.addEventListener('click', function () {
+            btn.closest('.presence-guest-tag').remove();
+            savePresence();
+        });
+    });
+})();
+
+// ── Sélecteur de jours période ──────────────────────────────────────────────
+(function () {
+    const form = document.getElementById('form-jours');
+    if (!form) return;
+
+    const headerDates = document.querySelector('.planning-nav__dates');
+
+    function formatDate(isoStr, withYear) {
+        const [y, m, d] = isoStr.split('-');
+        return withYear ? `${d}/${m}/${y}` : `${d}/${m}`;
+    }
+
+    function updateHeader() {
+        if (!headerDates) return;
+        const checked = [...form.querySelectorAll('.day-toggle__cb:checked')]
+            .map(cb => cb.value)
+            .sort();
+        if (checked.length === 0) return;
+        const first = checked[0];
+        const last = checked[checked.length - 1];
+        headerDates.textContent = `${formatDate(first, false)} — ${formatDate(last, true)}`;
+    }
+
+    form.querySelectorAll('.day-toggle').forEach(label => {
+        label.addEventListener('click', function (e) {
+            e.preventDefault();
+            const cb = label.querySelector('.day-toggle__cb');
+            cb.checked = !cb.checked;
+            label.classList.toggle('day-toggle--active', cb.checked);
+            updateHeader();
+        });
+    });
 })();

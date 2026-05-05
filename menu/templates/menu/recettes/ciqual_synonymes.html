@@ -1,0 +1,105 @@
+{% extends "menu/base.html" %}
+
+{% block title %}Synonymes Ciqual{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:960px;margin:2rem auto;padding:0 1rem">
+
+  <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
+    <h1 style="margin:0;font-size:1.4rem">🔗 Synonymes Ciqual</h1>
+    <a href="{% url 'menu:audit_ciqual' %}" class="btn btn--secondary btn--sm">← Audit mapping</a>
+  </div>
+
+  <p style="color:#555;margin-bottom:1.5rem">
+    Ajoutez ici les noms courants (spaghetti, jambon, lait entier…) pour chaque entrée Ciqual.
+    Ces synonymes améliorent l'autocomplete dans le formulaire recette.<br>
+    <strong>Format :</strong> noms séparés par des virgules. La sauvegarde est immédiate.
+  </p>
+
+  <!-- Filtres -->
+  <form method="get" style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1.5rem;align-items:center">
+    <input type="text" name="q" value="{{ q }}" placeholder="Rechercher un ingrédient Ciqual ou un synonyme…"
+           style="flex:1;min-width:220px;padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px">
+    <select name="filtre" style="padding:.5rem .75rem;border:1px solid #ccc;border-radius:6px">
+      <option value="tous" {% if filtre == 'tous' %}selected{% endif %}>Tous</option>
+      <option value="avec_synonymes" {% if filtre == 'avec_synonymes' %}selected{% endif %}>Avec synonymes</option>
+      <option value="sans_synonymes" {% if filtre == 'sans_synonymes' %}selected{% endif %}>Utilisés — sans synonymes</option>
+    </select>
+    <button type="submit" class="btn btn--primary btn--sm">Filtrer</button>
+    {% if q or filtre != 'tous' %}
+    <a href="{% url 'menu:gestion_synonymes' %}" class="btn btn--secondary btn--sm">Réinitialiser</a>
+    {% endif %}
+  </form>
+
+  <p style="color:#888;font-size:.85rem;margin-bottom:1rem">{{ refs|length }} entrée{{ refs|length|pluralize }} affichée{{ refs|length|pluralize }}</p>
+
+  <table style="width:100%;border-collapse:collapse;font-size:.9rem">
+    <thead>
+      <tr style="background:#f5f5f5;text-align:left">
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:35%">Nom Ciqual officiel</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:8%;text-align:center">Utilisé</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Synonymes (virgule séparés)</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ref in refs %}
+      <tr class="syno-row" data-ref-id="{{ ref.pk }}" style="border-bottom:1px solid #eee">
+        <td style="padding:.6rem .8rem;vertical-align:middle">
+          <span style="font-weight:500">{{ ref.nom_fr }}</span>
+          {% if ref.kcal_100g %}<br><span style="color:#888;font-size:.8rem">{{ ref.kcal_100g|floatformat:0 }} kcal/100g</span>{% endif %}
+        </td>
+        <td style="padding:.6rem .8rem;text-align:center;vertical-align:middle">
+          {% if ref.nb_ingredients %}
+          <span style="background:#e8f5e9;color:#2e7d32;border-radius:12px;padding:2px 8px;font-size:.8rem">{{ ref.nb_ingredients }}</span>
+          {% else %}
+          <span style="color:#ccc">—</span>
+          {% endif %}
+        </td>
+        <td style="padding:.6rem .8rem;vertical-align:middle">
+          <input type="text" class="syno-input"
+                 value="{{ ref.synonymes }}"
+                 placeholder="ex: spaghetti, pâtes, tagliatelles"
+                 style="width:100%;padding:.4rem .6rem;border:1px solid #ddd;border-radius:4px;font-size:.88rem">
+        </td>
+        <td style="padding:.6rem .8rem;vertical-align:middle;text-align:center">
+          <button class="btn btn--primary btn--sm syno-save" style="white-space:nowrap">Enregistrer</button>
+          <span class="syno-status" style="display:none;font-size:.8rem;color:#2e7d32">✓</span>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" style="padding:2rem;text-align:center;color:#888">Aucun résultat</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+document.querySelectorAll('.syno-row').forEach(row => {
+  const refId = row.dataset.refId;
+  const input = row.querySelector('.syno-input');
+  const btn = row.querySelector('.syno-save');
+  const status = row.querySelector('.syno-status');
+
+  btn.addEventListener('click', () => {
+    const fd = new FormData();
+    fd.append('synonymes', input.value);
+    fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    btn.disabled = true;
+    fetch(`/recettes/ciqual-synonymes/${refId}/`, { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          status.style.display = 'inline';
+          setTimeout(() => { status.style.display = 'none'; }, 2000);
+        }
+      })
+      .finally(() => { btn.disabled = false; });
+  });
+
+  // Sauvegarde aussi sur Entrée
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
+});
+</script>
+{% endblock %}

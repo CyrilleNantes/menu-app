@@ -75,7 +75,7 @@
         <h2 class="profil-section__title">Progression</h2>
         {% if profile.role in "cuisinier,chef_etoile" %}
         <ol class="rank-ladder">
-            {% for t, lvl, name, emoji in profile._RANK_CUISINIER %}
+            {% for t, lvl, name, emoji in rank_cuisinier %}
             <li class="rank-ladder__item {% if rank_info.level >= lvl %}rank-ladder__item--reached{% endif %}">
                 <span class="rank-ladder__emoji">{{ emoji }}</span>
                 <span class="rank-ladder__name">{{ name }}</span>
@@ -85,7 +85,7 @@
         </ol>
         {% elif profile.role == "convive" %}
         <ol class="rank-ladder">
-            {% for t, lvl, name, emoji in profile._RANK_CONVIVE %}
+            {% for t, lvl, name, emoji in rank_convive %}
             <li class="rank-ladder__item {% if rank_info.level >= lvl %}rank-ladder__item--reached{% endif %}">
                 <span class="rank-ladder__emoji">{{ emoji }}</span>
                 <span class="rank-ladder__name">{{ name }}</span>
@@ -197,6 +197,215 @@
                 <button type="submit" class="btn btn--secondary btn--sm">Enregistrer</button>
             </div>
         </form>
+    </section>
+
+    <!-- ── Profil nutritionnel personnel ──────────────────────── -->
+    <section class="profil-section">
+        <h2 class="profil-section__title">🥗 Mon profil nutritionnel</h2>
+        <p class="text-muted" style="margin-bottom:.75rem">
+            Renseigne tes apports habituels sur la journée complète.
+            Le bilan planning est calculé sur la part déjeuner + dîner uniquement.
+        </p>
+
+        <div class="pnns-preset-row">
+            <label class="pnns-preset-row__label">Point de départ :</label>
+            <select id="pnns-preset" class="pnns-preset-row__select">
+                <option value="">— Choisir un profil type PNNS —</option>
+                <option value="homme"      {% if profile.profile_type == "homme"      %}selected{% endif %}>Homme adulte 19-64 ans</option>
+                <option value="femme"      {% if profile.profile_type == "femme"      %}selected{% endif %}>Femme adulte 19-64 ans</option>
+                <option value="ado_garcon" {% if profile.profile_type == "ado_garcon" %}selected{% endif %}>Ado garçon 14-18 ans</option>
+                <option value="ado_fille"  {% if profile.profile_type == "ado_fille"  %}selected{% endif %}>Ado fille 13-18 ans</option>
+                <option value="enfant"     {% if profile.profile_type == "enfant"     %}selected{% endif %}>Enfant 8-12 ans</option>
+                <option value="senior"     {% if profile.profile_type == "senior"     %}selected{% endif %}>Senior 65+</option>
+            </select>
+            <button type="button" id="btn-apply-pnns" class="btn btn--secondary btn--sm" {% if not profile.profile_type %}disabled{% endif %}>Appliquer ces valeurs</button>
+        </div>
+
+        <form method="post" action="{% url 'menu:modifier_nutrition_targets' %}">
+            {% csrf_token %}
+            <input type="hidden" name="profile_type" id="profile-type-hidden" value="{{ profile.profile_type }}">
+
+            <h3 class="nutrition-targets-table__subtitle">🔥 Calories</h3>
+            <table class="nutrition-targets-table">
+                <thead>
+                    <tr>
+                        <th>Repas</th>
+                        <th>Référence PNNS</th>
+                        <th>Ma valeur (kcal)</th>
+                        <th>Géré par le planning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>🌅 Petit-déjeuner</td>
+                        <td class="text-muted pnns-ref" data-field="breakfast_kcal" data-unit="kcal">—</td>
+                        <td><input type="number" name="breakfast_kcal" value="{{ profile.breakfast_kcal }}" min="0" max="2000" step="50" class="input-short" required></td>
+                        <td class="text-muted">Non</td>
+                    </tr>
+                    <tr class="nutrition-targets-table__planned">
+                        <td>🍽️ Déjeuner</td>
+                        <td class="text-muted pnns-ref" data-field="lunch_kcal_target" data-unit="kcal">—</td>
+                        <td><input type="number" name="lunch_kcal_target" value="{{ profile.lunch_kcal_target }}" min="0" max="2000" step="50" class="input-short" required></td>
+                        <td><span class="badge badge--ok">✓ Oui</span></td>
+                    </tr>
+                    <tr>
+                        <td>🍎 Collation</td>
+                        <td class="text-muted pnns-ref" data-field="snack_kcal" data-unit="kcal">—</td>
+                        <td><input type="number" name="snack_kcal" value="{{ profile.snack_kcal }}" min="0" max="1000" step="50" class="input-short" required></td>
+                        <td class="text-muted">Non</td>
+                    </tr>
+                    <tr class="nutrition-targets-table__planned">
+                        <td>🌙 Dîner</td>
+                        <td class="text-muted pnns-ref" data-field="dinner_kcal_target" data-unit="kcal">—</td>
+                        <td><input type="number" name="dinner_kcal_target" value="{{ profile.dinner_kcal_target }}" min="0" max="2000" step="50" class="input-short" required></td>
+                        <td><span class="badge badge--ok">✓ Oui</span></td>
+                    </tr>
+                    <tr>
+                        <td>☕ Autres</td>
+                        <td class="text-muted pnns-ref" data-field="other_kcal" data-unit="kcal">—</td>
+                        <td><input type="number" name="other_kcal" value="{{ profile.other_kcal }}" min="0" max="2000" step="50" class="input-short" required></td>
+                        <td class="text-muted">Non</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="nutrition-targets-table__total">
+                        <td colspan="2"><strong>Total</strong></td>
+                        <td id="nutrition-total-kcal"><strong>{{ profile.daily_kcal_total }} kcal</strong></td>
+                        <td class="text-muted" id="nutrition-planned-kcal-hint">dont {{ profile.planned_kcal_per_day }} kcal planifiés</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <h3 class="nutrition-targets-table__subtitle" style="margin-top:1.25rem">💪 Protéines</h3>
+            <table class="nutrition-targets-table">
+                <thead>
+                    <tr>
+                        <th>Repas</th>
+                        <th>Référence PNNS</th>
+                        <th>Ma valeur (g)</th>
+                        <th>Géré par le planning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>🌅 Petit-déjeuner</td>
+                        <td class="text-muted pnns-ref" data-field="breakfast_prot" data-unit="g">—</td>
+                        <td><input type="number" name="breakfast_prot" value="{{ profile.breakfast_prot }}" min="0" max="200" step="1" class="input-short" required></td>
+                        <td class="text-muted">Non</td>
+                    </tr>
+                    <tr class="nutrition-targets-table__planned">
+                        <td>🍽️ Déjeuner</td>
+                        <td class="text-muted pnns-ref" data-field="lunch_prot_target" data-unit="g">—</td>
+                        <td><input type="number" name="lunch_prot_target" value="{{ profile.lunch_prot_target }}" min="0" max="200" step="1" class="input-short" required></td>
+                        <td><span class="badge badge--ok">✓ Oui</span></td>
+                    </tr>
+                    <tr>
+                        <td>🍎 Collation</td>
+                        <td class="text-muted pnns-ref" data-field="snack_prot" data-unit="g">—</td>
+                        <td><input type="number" name="snack_prot" value="{{ profile.snack_prot }}" min="0" max="200" step="1" class="input-short" required></td>
+                        <td class="text-muted">Non</td>
+                    </tr>
+                    <tr class="nutrition-targets-table__planned">
+                        <td>🌙 Dîner</td>
+                        <td class="text-muted pnns-ref" data-field="dinner_prot_target" data-unit="g">—</td>
+                        <td><input type="number" name="dinner_prot_target" value="{{ profile.dinner_prot_target }}" min="0" max="200" step="1" class="input-short" required></td>
+                        <td><span class="badge badge--ok">✓ Oui</span></td>
+                    </tr>
+                    <tr>
+                        <td>☕ Autres</td>
+                        <td class="text-muted pnns-ref" data-field="other_prot" data-unit="g">—</td>
+                        <td><input type="number" name="other_prot" value="{{ profile.other_prot }}" min="0" max="200" step="1" class="input-short" required></td>
+                        <td class="text-muted">Non</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="nutrition-targets-table__total">
+                        <td colspan="2"><strong>Total</strong></td>
+                        <td id="nutrition-total-prot"><strong>{{ profile.daily_prot_total }} g</strong></td>
+                        <td class="text-muted" id="nutrition-planned-prot-hint">dont {{ profile.planned_prot_per_day }} g planifiés</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <button type="submit" class="btn btn--secondary btn--sm" style="margin-top:1rem">Enregistrer le profil</button>
+        </form>
+
+        <script>
+        (function () {
+            const PNNS = {
+                homme:      { breakfast_kcal: 650, lunch_kcal_target: 900, snack_kcal: 250, dinner_kcal_target: 800, other_kcal:   0, breakfast_prot: 18, lunch_prot_target: 32, snack_prot: 9, dinner_prot_target: 27, other_prot: 4 },
+                femme:      { breakfast_kcal: 500, lunch_kcal_target: 750, snack_kcal: 200, dinner_kcal_target: 650, other_kcal:   0, breakfast_prot: 14, lunch_prot_target: 25, snack_prot: 7, dinner_prot_target: 22, other_prot: 4 },
+                ado_garcon: { breakfast_kcal: 700, lunch_kcal_target: 950, snack_kcal: 300, dinner_kcal_target: 750, other_kcal: 100, breakfast_prot: 18, lunch_prot_target: 31, snack_prot: 9, dinner_prot_target: 26, other_prot: 4 },
+                ado_fille:  { breakfast_kcal: 550, lunch_kcal_target: 750, snack_kcal: 250, dinner_kcal_target: 650, other_kcal:   0, breakfast_prot: 14, lunch_prot_target: 24, snack_prot: 7, dinner_prot_target: 21, other_prot: 4 },
+                enfant:     { breakfast_kcal: 500, lunch_kcal_target: 650, snack_kcal: 200, dinner_kcal_target: 550, other_kcal:   0, breakfast_prot: 11, lunch_prot_target: 19, snack_prot: 6, dinner_prot_target: 16, other_prot: 3 },
+                senior:     { breakfast_kcal: 500, lunch_kcal_target: 700, snack_kcal: 200, dinner_kcal_target: 600, other_kcal:   0, breakfast_prot: 16, lunch_prot_target: 28, snack_prot: 8, dinner_prot_target: 24, other_prot: 4 },
+            };
+
+            const kcalFields = ['breakfast_kcal', 'lunch_kcal_target', 'snack_kcal', 'dinner_kcal_target', 'other_kcal'];
+            const protFields = ['breakfast_prot', 'lunch_prot_target', 'snack_prot', 'dinner_prot_target', 'other_prot'];
+
+            const select   = document.getElementById('pnns-preset');
+            const btnApply = document.getElementById('btn-apply-pnns');
+            const hiddenPT = document.getElementById('profile-type-hidden');
+
+            function getInput(name) { return document.querySelector(`[name="${name}"]`); }
+
+            function sumFields(fields) {
+                return fields.reduce((acc, n) => acc + (parseInt(getInput(n)?.value) || 0), 0);
+            }
+
+            function updateKcalTotal() {
+                const sum    = sumFields(kcalFields);
+                const planned = (parseInt(getInput('lunch_kcal_target')?.value) || 0)
+                              + (parseInt(getInput('dinner_kcal_target')?.value) || 0);
+                document.getElementById('nutrition-total-kcal').innerHTML = `<strong>${sum} kcal</strong>`;
+                document.getElementById('nutrition-planned-kcal-hint').textContent = `dont ${planned} kcal planifiés`;
+            }
+
+            function updateProtTotal() {
+                const sum     = sumFields(protFields);
+                const planned = (parseInt(getInput('lunch_prot_target')?.value) || 0)
+                              + (parseInt(getInput('dinner_prot_target')?.value) || 0);
+                document.getElementById('nutrition-total-prot').innerHTML = `<strong>${sum} g</strong>`;
+                document.getElementById('nutrition-planned-prot-hint').textContent = `dont ${planned} g planifiés`;
+            }
+
+            function updateRefs(preset) {
+                document.querySelectorAll('.pnns-ref').forEach(td => {
+                    const field = td.dataset.field;
+                    const unit  = td.dataset.unit;
+                    td.textContent = preset ? `~${preset[field]} ${unit}` : '—';
+                });
+            }
+
+            // Pré-afficher les refs au chargement si un profil est déjà sélectionné
+            if (select.value) updateRefs(PNNS[select.value] || null);
+
+            select.addEventListener('change', function () {
+                const preset = PNNS[this.value] || null;
+                updateRefs(preset);
+                btnApply.disabled = !preset;
+                hiddenPT.value = this.value;
+            });
+
+            btnApply.addEventListener('click', function () {
+                const preset = PNNS[select.value];
+                if (!preset) return;
+                Object.entries(preset).forEach(([name, val]) => {
+                    const el = getInput(name);
+                    if (el) el.value = val;
+                });
+                updateKcalTotal();
+                updateProtTotal();
+            });
+
+            kcalFields.forEach(n => getInput(n)?.addEventListener('input', updateKcalTotal));
+            protFields.forEach(n => getInput(n)?.addEventListener('input', updateProtTotal));
+
+            updateKcalTotal();
+            updateProtTotal();
+        })();
+        </script>
     </section>
 
     <!-- ── Restrictions alimentaires ─────────────────────────── -->

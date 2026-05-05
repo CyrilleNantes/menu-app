@@ -13,7 +13,6 @@ Avant toute intervention sur un projet, l'IA DOIT :
 1. Lire `spec.md` en entier pour comprendre le contexte du projet
 2. Identifier le nom de l'application Django principale (défini en section 1 de `spec.md`)
 3. Mémoriser les règles de l'anti-scope (section 1.3 de `spec.md`) — ce sont des lignes rouges
-4. Identifier la version courante du projet (section 9 ChangeLog de `spec.md`)
 
 ---
 
@@ -32,8 +31,8 @@ Avant toute intervention sur un projet, l'IA DOIT :
 | Fichiers statiques   | WhiteNoise                                                             |
 | Variables d'env      | `python-dotenv` — fichier `.env` à la racine                           |
 | ORM URL BDD          | `dj-database-url`                                                      |
-| Appels API externes  | `httpx` — async-ready, plus moderne que `requests` pour les I/O       |
-| Déploiement          | Railway (un projet unique avec deux environnements : prod et dev)      |
+| Appels API externes  | `httpx` (bibliothèque HTTP standard pour tous les appels sortants)     |
+| Déploiement          | Railway (deux environnements séparés : prod sur `main`, dev sur `dev`) |
 
 > SQLite n'est pas utilisé. Tout développement se fait sur Railway avec PostgreSQL,
 > y compris en environnement de dev.
@@ -49,7 +48,7 @@ config/
   wsgi.py
 <nom_app>/
   models.py
-  views.py            — vues fonctions uniquement (voir section 6.1 pour la raison)
+  views.py            — vues fonctions uniquement (pas de class-based views)
   urls.py
   forms.py
   services.py         — toute la logique métier ici
@@ -57,8 +56,8 @@ config/
   admin.py
   context_processors.py
   templatetags/
-  templates/<nom_app>/  — convention Django anti-collision entre apps
-  static/<nom_app>/     — convention Django anti-collision entre apps
+  templates/<nom_app>/
+  static/<nom_app>/
   migrations/
 ```
 
@@ -151,182 +150,57 @@ Avant de coder quoi que ce soit, l'IA DOIT :
 
 ---
 
-## 5. Mise à jour de spec.md — système LOG / DRAFT / REVIEW
+## 5. Mise à jour de spec.md
 
-> Ce système résout un problème concret : réécrire une section existante est risqué pour
-> un agent (perte de contenu, mauvais formatage). Ajouter des blocs taggués est additif
-> et fiable. On accumule au fil de l'eau, puis on consolide lors d'une revue explicite.
+La mise à jour de `spec.md` fait partie de la définition de "terminé".
+**Une fonctionnalité non documentée dans `spec.md` n'est pas terminée.**
 
-### 5.1 Principe général
+Après chaque implémentation validée, l'IA DOIT mettre à jour `spec.md` :
 
-La mise à jour de `spec.md` se fait en **deux temps** :
-
-1. **Au fil de l'eau** (après chaque implémentation) : l'IA ajoute des blocs taggués
-2. **Lors d'une revue** (déclenchée explicitement) : l'IA consolide les tags en sections propres
-
-**Une fonctionnalité non tracée dans `spec.md` n'est pas terminée.**
-
-### 5.2 Les trois tags
-
-#### `[LOG YYYY-MM-DD]` — traçabilité automatique
-
-Ajouté par l'IA après chaque implémentation. Toujours en bas de la section concernée
-(ou en bas du fichier si aucune section n'existe encore).
-
-Contenu : ce qui a été fait, pourquoi, et tout choix technique notable.
-
-```markdown
-> [LOG 2026-04-25] Ajout de la vue `export_csv` — colonnes : date, séance, statut,
-> ordre_prevu, charge_reelle, rpe_reel. Séparateur virgule, UTF-8 sans BOM.
-> Raison : demande explicite d'export brut pour analyse externe.
-```
-
-#### `[DRAFT]` — nouvelle section à consolider
-
-Utilisé quand l'IA crée une section entièrement nouvelle (nouveau modèle, nouvelle
-fonctionnalité) qui n'existait pas encore dans la spec.
-
-```markdown
-### 5.12 Progression — graphe par exercice
-> [DRAFT — à consolider lors de la prochaine revue]
-
-**URL** : `GET /progression/data/` → `workouts:progression_data`
-...
-```
-
-#### `[REVIEW]` — section existante modifiée
-
-Utilisé quand l'IA modifie une section existante. Elle ajoute une note en bas de la
-section sans toucher au contenu existant.
-
-```markdown
-### 5.1 Dashboard
-...contenu existant intact...
-
-> [REVIEW 2026-04-25] Section modifiée : ajout du contexte `exercices` et
-> `dernieres_mensurations`. Vérifier cohérence avec section 4.6 (Mensuration).
-```
-
-### 5.3 Ce que l'IA DOIT faire après chaque implémentation
-
-| Ce qui change                | Action dans spec.md                                              |
-|------------------------------|------------------------------------------------------------------|
-| Nouvelle fonctionnalité      | Créer section 5.X avec tag `[DRAFT]` + `[LOG]`                  |
-| Nouveau modèle ou champ      | Ajouter `[DRAFT]` ou `[REVIEW]` + `[LOG]` en section 4          |
-| Nouvelle route               | `[REVIEW]` + `[LOG]` sur la section 5 concernée                 |
-| Nouvelle migration           | Ajouter ligne en section 8 (pas de tag — section tabulaire)      |
-| Nouveau comportement JS      | `[DRAFT]` ou `[REVIEW]` + `[LOG]` en section 6                  |
-| Nouvelle intégration externe | `[DRAFT]` ou `[REVIEW]` + `[LOG]` en section 3                  |
-| Modification d'une règle     | `[REVIEW]` + `[LOG]` sur la section concernée                   |
-| Modification du périmètre    | `[REVIEW]` + `[LOG]` sur sections 1.2 et/ou 1.3                 |
-
-### 5.4 La revue de spec — déclenchée par "fais une revue de spec"
-
-Quand l'utilisateur demande une revue, l'IA DOIT :
-
-1. **Scanner** tout `spec.md` à la recherche de blocs `[DRAFT]`, `[REVIEW]`, `[LOG]`
-2. **Consolider** chaque `[DRAFT]` en section propre sans le tag
-3. **Intégrer** chaque `[REVIEW]` dans la section concernée et supprimer la note
-4. **Résumer** tous les `[LOG]` de la période dans une nouvelle ligne du ChangeLog (section 9)
-5. **Supprimer** tous les tags une fois intégrés
-6. **Incrémenter** la version (`vX.Y`) dans l'en-tête du fichier et le ChangeLog
-7. **Confirmer** à l'utilisateur : "Revue terminée. Version X.Y. [liste des changements consolidés]"
-
-> ⚠️ Pendant la revue, l'IA ne touche pas au contenu consolidé existant —
-> elle n'intègre que ce qui est taggué.
+| Ce qui change                | Section à mettre à jour                                                        |
+|------------------------------|--------------------------------------------------------------------------------|
+| Nouvelle fonctionnalité      | Ajouter une section 4.X complète                                               |
+| Nouveau modèle ou champ      | Mettre à jour la section 3                                                     |
+| Nouvelle route               | Mettre à jour la section 4 concernée                                           |
+| Nouvelle migration           | Ajouter une ligne en section 7                                                 |
+| Nouveau comportement JS      | Mettre à jour la section 5                                                     |
+| Nouvelle intégration externe | Ajouter dans la section 3 de spec.md (variables d'env + description du service)|
+| Modification d'une règle     | Mettre à jour la section concernée                                             |
+| Modification du périmètre    | Mettre à jour les sections 1.2 et/ou 1.3                                       |
 
 ---
 
 ## 6. Conventions de développement
 
-### 6.1 Vues — fonctions uniquement
-
-Toutes les vues sont des **fonctions Python**, pas des classes (pas de `ListView`, `DetailView`, etc.).
-
-> Raison : les vues-fonctions sont plus lisibles ligne à ligne pour un non-développeur
-> qui relit son propre code. La logique est explicite, sans héritage caché.
-> La réutilisabilité est assurée via `services.py`, pas via l'héritage de classes Django.
-
-### 6.2 Code Python / Django
-
+### Code Python / Django
 - **Logique métier : toujours dans `services.py`**, jamais directement dans les vues
-- **Appels externes : toujours dans `integrations/`**, jamais dans les vues ni dans `services.py`
+- **Appels externes : toujours dans `integrations/`**, jamais dans les vues ni directement dans `services.py`
 - Décorateur `@require_POST` sur toutes les vues d'action (POST uniquement)
 - Transactions atomiques (`transaction.atomic`) sur toutes les opérations multi-tables
 - `select_related` et `prefetch_related` systématiques pour éviter les requêtes N+1
 - Sauvegarde partielle via `update_fields` quand seuls certains champs changent
 - Logging : logger nommé par app, niveau `DEBUG` en dev, `INFO` en prod
 
-### 6.3 Gestion des erreurs HTTP — standard obligatoire
-
-Chaque vue DOIT gérer explicitement les cas d'erreur suivants :
-
-| Situation | Comportement attendu |
-|-----------|----------------------|
-| Objet introuvable | `get_object_or_404(Model, pk=pk)` — jamais `.get()` nu |
-| Données invalides (formulaire) | HTTP 400 + réaffichage du formulaire avec erreurs |
-| Action déjà effectuée / conflit | HTTP 409 + message explicite |
-| Erreur serveur inattendue | HTTP 500 loggé, message générique à l'utilisateur |
-| Appel externe échoué | Intercepté dans `integrations/`, remonté proprement à la vue |
-
-Pour les vues AJAX, toutes les erreurs retournent du JSON normalisé :
-```json
-{"ok": false, "error": "description", "code": "NOM_ERREUR"}
-```
-
-Pour les vues classiques, toutes les erreurs redirigent avec un message flash.
-
-Les fonctions dans `services.py` et `integrations/` DOIVENT utiliser des blocs `try/except`
-sur toutes les opérations à risque (appels externes, opérations DB complexes).
-
-### 6.4 Suppressions — recommandation soft delete
-
-Éviter les suppressions physiques sur les entités métier importantes.
-Préférer un champ `actif` (BooleanField) pour désactiver sans supprimer.
-La suppression physique reste possible via l'admin Django pour les opérations de maintenance.
-
-> Cette règle s'applique selon le contexte du projet. La spec doit préciser
-> explicitement quelles entités suivent ce pattern.
-
-### 6.5 Sécurité — vérifications obligatoires
-
-À chaque implémentation, l'IA DOIT vérifier :
-
-- **XSS** : toutes les données utilisateur affichées dans les templates passent par l'échappement
-  automatique de Django. Ne jamais utiliser `{{ variable | safe }}` sans justification explicite.
-- **SQL injection** : toujours passer par l'ORM Django. Jamais de requêtes SQL brutes
-  (`raw()`, `execute()`) sans paramètres préparés.
-- **CSRF** : `{% csrf_token %}` dans tous les formulaires HTML.
-  Les requêtes AJAX transmettent le token via `FormData` ou header `X-CSRFToken`.
-- **Exposition de données** : vérifier qu'aucune donnée sensible (clé API, token,
-  mot de passe) ne transite dans les templates ou les réponses JSON.
-
-### 6.6 Nommage
-
+### Nommage
 - Modèles : `PascalCase` (français ou anglais selon le domaine)
 - Champs : `snake_case`
 - Vues : `snake_case` verbe + nom (ex. `creer_projet`, `valider_element`)
 - URLs nommées : `snake_case` dans un namespace par app
 - Services : fonctions autonomes, pas de méthodes de classe
-- Intégrations : fonctions préfixées par le service (ex. `google_calendar_creer_evenement`)
+- Intégrations : fonctions préfixées par le service (ex. `google_calendar_creer_evenement`, `llm_conseil_dietetique`)
 
-### 6.7 Frontend
-
+### Frontend
 - Pas de framework JS — vanilla uniquement
 - Attributs `data-*` pour cibler les éléments depuis JS
 - `{% csrf_token %}` dans tous les formulaires HTML
 - Les requêtes AJAX transmettent le CSRF via `FormData`
 - Pattern `<dialog>` HTML natif pour les confirmations destructives
 
-### 6.8 Versioning et ChangeLog
-
-Chaque projet affiche sa version courante dans le footer de toutes les pages.
-Le numéro de version suit le format `vX.Y` :
-- `X` : version majeure (changement de périmètre ou refonte)
-- `Y` : version mineure (nouvelle fonctionnalité ou correctif)
-
-Le ChangeLog complet est maintenu en section 9 de `spec.md`.
-Il est mis à jour lors de chaque revue de spec, pas après chaque implémentation.
+### Gestion des erreurs
+- Toutes les vues POST redirigent avec un message flash (`messages.success` / `messages.error`)
+- Les endpoints AJAX retournent du JSON natif (`JsonResponse`)
+- Format d'erreur JSON normalisé : `{"ok": false, "errors": {...}}`
+- Les erreurs d'appels externes sont interceptées dans `integrations/` et remontées proprement
 
 ---
 
@@ -334,12 +208,8 @@ Il est mis à jour lors de chaque revue de spec, pas après chaque implémentati
 
 - Ne jamais mettre une clé API ou un secret dans le code ou dans `spec.md`
 - Ne jamais faire d'appel HTTP depuis une vue ou `services.py` — passer par `integrations/`
-- Ne jamais utiliser `.get()` nu sur un modèle — toujours `get_object_or_404()`
-- Ne jamais utiliser `{{ variable | safe }}` sans justification documentée dans la spec
-- Ne jamais écrire de SQL brut sans paramètres préparés
 - Ne jamais modifier le comportement d'une méthode critique sans vérifier tous ses appelants
 - Ne jamais supprimer de données via l'UI sans pattern de confirmation (`<dialog>`)
 - Ne jamais créer de fonctionnalité non demandée explicitement
-- Ne jamais ajouter une dépendance externe sans la documenter dans `requirements.txt` et `spec.md`
+- Ne jamais ajouter de dépendance externe sans la documenter dans `requirements.txt` et `spec.md`
 - Ne jamais contourner la stack imposée (section 2) sans accord explicite
-- Ne jamais livrer une fonctionnalité sans avoir ajouté au minimum un `[LOG]` dans `spec.md`

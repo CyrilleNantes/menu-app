@@ -146,6 +146,8 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .recette-detail__tags { display: flex; flex-wrap: wrap; gap: .4rem; }
 .recette-detail__infos { display: flex; flex-wrap: wrap; gap: 1rem; font-size: .9rem; color: var(--color-muted); }
 .recette-detail__note { display: flex; align-items: center; gap: .5rem; }
+.link-discrete { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.link-discrete:hover { text-decoration: underline; }
 .stars { color: #e67e22; font-size: 1.1rem; letter-spacing: .05em; }
 .recette-detail__actions { padding-top: 1rem; border-top: 1px solid #dee2e6; }
 
@@ -223,7 +225,8 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 
 .ing-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto auto; gap: .4rem; align-items: center; }
 .ing-name-wrap { position: relative; }
-.ing-name, .ing-qty, .ing-qty-note, .ing-unit, .ing-category { padding: .4rem .5rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .85rem; width: 100%; }
+.ing-name, .ing-qty, .ing-qty-note, .ing-unit, .ing-category { padding: .4rem .5rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .85rem; width: 100%; box-sizing: border-box; }
+select.ing-category { background: #fff; cursor: pointer; }
 .ciqual-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1.5px solid #ced4da; border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,.12); list-style: none; margin: .15rem 0 0; padding: 0; z-index: 100; max-height: 220px; overflow-y: auto; }
 .ciqual-dropdown__item { padding: .45rem .7rem; font-size: .82rem; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
 .ciqual-dropdown__item:last-child { border-bottom: none; }
@@ -278,10 +281,11 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 
 /* ── Planning hebdomadaire ──────────────────────────────────────────────── */
 
-/* Navigation semaine */
+/* Navigation période */
 .planning-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
 .planning-nav__arrow { font-size: 1.5rem; color: var(--color-primary); text-decoration: none; padding: .25rem .5rem; border-radius: var(--radius); transition: background .15s; }
 .planning-nav__arrow:hover { background: rgba(45,106,79,.1); }
+.planning-nav__arrow--disabled { font-size: 1.5rem; color: #ccc; padding: .25rem .5rem; cursor: default; }
 .planning-nav__center { text-align: center; }
 .planning-nav__title { font-size: 1.3rem; font-weight: 700; color: var(--color-primary); margin: 0; }
 .planning-nav__dates { font-size: .85rem; color: var(--color-muted); }
@@ -331,17 +335,36 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .bilan-item__value { font-size: 1.3rem; font-weight: 700; color: var(--color-text); line-height: 1; }
 .bilan-item__label { font-size: .72rem; color: var(--color-muted); text-align: center; }
 .bilan-item__hint  { font-size: .68rem; color: var(--color-muted); text-align: center; }
-.bilan-progress { width: 100%; height: 4px; background: #e9ecef; border-radius: 2px; margin-top: .2rem; overflow: hidden; }
+.bilan-progress { width: 100%; height: 5px; background: #e9ecef; border-radius: 2px; margin-top: .2rem; overflow: hidden; }
 .bilan-progress__bar { height: 100%; border-radius: 2px; transition: width .4s ease; }
 .bilan-progress__bar--ok      { background: #198754; }
 .bilan-progress__bar--warning { background: #ffc107; }
 .bilan-progress__bar--alert   { background: #dc3545; }
 .bilan-progress__bar--neutral { background: #adb5bd; }
+/* Barre kcal : couleur selon statut */
+.bilan-progress__bar--kcal.bilan-progress__bar--ok      { background: #198754; }
+.bilan-progress__bar--kcal.bilan-progress__bar--warning { background: #ffc107; }
+.bilan-progress__bar--kcal.bilan-progress__bar--alert   { background: #dc3545; }
+/* Barre prot : teintes bleues selon statut */
+.bilan-progress__bar--prot-ok      { background: #0d6efd; }
+.bilan-progress__bar--prot-warning { background: #6ea8fe; }
+.bilan-progress__bar--prot-alert   { background: #084298; }
+.bilan-progress__bar--prot-neutral { background: #adb5bd; }
+/* Tuiles membres */
+.planning-bilan__membres { display: flex; flex-direction: column; gap: .6rem; margin-top: .5rem; }
+.bilan-membre { background: #f8f9fa; border-radius: var(--radius); padding: .6rem .8rem; }
+.bilan-membre__name { font-size: .8rem; font-weight: 700; color: var(--color-text); display: block; margin-bottom: .25rem; }
+.bilan-membre__row { display: flex; justify-content: space-between; align-items: baseline; }
+.bilan-membre__label { font-size: .75rem; color: var(--color-muted); }
+.bilan-membre__label--kcal { color: #c0392b; }
+.bilan-membre__label--prot { color: #1a6bbf; }
+.bilan-membre__hint { font-size: .68rem; color: var(--color-muted); }
 
 /* Badges */
 .badge { display: inline-block; padding: .15rem .5rem; border-radius: 99px; font-size: .72rem; font-weight: 700; }
 .badge--draft { background: #fff3cd; color: #664d03; }
 .badge--published { background: #d1e7dd; color: #0a3622; }
+.badge--finished { background: #cfe2ff; color: #084298; }
 .badge--leftovers { background: #ffe8cc; color: #7c4700; }
 
 /* Propositions */
@@ -733,6 +756,19 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .nutri-day__meal-title:hover { text-decoration: underline; }
 .nutri-day__meal-macros { font-size: .78rem; }
 .nutri-day__empty { font-size: .82rem; font-style: italic; }
+/* Bloc nutrition fiche recette */
+.nutri-subtitle { font-size: .85rem; color: var(--color-muted); margin: -.25rem 0 .75rem; }
+.nutri-total { font-size: .85rem; color: var(--color-muted); margin-top: .5rem; }
+/* Badge statut nutritionnel — cartes catalogue */
+.nutri-status { font-size: .75rem; font-weight: 600; padding: .15rem .45rem; border-radius: 99px; white-space: nowrap; }
+.nutri-status--ok      { background: #d4f4e2; color: #1a6b3c; }
+.nutri-status--partial { background: #fff3cd; color: #7d5a00; }
+.nutri-status--missing { background: #fde8e8; color: #a12121; }
+/* Bandeau statut nutritionnel — fiche détail */
+.nutri-status-banner { margin: 0; padding: .55rem .9rem; border-radius: var(--radius); font-size: .85rem; }
+.nutri-status-banner--partial { background: #fff8e1; color: #7d5a00; border-left: 3px solid #f5c518; }
+.nutri-status-banner--missing { background: #fdecea; color: #a12121; border-left: 3px solid #e53935; }
+.nutri-status-banner--missing a { color: #a12121; font-weight: 600; }
 /* Bloc "Pour toi" dans la fiche recette */
 .nutri-pour-toi { margin-top: .75rem; padding: .5rem .75rem; background: #f0faf5; border-radius: var(--radius); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .88rem; }
 .nutri-pour-toi__label { font-weight: 600; }
@@ -788,6 +824,22 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .dietary-tag-option:has(input:checked) { border-color: var(--color-primary); background: #e8f5e9; font-weight: 600; color: var(--color-primary); }
 .dietary-tag-option__emoji { font-size: 1rem; }
 
+/* ── Profil nutritionnel — sélecteur profil type ────────────────────────── */
+.pnns-preset-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.pnns-preset-row__label { font-size: .85rem; color: #555; white-space: nowrap; }
+.pnns-preset-row__select { font-size: .85rem; padding: .35rem .5rem; border: 1.5px solid #ddd; border-radius: var(--radius); background: #fafafa; }
+
+/* ── Profil nutritionnel — tableau cibles ───────────────────────────────── */
+.nutrition-targets-table__subtitle { font-size: .9rem; font-weight: 700; margin: 0 0 .5rem; color: #444; }
+.nutrition-targets-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.nutrition-targets-table th, .nutrition-targets-table td { padding: .45rem .6rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
+.nutrition-targets-table th { font-weight: 700; color: #555; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+.nutrition-targets-table__planned td { background: #f0faf4; }
+.nutrition-targets-table__total td { border-top: 2px solid #ccc; padding-top: .6rem; }
+.nutrition-targets-table tfoot tr:first-child td { border-top: 2px solid #ccc; }
+.badge { display: inline-block; padding: .15rem .5rem; border-radius: 20px; font-size: .75rem; font-weight: 600; }
+.badge--ok { background: #e8f5e9; color: var(--color-primary); }
+
 /* ── Compatibilité famille ──────────────────────────────────────────────── */
 .compat-page { display: flex; flex-direction: column; gap: 1.5rem; max-width: 680px; margin: 0 auto; }
 .compat-header { display: flex; flex-direction: column; gap: .4rem; }
@@ -811,3 +863,34 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .compat-alerte__ings { font-style: italic; }
 .compat-item__no-tags { font-size: .82rem; margin-top: .4rem; padding-left: .5rem; }
 .compat-legend { font-size: .85rem; border-top: 1px solid #eee; padding-top: .75rem; }
+
+/* Présence période */
+.planning-presence { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: .75rem 1.25rem; margin-bottom: 1.25rem; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.planning-presence__title { font-size: .8rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: .04em; width: 100%; margin-bottom: .1rem; }
+.planning-presence__members { display: flex; flex-wrap: wrap; gap: .4rem; }
+.presence-toggle { display: inline-flex; align-items: center; padding: .3rem .75rem; border-radius: 99px; border: 2px solid #dee2e6; background: #f8f9fa; font-size: .85rem; cursor: pointer; user-select: none; transition: all .15s; }
+.presence-toggle--active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.planning-presence__guests { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.presence-guest-tag { display: inline-flex; align-items: center; gap: .3rem; padding: .25rem .6rem; background: #e9ecef; border-radius: 99px; font-size: .82rem; }
+.presence-guest-remove { background: none; border: none; cursor: pointer; color: #6c757d; padding: 0; font-size: .8rem; line-height: 1; }
+.presence-guest-input { border: 1px solid #dee2e6; border-radius: 99px; padding: .25rem .75rem; font-size: .85rem; width: 120px; outline: none; }
+.presence-guest-input:focus { border-color: var(--color-primary); }
+
+/* Formulaire création de période */
+.creer-periode { max-width: 640px; margin: 2rem auto; }
+.creer-periode__title { font-size: 1.4rem; font-weight: 700; color: var(--color-primary); margin-bottom: .25rem; }
+.creer-periode__hint { margin-bottom: 1.5rem; }
+.periode-day-picker { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.day-toggle { display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: .6rem 1rem; border-radius: var(--radius); border: 2px solid #dee2e6; background: #f8f9fa; cursor: pointer; user-select: none; transition: all .15s; min-width: 70px; }
+.day-toggle--active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.day-toggle--disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
+.day-toggle__label { font-weight: 700; font-size: .9rem; }
+.day-toggle__date { font-size: .75rem; opacity: .8; }
+.periode-summary { font-size: .85rem; margin-bottom: 1rem; min-height: 1.2em; }
+.creer-periode__actions { display: flex; gap: .75rem; }
+
+/* Sélecteur de jours période */
+.planning-jours { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: .75rem 1.25rem; margin-bottom: 1rem; }
+.planning-jours__title { font-size: .8rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: .6rem; }
+.planning-jours__form { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.planning-jours__days { display: flex; flex-wrap: wrap; gap: .4rem; }
