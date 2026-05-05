@@ -1221,9 +1221,10 @@ def maj_ciqual_ref(request, ref_id):
         nom_fr = request.POST.get('nom_fr', '').strip()
         if not nom_fr:
             return JsonResponse({'ok': False, 'error': 'Nom requis'}, status=400)
+        import uuid
         from .models import _normaliser_nom
         ref = IngredientRef(
-            ciqual_code=f'CUSTOM-{IngredientRef.objects.count() + 1:04d}',
+            ciqual_code=f'C{uuid.uuid4().hex[:9]}',
             nom_fr=nom_fr,
             nom_normalise=_normaliser_nom(nom_fr),
             groupe=request.POST.get('groupe', 'aides culinaires et ingrédients divers').strip(),
