@@ -830,6 +830,7 @@ select.ing-category { background: #fff; cursor: pointer; }
 .pnns-preset-row__select { font-size: .85rem; padding: .35rem .5rem; border: 1.5px solid #ddd; border-radius: var(--radius); background: #fafafa; }
 
 /* ── Profil nutritionnel — tableau cibles ───────────────────────────────── */
+.nutrition-targets-table__subtitle { font-size: .9rem; font-weight: 700; margin: 0 0 .5rem; color: #444; }
 .nutrition-targets-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .nutrition-targets-table th, .nutrition-targets-table td { padding: .45rem .6rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
 .nutrition-targets-table th { font-weight: 700; color: #555; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }

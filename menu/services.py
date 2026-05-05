@@ -463,10 +463,10 @@ def bilan_par_membre(plan) -> list[dict]:
             factor = 1.0
 
         try:
-            profile = user.profile
+            profile       = user.profile
             lunch_target  = (profile.lunch_kcal_target  or 650) * factor
             dinner_target = (profile.dinner_kcal_target or 650) * factor
-            prot_day      = float(profile.planned_prot_per_day or 0) * factor
+            prot_day      = float((profile.lunch_prot_target or 25) + (profile.dinner_prot_target or 25)) * factor
         except Exception:
             lunch_target  = (config.calories_dinner_target or 650) * factor
             dinner_target = (config.calories_dinner_target or 650) * factor

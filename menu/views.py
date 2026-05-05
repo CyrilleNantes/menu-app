@@ -2183,9 +2183,11 @@ def modifier_nutrition_targets(request):
         messages.error(request, "Profil introuvable.")
         return redirect("menu:profil")
 
-    fields = ["breakfast_kcal", "lunch_kcal_target", "snack_kcal", "dinner_kcal_target", "other_kcal", "daily_prot_target"]
+    kcal_fields = ["breakfast_kcal", "lunch_kcal_target", "snack_kcal", "dinner_kcal_target", "other_kcal"]
+    prot_fields = ["breakfast_prot", "lunch_prot_target", "snack_prot", "dinner_prot_target", "other_prot"]
+    all_fields  = kcal_fields + prot_fields
     try:
-        for field in fields:
+        for field in all_fields:
             val = int(request.POST.get(field, 0))
             if val < 0 or val > 5000:
                 raise ValueError(f"Hors plage : {field}")
@@ -2194,7 +2196,9 @@ def modifier_nutrition_targets(request):
         messages.error(request, "Valeurs invalides.")
         return redirect("menu:profil")
 
-    profile.save(update_fields=fields)
+    profile_type = request.POST.get("profile_type", "")[:20]
+    profile.profile_type = profile_type
+    profile.save(update_fields=all_fields + ["profile_type"])
     messages.success(request, "Profil nutritionnel mis à jour.")
     return redirect("menu:profil")
 

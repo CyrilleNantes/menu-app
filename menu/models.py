@@ -55,32 +55,39 @@ class UserProfile(models.Model):
         help_text="1.0 = adulte référence. Ado garçon 15–16 ans ≈ 1.3, ado fille 13 ans ≈ 0.9.",
     )
 
-    # ── Apports journaliers personnalisés ────────────────────────────────────
-    # Répartition sur 5 créneaux : seuls déjeuner et dîner sont gérés par le planning.
-    # Les autres (petit-déj, collation, autres) sont des valeurs fixes déclarées.
+    # ── Profil type PNNS sélectionné ─────────────────────────────────────────
+    profile_type = models.CharField(max_length=20, blank=True, default='', verbose_name="Profil type PNNS")
+
+    # ── Apports journaliers — calories (5 créneaux) ──────────────────────────
+    # Seuls déjeuner et dîner sont gérés par le planning.
     breakfast_kcal     = models.PositiveIntegerField(default=500,  verbose_name="Petit-déjeuner (kcal)")
     lunch_kcal_target  = models.PositiveIntegerField(default=650,  verbose_name="Déjeuner cible (kcal)")
     snack_kcal         = models.PositiveIntegerField(default=200,  verbose_name="Collation (kcal)")
     dinner_kcal_target = models.PositiveIntegerField(default=650,  verbose_name="Dîner cible (kcal)")
     other_kcal         = models.PositiveIntegerField(default=0,    verbose_name="Autres apports (kcal)")
-    daily_prot_target  = models.PositiveIntegerField(default=75,   verbose_name="Protéines totales cible (g/jour)")
+
+    # ── Apports journaliers — protéines (5 créneaux) ─────────────────────────
+    breakfast_prot     = models.PositiveIntegerField(default=15,   verbose_name="Petit-déjeuner (g prot)")
+    lunch_prot_target  = models.PositiveIntegerField(default=25,   verbose_name="Déjeuner cible (g prot)")
+    snack_prot         = models.PositiveIntegerField(default=8,    verbose_name="Collation (g prot)")
+    dinner_prot_target = models.PositiveIntegerField(default=25,   verbose_name="Dîner cible (g prot)")
+    other_prot         = models.PositiveIntegerField(default=2,    verbose_name="Autres apports (g prot)")
 
     @property
     def daily_kcal_total(self):
         return self.breakfast_kcal + self.lunch_kcal_target + self.snack_kcal + self.dinner_kcal_target + self.other_kcal
 
     @property
+    def daily_prot_total(self):
+        return self.breakfast_prot + self.lunch_prot_target + self.snack_prot + self.dinner_prot_target + self.other_prot
+
+    @property
     def planned_kcal_per_day(self):
-        """Kcal couverts par les 2 repas planifiés (déjeuner + dîner)."""
         return self.lunch_kcal_target + self.dinner_kcal_target
 
     @property
     def planned_prot_per_day(self):
-        """Protéines couvertes par les 2 repas planifiés (proportion du total)."""
-        total = self.daily_kcal_total
-        if not total:
-            return self.daily_prot_target
-        return round(self.daily_prot_target * self.planned_kcal_per_day / total, 1)
+        return self.lunch_prot_target + self.dinner_prot_target
 
     class Meta:
         verbose_name = "Profil utilisateur"
