@@ -1,7 +1,7 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v5.2** — affichée dans le footer de l'application.
+> Version courante : **v5.3** — affichée dans le footer de l'application.
 > Dernière mise à jour : 2026-05-05
 
 ---
@@ -222,12 +222,20 @@ Extension du modèle User Django. Un profil par utilisateur.
 | `snack_kcal` | `PositiveIntegerField` | non | `200` | Apport habituel collation (kcal) — non géré par le planning |
 | `dinner_kcal_target` | `PositiveIntegerField` | non | `650` | Cible kcal dîner — utilisée comme référence par `bilan_par_membre()` |
 | `other_kcal` | `PositiveIntegerField` | non | `0` | Autres apports journaliers (kcal) — non gérés par le planning |
-| `daily_prot_target` | `PositiveIntegerField` | non | `75` | Cible protéines totale journalière (g) |
+| `profile_type` | `CharField(20)` | non | `''` | Profil type PNNS sélectionné (`homme`, `femme`, `ado_garcon`, `ado_fille`, `enfant`, `senior`) — pré-sélectionne le dropdown au rechargement |
+| `breakfast_prot` | `PositiveIntegerField` | non | `15` | Apport protéines petit-déjeuner (g) — non géré par le planning |
+| `lunch_prot_target` | `PositiveIntegerField` | non | `25` | Cible protéines déjeuner (g) — utilisée par `bilan_par_membre()` |
+| `snack_prot` | `PositiveIntegerField` | non | `8` | Apport protéines collation (g) — non géré par le planning |
+| `dinner_prot_target` | `PositiveIntegerField` | non | `25` | Cible protéines dîner (g) — utilisée par `bilan_par_membre()` |
+| `other_prot` | `PositiveIntegerField` | non | `2` | Autres apports protéines (g) — non gérés par le planning |
 
 **Propriétés calculées nutritionnelles** :
-- `daily_kcal_total` : somme des 5 apports journaliers
-- `planned_kcal_per_day` : `lunch_kcal_target + dinner_kcal_target` (part couverte par le planning)
-- `planned_prot_per_day` : protéines attendues sur les repas planifiés, proratées sur `daily_kcal_total`
+- `daily_kcal_total` : somme des 5 apports kcal journaliers
+- `daily_prot_total` : somme des 5 apports protéines journaliers
+- `planned_kcal_per_day` : `lunch_kcal_target + dinner_kcal_target`
+- `planned_prot_per_day` : `lunch_prot_target + dinner_prot_target`
+
+**Sélecteur profil type PNNS** (page `/profil/`) : 6 profils prédéfinis avec répartition par repas (25% petit-dej / 35% déj / 10% collation / 30% dîner). Le choix est sauvegardé dans `profile_type` et pré-sélectionné au rechargement. Les colonnes "Référence PNNS" des deux tableaux (kcal et protéines) se mettent à jour dynamiquement. Le bouton "Appliquer ces valeurs" pré-remplit les inputs sans sauvegarder.
 
 **Propriété calculée `rank`** : retourne `(level, name)` — calculée à partir du rôle et des contributions (non stockée en base).
 
@@ -691,7 +699,12 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 - Grille : uniquement les `active_dates` × 2 créneaux (midi / soir)
 - Bloc Présence : membres famille (M2M) + invités ponctuels — AJAX auto-save
 - Bilan équilibre (Cuisinier) : poisson, végétarien, viande blanche, viande rouge, absents
-- Bilan nutritionnel par membre (Cuisinier : tous les membres ; Convive : son propre bilan uniquement) : deux barres de progression distinctes — kcal (rouge/statut) et protéines (bleu/statut). Calculé par `services.bilan_par_membre()`. Les cibles utilisent `UserProfile.lunch_kcal_target` et `dinner_kcal_target` (personnels) × `portions_factor`. Un repas `absent` contribue la cible du créneau correspondant en proxy. La cible protéines est `planned_prot_per_day × nb_jours`.
+- Bilan nutritionnel par membre (Cuisinier : tous les membres ; Convive : son propre bilan uniquement) : deux barres de progression distinctes — kcal (rouge/statut) et protéines (bleu/statut). Affichage : `🔥 X kcal` / `Cible : Y kcal · Z%`. Calculé par `services.bilan_par_membre()` :
+  - Hors planning (petit-dej, collation, autres) : valeurs fixes du profil ajoutées chaque jour sans condition
+  - Repas planifié avec recette + membre présent : kcal/prot de la recette × `portions_factor`
+  - Repas `absent` : cible du créneau précis (`lunch_kcal_target` ou `dinner_kcal_target`) × `portions_factor`
+  - Créneau sans repas ou membre non présent : 0
+  - Cible totale : `daily_kcal_total × nb_jours` (tous créneaux) / `daily_prot_total × nb_jours`
 - Backlog propositions famille
 
 ---
@@ -1208,7 +1221,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0016_kcal_per_100g_raw` | 2026-05-04 | `Recipe.kcal_per_100g_raw` FloatField — kcal pour 100g brut |
 | `0015_weekplan_flexible_periods` | 2026-05-04 | `WeekPlan` : `active_dates` JSONField, `guests` JSONField, `present_members` M2M, statut `finished` ajouté |
 | `0017_meal_members_and_guests` | 2026-05-05 | `Meal.meal_members` ManyToManyField(User) + `Meal.guest_count` PositiveIntegerField |
-| `0018_userprofile_nutrition_targets` | 2026-05-04 | `UserProfile` : 6 champs cibles nutritionnelles personnelles (`breakfast_kcal`, `lunch_kcal_target`, `snack_kcal`, `dinner_kcal_target`, `other_kcal`, `daily_prot_target`) |
+| `0018_userprofile_nutrition_targets` | 2026-05-05 | `UserProfile` : 5 champs kcal par repas + `daily_prot_target` (remplacé en 0019) |
+| `0019_userprofile_prot_fields_and_profile_type` | 2026-05-05 | `UserProfile` : suppression `daily_prot_target`, ajout 5 champs protéines par repas + `profile_type` |
 
 ---
 
@@ -1242,7 +1256,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v5.0 | 2026-05-04 | Planning par périodes flexibles : `active_dates`, statut `finished`, présence membres/invités (AJAX auto-save), viande blanche + sucres dans le bilan, navigation par `plan_id`, cascade recalage période suivante |
 | v5.1 | 2026-05-05 | Bilan nutritionnel par membre : `Meal.meal_members` M2M + `guest_count`, `bilan_par_membre()`, dialog repas avec checkboxes membres + champ invités, deux barres de progression (kcal rouge / prot bleue) par membre, repas absent proxy 1 repas cible |
 | v5.1 | 2026-05-05 | Catégorie ingrédient normalisée : texte libre → select 9 valeurs (`épicerie`, `légumes`, `crèmerie`, `viandes`, `poissonnerie`, `boulangerie`, `surgelés`, `boissons`, `autre`). Ordre colonnes formulaire recette réorganisé. |
-| v5.2 | 2026-05-04 | Profil nutritionnel personnel : 6 champs `UserProfile` (5 repas + protéines), 3 propriétés calculées, tableau de saisie dans le profil, `bilan_par_membre()` utilise les cibles personnelles au lieu des valeurs plates `NutritionConfig`. Migration 0018. |
+| v5.2 | 2026-05-05 | Profil nutritionnel personnel : 5 champs kcal par repas + `profile_type`, sélecteur PNNS 6 profils avec références dynamiques, deux tableaux séparés kcal/protéines. `bilan_par_membre()` intègre les repas hors planning depuis le profil, cible = `daily_kcal_total × nb_jours`. Affichage bilan : "Cible : X kcal · Y%". Migrations 0018–0019. |
 
 ### Détail v2.0
 
