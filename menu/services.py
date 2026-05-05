@@ -489,7 +489,7 @@ def bilan_par_membre(plan) -> list[dict]:
 
         nb_jours = len(active_dates)
         weekly_target_prorated = kcal_per_absent_meal * nb_jours * 2
-        prot_target = (config.proteins_target or 50) * factor * nb_jours
+        prot_target = (config.proteins_dinner_target or 27) * factor * nb_jours * 2
 
         def _pct_membre(actual, target):
             return min(round(actual / target * 100) if target else 0, 100)
