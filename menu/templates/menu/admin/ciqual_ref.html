@@ -99,9 +99,9 @@
   </thead>
   <tbody>
     {% for ref in page_obj %}
-    <!-- Ligne affichage -->
-    <tr class="ciqual-row" data-id="{{ ref.pk }}"
-        style="border-bottom:1px solid #f0f0f0;{% if ref.ciqual_code|slice:':7' == 'CUSTOM-' %}background:#fafff5{% endif %}">
+    <!-- Ligne affichage — clic n'importe où pour éditer -->
+    <tr class="ciqual-row" data-id="{{ ref.pk }}" title="Cliquer pour modifier"
+        style="border-bottom:1px solid #f0f0f0;cursor:pointer;{% if ref.ciqual_code|slice:':7' == 'CUSTOM-' %}background:#fafff5{% endif %}">
       <td style="padding:.45rem .7rem">
         <span class="ciqual-nom">{{ ref.nom_fr }}</span>
         {% if ref.ciqual_code|slice:':7' == 'CUSTOM-' %}
@@ -117,9 +117,7 @@
       <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.fibres_100g is not None %}{{ ref.fibres_100g|floatformat:1 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
       <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.ag_satures_100g is not None %}{{ ref.ag_satures_100g|floatformat:1 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
       <td style="padding:.45rem .7rem;text-align:right;color:#555">{% if ref.sel_100g is not None %}{{ ref.sel_100g|floatformat:2 }}{% else %}<span style="color:#ccc">—</span>{% endif %}</td>
-      <td style="padding:.45rem .7rem;text-align:right">
-        <button class="btn btn--secondary btn--sm btn-edit-ciqual" style="font-size:.75rem;padding:.2rem .5rem">✏️</button>
-      </td>
+      <td style="padding:.45rem .7rem;text-align:right;color:#aaa;font-size:.8rem">✏️</td>
     </tr>
     <!-- Ligne édition (masquée par défaut) -->
     <tr class="ciqual-edit-row" data-id="{{ ref.pk }}" style="display:none;background:#f9fafb">
@@ -201,15 +199,19 @@
 <script>
 const CSRF = '{{ csrf_token }}';
 
-// ── Ouvrir/fermer la ligne d'édition ────────────────────────────────────────
-document.querySelectorAll('.btn-edit-ciqual').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id       = btn.closest('tr').dataset.id;
-    const editRow  = document.querySelector(`.ciqual-edit-row[data-id="${id}"]`);
-    const isOpen   = editRow.style.display !== 'none';
-    // Fermer toutes les lignes ouvertes
+// ── Ouvrir/fermer la ligne d'édition (clic sur n'importe quelle cellule) ───
+document.querySelectorAll('.ciqual-row').forEach(row => {
+  row.addEventListener('click', () => {
+    const id      = row.dataset.id;
+    const editRow = document.querySelector(`.ciqual-edit-row[data-id="${id}"]`);
+    const isOpen  = editRow.style.display !== 'none';
     document.querySelectorAll('.ciqual-edit-row').forEach(r => r.style.display = 'none');
-    if (!isOpen) editRow.style.display = '';
+    document.querySelectorAll('.ciqual-row').forEach(r => r.style.background = '');
+    if (!isOpen) {
+      editRow.style.display = '';
+      row.style.background = '#e8f4fd';
+      editRow.querySelector('input')?.focus();
+    }
   });
 });
 
