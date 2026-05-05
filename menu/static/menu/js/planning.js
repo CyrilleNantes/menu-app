@@ -257,15 +257,24 @@
                 data.membres.forEach(m => {
                     const el = document.getElementById(`bilan-membre-${m.user_id}`);
                     if (!el) return;
-                    el.querySelector('.bilan-membre__kcal').textContent = `${m.kcal} kcal`;
-                    el.querySelector('.bilan-membre__prot').textContent = `${m.prot}g prot.`;
-                    el.querySelector('.bilan-membre__hint').textContent = `${m.pct}% de la cible`;
-                    const bar = el.querySelector('.bilan-progress__bar');
-                    if (bar) {
-                        bar.style.width = `${m.pct}%`;
-                        bar.className = `bilan-progress__bar bilan-progress__bar--${m.status}`;
+                    const rows = el.querySelectorAll('.bilan-membre__row');
+                    if (rows[0]) {
+                        rows[0].querySelector('.bilan-membre__label').textContent = `🔥 ${m.kcal} kcal`;
+                        rows[0].querySelector('.bilan-membre__hint').textContent  = `${m.kcal_pct}%`;
                     }
-                    el.className = `bilan-membre bilan-membre--${m.status}`;
+                    if (rows[1]) {
+                        rows[1].querySelector('.bilan-membre__label').textContent = `💪 ${m.prot}g prot.`;
+                        rows[1].querySelector('.bilan-membre__hint').textContent  = `${m.prot_pct}%`;
+                    }
+                    const bars = el.querySelectorAll('.bilan-progress__bar');
+                    if (bars[0]) {
+                        bars[0].style.width = `${m.kcal_pct}%`;
+                        bars[0].className = `bilan-progress__bar bilan-progress__bar--kcal bilan-progress__bar--${m.kcal_status}`;
+                    }
+                    if (bars[1]) {
+                        bars[1].style.width = `${m.prot_pct}%`;
+                        bars[1].className = `bilan-progress__bar bilan-progress__bar--prot bilan-progress__bar--prot-${m.prot_status}`;
+                    }
                 });
             }
         } catch { /* silencieux — le bilan se mettra à jour au prochain chargement */ }

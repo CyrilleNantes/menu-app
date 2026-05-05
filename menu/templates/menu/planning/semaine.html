@@ -167,17 +167,24 @@
     {% if bilan_membres %}
     <div class="planning-bilan__membres" id="bilan-membres">
         {% for m in bilan_membres %}
-        <div class="bilan-membre bilan-membre--{{ m.status }}" id="bilan-membre-{{ m.user_id }}">
+        <div class="bilan-membre" id="bilan-membre-{{ m.user_id }}">
             <span class="bilan-membre__name">{{ m.name }}</span>
-            <div class="bilan-membre__values">
-                <span class="bilan-membre__kcal">{{ m.kcal }} kcal</span>
-                <span class="bilan-membre__prot">{{ m.prot }}g prot.</span>
+            <div class="bilan-membre__row">
+                <span class="bilan-membre__label bilan-membre__label--kcal">🔥 {{ m.kcal }} kcal</span>
+                <span class="bilan-membre__hint">{{ m.kcal_pct }}%</span>
             </div>
             <div class="bilan-progress">
-                <div class="bilan-progress__bar bilan-progress__bar--{{ m.status }}"
-                     style="width:{{ m.pct }}%"></div>
+                <div class="bilan-progress__bar bilan-progress__bar--kcal bilan-progress__bar--{{ m.kcal_status }}"
+                     style="width:{{ m.kcal_pct }}%"></div>
             </div>
-            <span class="bilan-membre__hint">{{ m.pct }}% de la cible</span>
+            <div class="bilan-membre__row" style="margin-top:.3rem">
+                <span class="bilan-membre__label bilan-membre__label--prot">💪 {{ m.prot }}g prot.</span>
+                <span class="bilan-membre__hint">{{ m.prot_pct }}%</span>
+            </div>
+            <div class="bilan-progress">
+                <div class="bilan-progress__bar bilan-progress__bar--prot bilan-progress__bar--prot-{{ m.prot_status }}"
+                     style="width:{{ m.prot_pct }}%"></div>
+            </div>
         </div>
         {% endfor %}
     </div>
@@ -190,17 +197,24 @@
     <div class="planning-bilan__title">📊 Mon apport sur la période</div>
     <div class="planning-bilan__membres">
         {% for m in bilan_membres %}
-        <div class="bilan-membre bilan-membre--{{ m.status }}">
+        <div class="bilan-membre">
             <span class="bilan-membre__name">{{ m.name }}</span>
-            <div class="bilan-membre__values">
-                <span class="bilan-membre__kcal">{{ m.kcal }} kcal</span>
-                <span class="bilan-membre__prot">{{ m.prot }}g prot.</span>
+            <div class="bilan-membre__row">
+                <span class="bilan-membre__label bilan-membre__label--kcal">🔥 {{ m.kcal }} kcal</span>
+                <span class="bilan-membre__hint">{{ m.kcal_pct }}%</span>
             </div>
             <div class="bilan-progress">
-                <div class="bilan-progress__bar bilan-progress__bar--{{ m.status }}"
-                     style="width:{{ m.pct }}%"></div>
+                <div class="bilan-progress__bar bilan-progress__bar--kcal bilan-progress__bar--{{ m.kcal_status }}"
+                     style="width:{{ m.kcal_pct }}%"></div>
             </div>
-            <span class="bilan-membre__hint">{{ m.pct }}% de la cible</span>
+            <div class="bilan-membre__row" style="margin-top:.3rem">
+                <span class="bilan-membre__label bilan-membre__label--prot">💪 {{ m.prot }}g prot.</span>
+                <span class="bilan-membre__hint">{{ m.prot_pct }}%</span>
+            </div>
+            <div class="bilan-progress">
+                <div class="bilan-progress__bar bilan-progress__bar--prot bilan-progress__bar--prot-{{ m.prot_status }}"
+                     style="width:{{ m.prot_pct }}%"></div>
+            </div>
         </div>
         {% endfor %}
     </div>

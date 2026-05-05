@@ -489,22 +489,32 @@ def bilan_par_membre(plan) -> list[dict]:
 
         nb_jours = len(active_dates)
         weekly_target_prorated = kcal_per_absent_meal * nb_jours * 2
-        pct = round(kcal_total / weekly_target_prorated * 100) if weekly_target_prorated else 0
-        if pct < 60 or pct > 130:
-            status = 'alert'
-        elif pct < 80 or pct > 110:
-            status = 'warning'
-        else:
-            status = 'ok'
+        prot_target = (config.proteins_target or 50) * factor * nb_jours
+
+        def _pct_membre(actual, target):
+            return min(round(actual / target * 100) if target else 0, 100)
+
+        def _status_membre(actual, target):
+            if not target:
+                return 'neutral'
+            p = actual / target * 100
+            if p < 60 or p > 130:
+                return 'alert'
+            if p < 80 or p > 110:
+                return 'warning'
+            return 'ok'
 
         result.append({
-            'user_id': user.pk,
-            'name': user.first_name or user.email.split('@')[0],
-            'kcal': round(kcal_total),
-            'prot': round(prot_total, 1),
+            'user_id':    user.pk,
+            'name':       user.first_name or user.email.split('@')[0],
+            'kcal':       round(kcal_total),
+            'prot':       round(prot_total, 1),
             'kcal_target': round(weekly_target_prorated),
-            'pct': min(pct, 100),
-            'status': status,
+            'prot_target': round(prot_target, 1),
+            'kcal_pct':   _pct_membre(kcal_total, weekly_target_prorated),
+            'prot_pct':   _pct_membre(prot_total, prot_target),
+            'kcal_status': _status_membre(kcal_total, weekly_target_prorated),
+            'prot_status': _status_membre(prot_total, prot_target),
         })
 
     return result

@@ -334,12 +334,30 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .bilan-item__value { font-size: 1.3rem; font-weight: 700; color: var(--color-text); line-height: 1; }
 .bilan-item__label { font-size: .72rem; color: var(--color-muted); text-align: center; }
 .bilan-item__hint  { font-size: .68rem; color: var(--color-muted); text-align: center; }
-.bilan-progress { width: 100%; height: 4px; background: #e9ecef; border-radius: 2px; margin-top: .2rem; overflow: hidden; }
+.bilan-progress { width: 100%; height: 5px; background: #e9ecef; border-radius: 2px; margin-top: .2rem; overflow: hidden; }
 .bilan-progress__bar { height: 100%; border-radius: 2px; transition: width .4s ease; }
 .bilan-progress__bar--ok      { background: #198754; }
 .bilan-progress__bar--warning { background: #ffc107; }
 .bilan-progress__bar--alert   { background: #dc3545; }
 .bilan-progress__bar--neutral { background: #adb5bd; }
+/* Barre kcal : couleur selon statut */
+.bilan-progress__bar--kcal.bilan-progress__bar--ok      { background: #198754; }
+.bilan-progress__bar--kcal.bilan-progress__bar--warning { background: #ffc107; }
+.bilan-progress__bar--kcal.bilan-progress__bar--alert   { background: #dc3545; }
+/* Barre prot : teintes bleues selon statut */
+.bilan-progress__bar--prot-ok      { background: #0d6efd; }
+.bilan-progress__bar--prot-warning { background: #6ea8fe; }
+.bilan-progress__bar--prot-alert   { background: #084298; }
+.bilan-progress__bar--prot-neutral { background: #adb5bd; }
+/* Tuiles membres */
+.planning-bilan__membres { display: flex; flex-direction: column; gap: .6rem; margin-top: .5rem; }
+.bilan-membre { background: #f8f9fa; border-radius: var(--radius); padding: .6rem .8rem; }
+.bilan-membre__name { font-size: .8rem; font-weight: 700; color: var(--color-text); display: block; margin-bottom: .25rem; }
+.bilan-membre__row { display: flex; justify-content: space-between; align-items: baseline; }
+.bilan-membre__label { font-size: .75rem; color: var(--color-muted); }
+.bilan-membre__label--kcal { color: #c0392b; }
+.bilan-membre__label--prot { color: #1a6bbf; }
+.bilan-membre__hint { font-size: .68rem; color: var(--color-muted); }
 
 /* Badges */
 .badge { display: inline-block; padding: .15rem .5rem; border-radius: 99px; font-size: .72rem; font-weight: 700; }
