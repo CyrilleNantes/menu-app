@@ -2176,6 +2176,31 @@ def modifier_creneaux_calendar(request):
 
 @require_POST
 @login_required
+def modifier_nutrition_targets(request):
+    """Enregistre les cibles caloriques personnelles de l'utilisateur (5 repas + protéines)."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    fields = ["breakfast_kcal", "lunch_kcal_target", "snack_kcal", "dinner_kcal_target", "other_kcal", "daily_prot_target"]
+    try:
+        for field in fields:
+            val = int(request.POST.get(field, 0))
+            if val < 0 or val > 5000:
+                raise ValueError(f"Hors plage : {field}")
+            setattr(profile, field, val)
+    except (ValueError, TypeError):
+        messages.error(request, "Valeurs invalides.")
+        return redirect("menu:profil")
+
+    profile.save(update_fields=fields)
+    messages.success(request, "Profil nutritionnel mis à jour.")
+    return redirect("menu:profil")
+
+
+@require_POST
+@login_required
 def modifier_portions_factor(request):
     """Enregistre le facteur de portion individuel de l'utilisateur."""
     profile = _get_profile(request)

@@ -462,22 +462,32 @@ def bilan_par_membre(plan) -> list[dict]:
         except Exception:
             factor = 1.0
 
-        kcal_per_absent_meal = (config.calories_dinner_target or 850) * factor
+        try:
+            profile = user.profile
+            lunch_target  = (profile.lunch_kcal_target  or 650) * factor
+            dinner_target = (profile.dinner_kcal_target or 650) * factor
+            prot_day      = float(profile.planned_prot_per_day or 0) * factor
+        except Exception:
+            lunch_target  = (config.calories_dinner_target or 650) * factor
+            dinner_target = (config.calories_dinner_target or 650) * factor
+            prot_day      = (config.proteins_dinner_target or 27) * factor
 
         kcal_total = 0.0
         prot_total = 0.0
 
         member_ids_in_meals = {}  # slot → frozenset of user IDs (lazy fetch)
 
+        kcal_target_total = 0.0
         for d in active_dates:
             for mt in ('lunch', 'dinner'):
+                slot_target = lunch_target if mt == 'lunch' else dinner_target
+                kcal_target_total += slot_target
                 meal = meal_by_slot.get((d, mt))
                 if meal is None:
                     continue
                 if meal.absent:
-                    kcal_total += kcal_per_absent_meal
+                    kcal_total += slot_target
                 elif meal.recipe:
-                    # Charger les IDs members de ce repas
                     slot = (meal.pk,)
                     if slot not in member_ids_in_meals:
                         member_ids_in_meals[slot] = frozenset(
@@ -488,8 +498,8 @@ def bilan_par_membre(plan) -> list[dict]:
                         prot_total += (meal.recipe.proteins_per_serving or 0) * factor
 
         nb_jours = len(active_dates)
-        weekly_target_prorated = kcal_per_absent_meal * nb_jours * 2
-        prot_target = (config.proteins_dinner_target or 27) * factor * nb_jours * 2
+        weekly_target_prorated = kcal_target_total
+        prot_target = prot_day * nb_jours
 
         def _pct_membre(actual, target):
             return min(round(actual / target * 100) if target else 0, 100)

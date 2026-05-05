@@ -55,6 +55,7 @@ urlpatterns = [
     path("profil/nutrition/", views.dashboard_nutrition, name="dashboard_nutrition"),
     path("profil/creneaux-calendar/", views.modifier_creneaux_calendar, name="modifier_creneaux_calendar"),
     path("profil/portions-factor/", views.modifier_portions_factor, name="modifier_portions_factor"),
+    path("profil/nutrition-targets/", views.modifier_nutrition_targets, name="modifier_nutrition_targets"),
     path("profil/dietary-tags/", views.modifier_dietary_tags, name="modifier_dietary_tags"),
     path("recettes/<int:id>/compatibilite/", views.compatibilite_recette, name="compatibilite_recette"),
     # Google Tasks

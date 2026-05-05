@@ -824,6 +824,16 @@ select.ing-category { background: #fff; cursor: pointer; }
 .dietary-tag-option:has(input:checked) { border-color: var(--color-primary); background: #e8f5e9; font-weight: 600; color: var(--color-primary); }
 .dietary-tag-option__emoji { font-size: 1rem; }
 
+/* ── Profil nutritionnel — tableau cibles ───────────────────────────────── */
+.nutrition-targets-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.nutrition-targets-table th, .nutrition-targets-table td { padding: .45rem .6rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
+.nutrition-targets-table th { font-weight: 700; color: #555; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+.nutrition-targets-table__planned td { background: #f0faf4; }
+.nutrition-targets-table__total td { border-top: 2px solid #ccc; padding-top: .6rem; }
+.nutrition-targets-table tfoot tr:first-child td { border-top: 2px solid #ccc; }
+.badge { display: inline-block; padding: .15rem .5rem; border-radius: 20px; font-size: .75rem; font-weight: 600; }
+.badge--ok { background: #e8f5e9; color: var(--color-primary); }
+
 /* ── Compatibilité famille ──────────────────────────────────────────────── */
 .compat-page { display: flex; flex-direction: column; gap: 1.5rem; max-width: 680px; margin: 0 auto; }
 .compat-header { display: flex; flex-direction: column; gap: .4rem; }
