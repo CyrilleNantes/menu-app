@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v5.0** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-05-04
+> Version courante : **v5.1** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-05-05
 
 ---
 
@@ -287,7 +287,7 @@ Ingrédient d'une recette, rattaché à un groupe.
 | `quantity_note` | `CharField(50)` | oui | — | Précision libre sur la quantité (ex. "150–200g", "selon votre goût"). Affiché à la place de `quantity + unit` quand renseigné. |
 | `unit` | `CharField(50)` | oui | — | Unité (g, ml, c. à soupe…) |
 | `is_optional` | `BooleanField` | non | `False` | Ingrédient optionnel — inclus dans le calcul nutritionnel, exclu du `nutrition_status` |
-| `category` | `CharField(50)` | oui | — | Catégorie courses (viandes, légumes, épicerie…) |
+| `category` | `CharField(50)` | oui | — | Catégorie courses — valeur normalisée parmi : `épicerie`, `légumes`, `crèmerie`, `viandes`, `poissonnerie`, `boulangerie`, `surgelés`, `boissons`, `autre`. Champ select dans le formulaire (plus de saisie libre). |
 | `known_ingredient` | `ForeignKey(KnownIngredient)` | oui | — | Lien vers la base de connaissance (`SET_NULL`) |
 | `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Référence Ciqual dérivée de `known_ingredient.ciqual_ref` à la sauvegarde |
 | `calories` | `FloatField` | oui | — | Kcal calculés pour la quantité définie (cache — source de vérité : Ciqual) |
@@ -428,13 +428,16 @@ Repas planifié dans un WeekPlan.
 | `date` | `DateField` | non | — | Date du repas |
 | `meal_time` | `CharField(10)` | non | — | `lunch` / `dinner` |
 | `recipe` | `ForeignKey(Recipe)` | oui | `null` | Recette (null si créneau vide) |
-| `servings_count` | `PositiveIntegerField` | oui | — | Nombre de parts à préparer |
-| `is_leftovers` | `BooleanField` | non | `False` | Ce repas = restes d'un autre |
-| `source_meal` | `ForeignKey('self')` | oui | `null` | Repas source des restes |
+| `servings_count` | `PositiveIntegerField` | oui | — | Nombre de parts à préparer (calculé = len(meal_members) + guest_count) |
+| `meal_members` | `ManyToManyField(User)` | — | — | Membres de la famille présents à ce repas spécifique (peut différer de la présence globale de la période) |
+| `guest_count` | `PositiveIntegerField` | non | `0` | Nombre d'invités ponctuels à ce repas |
+| `absent` | `BooleanField` | non | `False` | Créneau marqué "personne ne mange à la maison" — exclu du bilan et des courses |
+| `is_leftovers` | `BooleanField` | non | `False` | *(réservé — concept retiré du planning UI, champ conservé pour compatibilité)* |
+| `source_meal` | `ForeignKey('self')` | oui | `null` | *(réservé — lié à is_leftovers)* |
 | `google_event_id` | `CharField(200)` | non | `""` | ID de l'événement Google Calendar créé (vide si non exporté) |
 
 **Contrainte DB** : `(week_plan, date, meal_time)` unique.
-**Règle** : si `is_leftovers=True`, ce repas n'est pas pris en compte dans la génération de la liste de courses.
+**Règle `absent`** : un créneau `absent=True` est ignoré dans la liste de courses et dans le bilan variété, mais compte comme un repas cible dans le bilan nutritionnel par membre (proxy = `calories_dinner_target × portions_factor`).
 
 ---
 
@@ -568,7 +571,7 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 - `health_tags` : multi-select, optionnel
 - `complexity` : choix, obligatoire
 - Groupes d'ingrédients : ajout dynamique (vanilla JS)
-- Ingrédients par groupe : nom + quantité + unité + optionnel + catégorie
+- Ingrédients par groupe : `Ingrédient | Ex. 150-200g | Qté | Unité | Catégorie (select) | Opt.` — la quantité libre (`quantity_note`) est affichée en priorité sur qty+unité
 - Étapes : ajout dynamique, instruction + note chef + timer optionnel
 - Sections libres : ajout dynamique
 
@@ -676,7 +679,8 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 - Navigation prev/next : WeekPlan adjacent par date, identifié par son `id`. La flèche `+` (dernier plan) pointe vers `creer_periode?after=<period_end>`
 - Grille : uniquement les `active_dates` × 2 créneaux (midi / soir)
 - Bloc Présence : membres famille (M2M) + invités ponctuels — AJAX auto-save
-- Bilan équilibre (Cuisinier) : poisson, végétarien, viande blanche, viande rouge, calories/période, protéines/période, sucres/période
+- Bilan équilibre (Cuisinier) : poisson, végétarien, viande blanche, viande rouge, absents
+- Bilan nutritionnel par membre (Cuisinier : tous les membres ; Convive : son propre bilan uniquement) : deux barres de progression distinctes — kcal (rouge/statut) et protéines (bleu/statut). Calculé par `services.bilan_par_membre()`. Un repas `absent` contribue `calories_dinner_target × portions_factor` en proxy.
 - Backlog propositions famille
 
 ---
@@ -690,11 +694,12 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 **Règles de gestion** :
 1. Crée ou met à jour un `Meal` pour une date + créneau donnés
 2. Si `recipe=None` → créneau vide (cantine, repas extérieur)
-3. Si `is_leftovers=True` → `source_meal` obligatoire
-4. Un créneau "restes" n'est pas pris en compte dans la liste de courses
+3. Si `absent=True` → créneau marqué absent (personne ne mange à la maison)
+4. `member_ids` : liste d'IDs User filtrée aux membres de la famille — `servings_count = len(member_ids) + guest_count`
+5. `meal_members` mis à jour en M2M après `update_or_create`
 
 **Réponse** :
-- `{"ok": true, "meal_id": 42, "recipe_title": "Hachis Parmentier"}`
+- `{"ok": true, "meal_id": 42, "recipe_title": "Hachis Parmentier", "servings_count": 2, "meal_member_ids": [1, 3], "guest_count": 0}`
 
 ---
 
@@ -1191,6 +1196,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0014_sugars_per_serving` | 2026-05-04 | `Recipe.sugars_per_serving` FloatField — sucres par portion |
 | `0016_kcal_per_100g_raw` | 2026-05-04 | `Recipe.kcal_per_100g_raw` FloatField — kcal pour 100g brut |
 | `0015_weekplan_flexible_periods` | 2026-05-04 | `WeekPlan` : `active_dates` JSONField, `guests` JSONField, `present_members` M2M, statut `finished` ajouté |
+| `0017_meal_members_and_guests` | 2026-05-05 | `Meal.meal_members` ManyToManyField(User) + `Meal.guest_count` PositiveIntegerField |
 
 ---
 
@@ -1222,6 +1228,8 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v4.4 | 2026-05-04 | "Mettre en avant" une photo de galerie met à jour `Recipe.photo_url` — photo visible dans la liste et l'en-tête |
 | v4.4 | 2026-05-04 | Fiche recette : Retour/Proposer/Mode Cuisine en haut, Famille/Modifier en bas — bouton Proposer ouvert à tous les membres de la famille |
 | v5.0 | 2026-05-04 | Planning par périodes flexibles : `active_dates`, statut `finished`, présence membres/invités (AJAX auto-save), viande blanche + sucres dans le bilan, navigation par `plan_id`, cascade recalage période suivante |
+| v5.1 | 2026-05-05 | Bilan nutritionnel par membre : `Meal.meal_members` M2M + `guest_count`, `bilan_par_membre()`, dialog repas avec checkboxes membres + champ invités, deux barres de progression (kcal rouge / prot bleue) par membre, repas absent proxy 1 repas cible |
+| v5.1 | 2026-05-05 | Catégorie ingrédient normalisée : texte libre → select 9 valeurs (`épicerie`, `légumes`, `crèmerie`, `viandes`, `poissonnerie`, `boulangerie`, `surgelés`, `boissons`, `autre`). Ordre colonnes formulaire recette réorganisé. |
 
 ### Détail v2.0
 
