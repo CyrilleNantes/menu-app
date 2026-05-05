@@ -824,6 +824,11 @@ select.ing-category { background: #fff; cursor: pointer; }
 .dietary-tag-option:has(input:checked) { border-color: var(--color-primary); background: #e8f5e9; font-weight: 600; color: var(--color-primary); }
 .dietary-tag-option__emoji { font-size: 1rem; }
 
+/* ── Profil nutritionnel — sélecteur profil type ────────────────────────── */
+.pnns-preset-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.pnns-preset-row__label { font-size: .85rem; color: #555; white-space: nowrap; }
+.pnns-preset-row__select { font-size: .85rem; padding: .35rem .5rem; border: 1.5px solid #ddd; border-radius: var(--radius); background: #fafafa; }
+
 /* ── Profil nutritionnel — tableau cibles ───────────────────────────────── */
 .nutrition-targets-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .nutrition-targets-table th, .nutrition-targets-table td { padding: .45rem .6rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
