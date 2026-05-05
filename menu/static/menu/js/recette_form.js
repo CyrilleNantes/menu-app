@@ -1,4 +1,17 @@
 /* recette_form.js — formulaire recette dynamique (vanilla JS) */
+
+const ING_CATEGORIES = [
+    ['épicerie',     'Épicerie'],
+    ['légumes',      'Légumes'],
+    ['crèmerie',     'Crèmerie'],
+    ['viandes',      'Viandes'],
+    ['poissonnerie', 'Poissonnerie'],
+    ['boulangerie',  'Boulangerie'],
+    ['surgelés',     'Surgelés'],
+    ['boissons',     'Boissons'],
+    ['autre',        'Autre'],
+];
+
 (function () {
     'use strict';
 
@@ -93,10 +106,13 @@
                 <input type="text" name="ing_name_${g}_${i}" placeholder="Ingrédient *" class="ing-name" autocomplete="off">
                 <span class="ciqual-badge" hidden></span>
             </div>
-            <input type="number" name="ing_qty_${g}_${i}"      placeholder="Qté" step="any" class="ing-qty">
             <input type="text"   name="ing_qty_note_${g}_${i}" placeholder="Ex. 150–200g" class="ing-qty-note">
+            <input type="number" name="ing_qty_${g}_${i}"      placeholder="Qté" step="any" class="ing-qty">
             <input type="text"   name="ing_unit_${g}_${i}"     placeholder="Unité" class="ing-unit">
-            <input type="text"   name="ing_category_${g}_${i}" placeholder="Catégorie" class="ing-category">
+            <select name="ing_category_${g}_${i}" class="ing-category">
+                <option value="">Catégorie</option>
+                ${ING_CATEGORIES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+            </select>
             <label class="ing-optional-label">
                 <input type="checkbox" name="ing_optional_${g}_${i}"> Opt.
             </label>

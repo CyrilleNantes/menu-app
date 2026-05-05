@@ -225,7 +225,8 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 
 .ing-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto auto; gap: .4rem; align-items: center; }
 .ing-name-wrap { position: relative; }
-.ing-name, .ing-qty, .ing-qty-note, .ing-unit, .ing-category { padding: .4rem .5rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .85rem; width: 100%; }
+.ing-name, .ing-qty, .ing-qty-note, .ing-unit, .ing-category { padding: .4rem .5rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .85rem; width: 100%; box-sizing: border-box; }
+select.ing-category { background: #fff; cursor: pointer; }
 .ciqual-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1.5px solid #ced4da; border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,.12); list-style: none; margin: .15rem 0 0; padding: 0; z-index: 100; max-height: 220px; overflow-y: auto; }
 .ciqual-dropdown__item { padding: .45rem .7rem; font-size: .82rem; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
 .ciqual-dropdown__item:last-child { border-bottom: none; }

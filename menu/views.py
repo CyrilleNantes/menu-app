@@ -41,6 +41,18 @@ from .services import (
     suggerer_recettes,
 )
 
+ING_CATEGORIES = [
+    ('épicerie',     'Épicerie'),
+    ('légumes',      'Légumes'),
+    ('crèmerie',     'Crèmerie'),
+    ('viandes',      'Viandes'),
+    ('poissonnerie', 'Poissonnerie'),
+    ('boulangerie',  'Boulangerie'),
+    ('surgelés',     'Surgelés'),
+    ('boissons',     'Boissons'),
+    ('autre',        'Autre'),
+]
+
 logger = logging.getLogger("menu")
 
 
@@ -1573,7 +1585,7 @@ def creer_recette(request):
         messages.success(request, "Recette enregistrée !")
         return redirect("menu:detail_recette", id=recipe.id)
 
-    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": None})
+    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": None, "ING_CATEGORIES": ING_CATEGORIES})
 
 
 @login_required
@@ -1630,7 +1642,7 @@ def modifier_recette(request, id):
     recipe_data.steps_prefetched = recipe.steps.all()
     recipe_data.sections_prefetched = recipe.sections.all()
 
-    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": recipe_data})
+    return render(request, "menu/recettes/formulaire.html", {"form": form, "recipe": recipe_data, "ING_CATEGORIES": ING_CATEGORIES})
 
 
 @require_POST
