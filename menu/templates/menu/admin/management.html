@@ -114,8 +114,7 @@
         </td>
         <td style="padding:.6rem .8rem">
           <div style="display:flex;gap:.3rem;align-items:center">
-            <input type="number" class="ki-unit-weight" value="{{ ki.unit_weight_g|default:'' }}"
-                   min="0" step="any"
+            <input type="text" class="ki-unit-weight" value="{{ ki.unit_weight_g|default:'' }}"
                    style="width:65px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
                    placeholder="—"
                    title="Ex: 40 pour 1 tranche de pain de mie = 40g">
@@ -410,11 +409,15 @@ document.querySelectorAll('.ki-row').forEach(row => {
   const transcoStatus = row.querySelector('.ki-transco-status');
   const saveTransco = async () => {
     transcoBtn.disabled = true;
-    const d = await saveField({
-      unit_weight_g:     weightInput.value.trim(),
-      transco_unit_label: transcoInput.value.trim(),
-    });
-    if (d.ok) { transcoStatus.style.display = 'inline'; setTimeout(() => transcoStatus.style.display = 'none', 2000); }
+    const wVal = weightInput.value.trim();
+    const lVal = transcoInput.value.trim();
+    const d = await saveField({ unit_weight_g: wVal, transco_unit_label: lVal });
+    if (d.ok) {
+      transcoStatus.style.display = 'inline';
+      setTimeout(() => transcoStatus.style.display = 'none', 2000);
+    } else {
+      console.error('saveTransco error', d, 'weight=', wVal, 'label=', lVal);
+    }
     transcoBtn.disabled = false;
   };
   transcoBtn?.addEventListener('click', saveTransco);
