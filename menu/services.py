@@ -993,7 +993,7 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
     """
     Efface toutes les données et restaure depuis un zip de backup.
     Réinitialise les séquences PostgreSQL après restore.
-    Retourne {'total': <nb objets restaurés>}.
+    Retourne {'total': <nb objets restaurés>, 'errors': [...]}.
     """
     from django.core import serializers as djser
     from .models import IngredientRef
@@ -1002,42 +1002,57 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
     with zf_lib.ZipFile(buf, "r") as zf:
         data = json.loads(zf.read("backup.json").decode("utf-8"))
 
+    errors = []
+    total = 0
+
     with transaction.atomic():
         # Suppression dans l'ordre inverse (feuilles d'abord, respecte PROTECT)
         for name in reversed(_BACKUP_APP_MODELS):
             _get_app_model(name).objects.all().delete()
         DjangoUser.objects.all().delete()
 
-        # Restauration dans l'ordre (parents d'abord)
-        total = 0
+        # Auth users
         if "__auth_user" in data:
             for obj in djser.deserialize("json", json.dumps(data["__auth_user"])):
-                obj.save()
-                total += 1
+                with transaction.atomic():
+                    obj.save()
+                    total += 1
 
-        # Restaure les IngredientRef référencées avant les Ingredient (compatibilité ancienne clé)
-        for ref_key in ("__ingredientref_used", "__ingredientref_custom"):
-            if ref_key in data:
-                ref_ids_to_restore = {
-                    entry["pk"] for entry in data[ref_key]
-                }
-                IngredientRef.objects.filter(pk__in=ref_ids_to_restore).delete()
-                for obj in djser.deserialize("json", json.dumps(data[ref_key])):
-                    try:
-                        obj.save()
+        # IngredientRef : upsert par ciqual_code (clé naturelle) pour éviter les conflits de PK
+        # entre prod et dev. On construit un mapping prod_pk → dev_pk pour les Ingredient.
+        ref_pk_map = {}
+        ref_key = next((k for k in ("__ingredientref_used", "__ingredientref_custom") if k in data), None)
+        if ref_key:
+            for entry in data[ref_key]:
+                prod_pk = entry["pk"]
+                fields = entry["fields"]
+                ciqual_code = fields["ciqual_code"]
+                defaults = {k: v for k, v in fields.items() if k != "ciqual_code"}
+                try:
+                    with transaction.atomic():
+                        ref, _ = IngredientRef.objects.update_or_create(
+                            ciqual_code=ciqual_code, defaults=defaults
+                        )
+                        ref_pk_map[prod_pk] = ref.pk
                         total += 1
-                    except Exception as exc:
-                        logger.warning("IngredientRef ignorée lors de la restauration : %s", exc)
-                break
+                except Exception as exc:
+                    logger.warning("IngredientRef ignorée (%s) : %s", ciqual_code, exc)
+                    errors.append(f"IngredientRef {ciqual_code} : {exc}")
 
-        errors = []
+        # Restauration des modèles métier (parents d'abord)
         for name in _BACKUP_APP_MODELS:
             if name not in data:
                 continue
             for obj in djser.deserialize("json", json.dumps(data[name])):
+                # Remap ciqual_ref_id : le PK en prod peut différer du PK en dev
+                if name == "Ingredient" and obj.object.ciqual_ref_id is not None:
+                    obj.object.ciqual_ref_id = ref_pk_map.get(
+                        obj.object.ciqual_ref_id, obj.object.ciqual_ref_id
+                    )
                 try:
-                    obj.save()
-                    total += 1
+                    with transaction.atomic():
+                        obj.save()
+                        total += 1
                 except Exception as exc:
                     msg = f"{name} pk={obj.object.pk} : {exc}"
                     logger.warning("Objet ignoré lors de la restauration — %s", msg)
