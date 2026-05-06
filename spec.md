@@ -2,7 +2,7 @@
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
 > Version courante : **v5.3** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-05-05
+> Dernière mise à jour : 2026-05-06
 
 ---
 
@@ -148,7 +148,7 @@ Table locale PostgreSQL (`IngredientRef`), importée depuis un fichier XLS ANSES
 **Nettoyage Ciqual** : `python manage.py clean_ciqual [--dry-run]` — supprime les plats composés et les entrées sans données kcal (hors exceptions : eau, sel, bouillon…).
 
 **Architecture en deux couches** :
-- `IngredientRef` : référentiel officiel ANSES Ciqual — table en lecture seule (sauf via Management)
+- `IngredientRef` : référentiel ANSES Ciqual, modifiable via la page Management (ajout d'entrées, correction des données nutritionnelles, personnalisation). Sauvegardée et restaurée intégralement dans le backup.
 - `KnownIngredient` : base de connaissance des ingrédients utilisés dans les recettes, avec lien vers `IngredientRef` et synonymes. Enrichie automatiquement à chaque sauvegarde de recette.
 
 **Autocomplete** : à la saisie dans le formulaire recette, une dropdown interroge `KnownIngredient` (debounce 350ms, `GET /api/ingredients/connus/?q=`). Priorité aux correspondances par synonymes puis par nom normalisé.
@@ -251,6 +251,7 @@ Catalogue global partagé entre toutes les familles.
 |-------|-------------|----------|--------|-------------|
 | `id` | `BigAutoField` | non | auto | Clé primaire |
 | `title` | `CharField(200)` | non | — | Titre de la recette |
+| `title_normalise` | `CharField(200)` | non | `""` | Titre normalisé pour la recherche (minuscules, sans accents, ligatures résolues — calculé automatiquement via `_normaliser_nom` à chaque `save()`) |
 | `description` | `TextField` | oui | — | Description courte |
 | `photo_url` | `URLField` | oui | — | URL Cloudinary de la photo principale |
 | `base_servings` | `PositiveIntegerField` | non | — | Nombre de parts de référence |
@@ -563,7 +564,7 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 1. Affiche toutes les recettes `actif=True` du catalogue global
 2. Filtres disponibles : catégorie, saison courante, type de cuisine, complexité
 3. Tri disponible : récentes, mieux notées, les plus simples
-4. Barre de recherche sur le titre
+4. Barre de recherche sur `title_normalise` — insensible aux accents et aux ligatures (`roti` trouve `Rôti`, `boeuf` trouve `bœuf`). La requête est normalisée via `_normaliser_nom` avant comparaison.
 
 ---
 
@@ -1170,6 +1171,21 @@ Usage : `{{ photo.photo_url|cloudinary_img:"gallery" }}`
 | 🗑️ Vider les recettes | `POST /management/actions/reset-recipes/` | POST | `reset_mode=recipes` — supprime Recipe + WeekPlan, conserve KnownIngredient |
 | ⚠️ Reset complet | `POST /management/actions/reset-recipes/` | POST | `reset_mode=full` — supprime Recipe + KnownIngredient + WeekPlan |
 
+### Backup & Restore
+
+**Export** : `GET /management/backup/exporter/` — sérialise toutes les tables applicatives en JSON compressé (ZIP).
+**Import** : `POST /management/backup/importer/` — restaure depuis un ZIP. Vide toutes les tables puis réinsère dans l'ordre de dépendance FK.
+
+**Tables incluses dans le backup** (ordre de restauration) :
+`IngredientRef` → `NutritionConfig` → `Family` → `UserProfile` → `TokenOAuth` → `NotificationPreference` → `Recipe` → `RecipePhoto` → `IngredientGroup` → `KnownIngredient` → `Ingredient` → `RecipeStep` → `RecipeSection` → `Review` → `WeekPlan` → `Meal` → `MealProposal` → `ShoppingList` → `ShoppingItem` + utilisateurs Django (`auth.User`).
+
+**Comportement de restauration** :
+- Suppression dans l'ordre inverse (enfants avant parents) pour respecter les contraintes FK
+- Chaque objet est sauvegardé dans un savepoint individuel (`transaction.atomic` imbriqué) — une erreur isolée n'empoisonne pas la transaction globale
+- Le message de succès indique le nombre d'objets restaurés et, le cas échéant, le nombre d'erreurs avec la première erreur rencontrée
+
+**Gunicorn** : timeout configuré à 300s (`--timeout 300`) pour absorber les opérations longues (restauration de la table IngredientRef ≈ 3200 entrées).
+
 Toutes les actions mutantes utilisent `@require_POST` et affichent un résumé via message flash.
 
 ### Référentiel Ciqual (CRUD)
@@ -1223,6 +1239,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0017_meal_members_and_guests` | 2026-05-05 | `Meal.meal_members` ManyToManyField(User) + `Meal.guest_count` PositiveIntegerField |
 | `0018_userprofile_nutrition_targets` | 2026-05-05 | `UserProfile` : 5 champs kcal par repas + `daily_prot_target` (remplacé en 0019) |
 | `0019_userprofile_prot_fields_and_profile_type` | 2026-05-05 | `UserProfile` : suppression `daily_prot_target`, ajout 5 champs protéines par repas + `profile_type` |
+| `0020_recipe_title_normalise` | 2026-05-06 | `Recipe.title_normalise` CharField db_index — recherche insensible aux accents et ligatures. Population des recettes existantes via `RunPython`. |
 
 ---
 
@@ -1257,6 +1274,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v5.1 | 2026-05-05 | Bilan nutritionnel par membre : `Meal.meal_members` M2M + `guest_count`, `bilan_par_membre()`, dialog repas avec checkboxes membres + champ invités, deux barres de progression (kcal rouge / prot bleue) par membre, repas absent proxy 1 repas cible |
 | v5.1 | 2026-05-05 | Catégorie ingrédient normalisée : texte libre → select 9 valeurs (`épicerie`, `légumes`, `crèmerie`, `viandes`, `poissonnerie`, `boulangerie`, `surgelés`, `boissons`, `autre`). Ordre colonnes formulaire recette réorganisé. |
 | v5.2 | 2026-05-05 | Profil nutritionnel personnel : 5 champs kcal par repas + `profile_type`, sélecteur PNNS 6 profils avec références dynamiques, deux tableaux séparés kcal/protéines. `bilan_par_membre()` intègre les repas hors planning depuis le profil, cible = `daily_kcal_total × nb_jours`. Affichage bilan : "Cible : X kcal · Y%". Migrations 0018–0019. |
+| v5.3 | 2026-05-06 | Recherche recettes insensible aux accents et ligatures (`Recipe.title_normalise`, `_normaliser_nom` étendu à œ→oe / æ→ae). Backup/Restore fiabilisé : toutes les tables applicatives incluses, savepoints par objet, Gunicorn timeout 300s. Migration 0020. |
 
 ### Détail v2.0
 
