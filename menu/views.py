@@ -1027,7 +1027,8 @@ def api_recettes(request):
     )
     if q:
         from .models import _normaliser_nom
-        qs = qs.filter(title_normalise__icontains=_normaliser_nom(q))
+        for word in _normaliser_nom(q).split():
+            qs = qs.filter(title_normalise__icontains=word)
     qs = qs.order_by("title")[:20]
     results = [
         {
@@ -1378,7 +1379,8 @@ def liste_recettes(request):
 
     if q:
         from .models import _normaliser_nom
-        qs = qs.filter(title_normalise__icontains=_normaliser_nom(q))
+        for word in _normaliser_nom(q).split():
+            qs = qs.filter(title_normalise__icontains=word)
     if categorie:
         qs = qs.filter(category=categorie)
     if saison:
