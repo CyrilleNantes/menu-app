@@ -938,6 +938,7 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
 # Ordre de restauration (parents avant enfants). Suppression = ordre inverse.
 # Respecte les contraintes PROTECT : Family/Recipe/WeekPlan avant User.
 _BACKUP_APP_MODELS = [
+    "IngredientRef",      # en premier : référencé par Ingredient et KnownIngredient
     "Family",
     "UserProfile",
     "TokenOAuth",
@@ -967,18 +968,8 @@ def exporter_backup() -> bytes:
     compressé dans un fichier zip.
     """
     from django.core import serializers as djser
-    from .models import IngredientRef
 
     data = {"__auth_user": json.loads(djser.serialize("json", DjangoUser.objects.all()))}
-    # Toutes les IngredientRef utilisées par des ingrédients de recettes (CUSTOM ou modifiées en prod)
-    ref_ids = set(
-        _get_app_model("Ingredient").objects
-        .exclude(ciqual_ref=None)
-        .values_list("ciqual_ref_id", flat=True)
-    )
-    data["__ingredientref_used"] = json.loads(
-        djser.serialize("json", IngredientRef.objects.filter(pk__in=ref_ids))
-    )
     for name in _BACKUP_APP_MODELS:
         data[name] = json.loads(djser.serialize("json", _get_app_model(name).objects.all()))
 
@@ -996,7 +987,6 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
     Retourne {'total': <nb objets restaurés>, 'errors': [...]}.
     """
     from django.core import serializers as djser
-    from .models import IngredientRef
 
     buf = io.BytesIO(zip_bytes)
     with zf_lib.ZipFile(buf, "r") as zf:
@@ -1007,48 +997,22 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
 
     with transaction.atomic():
         # Suppression dans l'ordre inverse (feuilles d'abord, respecte PROTECT)
+        # IngredientRef est en première position → supprimée en dernier, après Ingredient
         for name in reversed(_BACKUP_APP_MODELS):
             _get_app_model(name).objects.all().delete()
         DjangoUser.objects.all().delete()
 
-        # Auth users
+        # Restauration dans l'ordre (parents d'abord)
         if "__auth_user" in data:
             for obj in djser.deserialize("json", json.dumps(data["__auth_user"])):
                 with transaction.atomic():
                     obj.save()
                     total += 1
 
-        # IngredientRef : upsert par ciqual_code (clé naturelle) pour éviter les conflits de PK
-        # entre prod et dev. On construit un mapping prod_pk → dev_pk pour les Ingredient.
-        ref_pk_map = {}
-        ref_key = next((k for k in ("__ingredientref_used", "__ingredientref_custom") if k in data), None)
-        if ref_key:
-            for entry in data[ref_key]:
-                prod_pk = entry["pk"]
-                fields = entry["fields"]
-                ciqual_code = fields["ciqual_code"]
-                defaults = {k: v for k, v in fields.items() if k != "ciqual_code"}
-                try:
-                    with transaction.atomic():
-                        ref, _ = IngredientRef.objects.update_or_create(
-                            ciqual_code=ciqual_code, defaults=defaults
-                        )
-                        ref_pk_map[prod_pk] = ref.pk
-                        total += 1
-                except Exception as exc:
-                    logger.warning("IngredientRef ignorée (%s) : %s", ciqual_code, exc)
-                    errors.append(f"IngredientRef {ciqual_code} : {exc}")
-
-        # Restauration des modèles métier (parents d'abord)
         for name in _BACKUP_APP_MODELS:
             if name not in data:
                 continue
             for obj in djser.deserialize("json", json.dumps(data[name])):
-                # Remap ciqual_ref_id : le PK en prod peut différer du PK en dev
-                if name == "Ingredient" and obj.object.ciqual_ref_id is not None:
-                    obj.object.ciqual_ref_id = ref_pk_map.get(
-                        obj.object.ciqual_ref_id, obj.object.ciqual_ref_id
-                    )
                 try:
                     with transaction.atomic():
                         obj.save()
