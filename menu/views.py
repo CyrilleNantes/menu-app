@@ -2030,11 +2030,11 @@ def import_backup(request):
 
     try:
         stats = restaurer_backup(zip_file.read())
-        messages.success(
-            request,
-            f"Restauration réussie — {stats['total']} objets restaurés. "
-            "Reconnectez-vous pour continuer.",
-        )
+        msg = f"Restauration réussie — {stats['total']} objets restaurés."
+        if stats.get("errors"):
+            first = stats["errors"][0]
+            msg += f" ⚠ {len(stats['errors'])} objet(s) ignoré(s) (ex : {first[:120]})"
+        messages.success(request, msg + " Reconnectez-vous pour continuer.")
         logout(request)
         return redirect("menu:connexion")
     except Exception as exc:
