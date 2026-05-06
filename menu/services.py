@@ -938,22 +938,25 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
 # Ordre de restauration (parents avant enfants). Suppression = ordre inverse.
 # Respecte les contraintes PROTECT : Family/Recipe/WeekPlan avant User.
 _BACKUP_APP_MODELS = [
-    "IngredientRef",      # en premier : référencé par Ingredient et KnownIngredient
-    "Family",
-    "UserProfile",
-    "TokenOAuth",
-    "NotificationPreference",
-    "Recipe",
-    "IngredientGroup",
-    "Ingredient",
-    "RecipeStep",
-    "RecipeSection",
-    "Review",
-    "WeekPlan",
-    "Meal",
-    "ShoppingList",
-    "ShoppingItem",
-    "MealProposal",
+    "IngredientRef",          # pas de dépendance app
+    "NutritionConfig",        # pas de dépendance app (singleton)
+    "Family",                 # pas de dépendance app
+    "UserProfile",            # → Family
+    "TokenOAuth",             # → User (externe)
+    "NotificationPreference", # → User (externe)
+    "Recipe",                 # → User (externe)
+    "RecipePhoto",            # → Recipe
+    "IngredientGroup",        # → Recipe
+    "KnownIngredient",        # → IngredientRef
+    "Ingredient",             # → Recipe, IngredientGroup, IngredientRef, KnownIngredient
+    "RecipeStep",             # → Recipe
+    "RecipeSection",          # → Recipe
+    "Review",                 # → Recipe, User
+    "WeekPlan",               # → Family, User
+    "Meal",                   # → WeekPlan, Recipe
+    "MealProposal",           # → Family, Recipe, User, WeekPlan
+    "ShoppingList",           # → Family, WeekPlan
+    "ShoppingItem",           # → ShoppingList
 ]
 
 
