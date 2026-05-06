@@ -938,6 +938,7 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
 # Ordre de restauration (parents avant enfants). Suppression = ordre inverse.
 # Respecte les contraintes PROTECT : Family/Recipe/WeekPlan avant User.
 _BACKUP_APP_MODELS = [
+    "IngredientRef",      # en premier : référencé par Ingredient et KnownIngredient
     "Family",
     "UserProfile",
     "TokenOAuth",
@@ -967,18 +968,8 @@ def exporter_backup() -> bytes:
     compressé dans un fichier zip.
     """
     from django.core import serializers as djser
-    from .models import IngredientRef
 
     data = {"__auth_user": json.loads(djser.serialize("json", DjangoUser.objects.all()))}
-    # Toutes les IngredientRef utilisées par des ingrédients de recettes (CUSTOM ou modifiées en prod)
-    ref_ids = set(
-        _get_app_model("Ingredient").objects
-        .exclude(ciqual_ref=None)
-        .values_list("ciqual_ref_id", flat=True)
-    )
-    data["__ingredientref_used"] = json.loads(
-        djser.serialize("json", IngredientRef.objects.filter(pk__in=ref_ids))
-    )
     for name in _BACKUP_APP_MODELS:
         data[name] = json.loads(djser.serialize("json", _get_app_model(name).objects.all()))
 
@@ -993,51 +984,39 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
     """
     Efface toutes les données et restaure depuis un zip de backup.
     Réinitialise les séquences PostgreSQL après restore.
-    Retourne {'total': <nb objets restaurés>}.
+    Retourne {'total': <nb objets restaurés>, 'errors': [...]}.
     """
     from django.core import serializers as djser
-    from .models import IngredientRef
 
     buf = io.BytesIO(zip_bytes)
     with zf_lib.ZipFile(buf, "r") as zf:
         data = json.loads(zf.read("backup.json").decode("utf-8"))
 
+    errors = []
+    total = 0
+
     with transaction.atomic():
         # Suppression dans l'ordre inverse (feuilles d'abord, respecte PROTECT)
+        # IngredientRef est en première position → supprimée en dernier, après Ingredient
         for name in reversed(_BACKUP_APP_MODELS):
             _get_app_model(name).objects.all().delete()
         DjangoUser.objects.all().delete()
 
         # Restauration dans l'ordre (parents d'abord)
-        total = 0
         if "__auth_user" in data:
             for obj in djser.deserialize("json", json.dumps(data["__auth_user"])):
-                obj.save()
-                total += 1
+                with transaction.atomic():
+                    obj.save()
+                    total += 1
 
-        # Restaure les IngredientRef référencées avant les Ingredient (compatibilité ancienne clé)
-        for ref_key in ("__ingredientref_used", "__ingredientref_custom"):
-            if ref_key in data:
-                ref_ids_to_restore = {
-                    entry["pk"] for entry in data[ref_key]
-                }
-                IngredientRef.objects.filter(pk__in=ref_ids_to_restore).delete()
-                for obj in djser.deserialize("json", json.dumps(data[ref_key])):
-                    try:
-                        obj.save()
-                        total += 1
-                    except Exception as exc:
-                        logger.warning("IngredientRef ignorée lors de la restauration : %s", exc)
-                break
-
-        errors = []
         for name in _BACKUP_APP_MODELS:
             if name not in data:
                 continue
             for obj in djser.deserialize("json", json.dumps(data[name])):
                 try:
-                    obj.save()
-                    total += 1
+                    with transaction.atomic():
+                        obj.save()
+                        total += 1
                 except Exception as exc:
                     msg = f"{name} pk={obj.object.pk} : {exc}"
                     logger.warning("Objet ignoré lors de la restauration — %s", msg)
