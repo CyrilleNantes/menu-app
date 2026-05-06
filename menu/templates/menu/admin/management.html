@@ -113,20 +113,24 @@
           {% else %}<span style="color:#ccc">—</span>{% endif %}
         </td>
         <td style="padding:.6rem .8rem">
-          <input type="number" class="ki-unit-weight" value="{{ ki.unit_weight_g|default:'' }}"
-                 min="0" step="any"
-                 style="width:70px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
-                 placeholder="—"
-                 title="Ex: 40 pour 1 tranche de pain de mie = 40g">
-          <span class="ki-weight-status" style="display:none;color:#2e7d32;font-size:.8rem;margin-left:.2rem">✓</span>
+          <div style="display:flex;gap:.3rem;align-items:center">
+            <input type="number" class="ki-unit-weight" value="{{ ki.unit_weight_g|default:'' }}"
+                   min="0" step="any"
+                   style="width:65px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
+                   placeholder="—"
+                   title="Ex: 40 pour 1 tranche de pain de mie = 40g">
+          </div>
         </td>
         <td style="padding:.6rem .8rem">
-          <input type="text" class="ki-transco-label" value="{{ ki.transco_unit_label|default:'' }}"
-                 maxlength="30"
-                 style="width:80px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
-                 placeholder="tranche…"
-                 title="Ex: tranche, gousse, œuf, pavé">
-          <span class="ki-transco-status" style="display:none;color:#2e7d32;font-size:.8rem;margin-left:.2rem">✓</span>
+          <div style="display:flex;gap:.3rem;align-items:center">
+            <input type="text" class="ki-transco-label" value="{{ ki.transco_unit_label|default:'' }}"
+                   maxlength="30"
+                   style="width:70px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
+                   placeholder="tranche…"
+                   title="Ex: tranche, gousse, œuf, pavé">
+            <button class="btn btn--secondary btn--sm ki-save-transco" style="white-space:nowrap">✓</button>
+            <span class="ki-transco-status" style="display:none;color:#2e7d32;font-size:.8rem">✓</span>
+          </div>
         </td>
         <td style="padding:.6rem .8rem">
           <div class="ki-ciqual-cell">
@@ -399,25 +403,23 @@ document.querySelectorAll('.ki-row').forEach(row => {
     return r.json();
   }
 
-  // Poids par unité (transco liste de courses)
-  const weightInput  = row.querySelector('.ki-unit-weight');
-  const weightStatus = row.querySelector('.ki-weight-status');
-  const saveWeight = async () => {
-    const d = await saveField({ unit_weight_g: weightInput.value.trim() });
-    if (d.ok) { weightStatus.style.display = 'inline'; setTimeout(() => weightStatus.style.display = 'none', 2000); }
-  };
-  weightInput?.addEventListener('change', saveWeight);
-  weightInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveWeight(); });
-
-  // Libellé unité transco
+  // Poids/unité + Libellé transco — sauvegarde groupée via bouton ✓
+  const weightInput   = row.querySelector('.ki-unit-weight');
   const transcoInput  = row.querySelector('.ki-transco-label');
+  const transcoBtn    = row.querySelector('.ki-save-transco');
   const transcoStatus = row.querySelector('.ki-transco-status');
   const saveTransco = async () => {
-    const d = await saveField({ transco_unit_label: transcoInput.value.trim() });
+    transcoBtn.disabled = true;
+    const d = await saveField({
+      unit_weight_g:     weightInput.value.trim(),
+      transco_unit_label: transcoInput.value.trim(),
+    });
     if (d.ok) { transcoStatus.style.display = 'inline'; setTimeout(() => transcoStatus.style.display = 'none', 2000); }
+    transcoBtn.disabled = false;
   };
-  transcoInput?.addEventListener('change', saveTransco);
+  transcoBtn?.addEventListener('click', saveTransco);
   transcoInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveTransco(); });
+  weightInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveTransco(); });
 
   // Mapping Ciqual — afficher éditeur
   const editBtn    = row.querySelector('.ki-edit-ciqual');
