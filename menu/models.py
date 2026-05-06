@@ -8,9 +8,11 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 
 
+_LIGATURES = str.maketrans({"œ": "oe", "æ": "ae", "ø": "o", "ß": "ss", "Œ": "oe", "Æ": "ae"})
+
 def _normaliser_nom(s: str) -> str:
-    """Normalise un nom : minuscules, sans accents, sans ponctuation."""
-    s = s.lower().strip()
+    """Normalise un nom : minuscules, ligatures, sans accents, sans ponctuation."""
+    s = s.lower().strip().translate(_LIGATURES)
     s = unicodedata.normalize('NFD', s)
     s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
     s = re.sub(r'[^\w\s]', ' ', s)
@@ -263,6 +265,7 @@ class Recipe(models.Model):
     ]
 
     title = models.CharField(max_length=200)
+    title_normalise = models.CharField(max_length=200, blank=True, db_index=True, editable=False)
     description = models.TextField(blank=True, null=True)
     photo_url = models.URLField(blank=True, null=True)
     base_servings = models.PositiveIntegerField()
@@ -315,6 +318,10 @@ class Recipe(models.Model):
         verbose_name = "Recette"
         verbose_name_plural = "Recettes"
         ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        self.title_normalise = _normaliser_nom(self.title)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title
