@@ -515,8 +515,12 @@ def bilan_par_membre(plan) -> list[dict]:
                 slot_prot = lunch_prot if mt == 'lunch' else dinner_prot
                 meal = meal_by_slot.get((d, mt))
                 if meal is None:
+                    # Créneau non créé : membre présent sur la période → repas non tracké
+                    kcal_total += slot_kcal
+                    prot_total += slot_prot
                     continue
                 if meal.absent:
+                    # Absent explicite (toute la famille) → cible du créneau comme proxy
                     kcal_total += slot_kcal
                     prot_total += slot_prot
                 else:
@@ -529,6 +533,7 @@ def bilan_par_membre(plan) -> list[dict]:
                                 meal.meal_members.values_list('id', flat=True)
                             )
                         if user.pk in member_ids_in_meals[slot]:
+                            # Membre assigné à ce repas → nutrition de la recette
                             if meal.recipe:
                                 kcal_total += (meal.recipe.calories_per_serving or 0) * factor
                                 prot_total += (meal.recipe.proteins_per_serving or 0) * factor
@@ -536,6 +541,14 @@ def bilan_par_membre(plan) -> list[dict]:
                                 if dish.recipe:
                                     kcal_total += (dish.recipe.calories_per_serving or 0) * factor
                                     prot_total += (dish.recipe.proteins_per_serving or 0) * factor
+                        else:
+                            # Présent sur la période mais pas sur ce repas → cible du créneau
+                            kcal_total += slot_kcal
+                            prot_total += slot_prot
+                    else:
+                        # Repas créé mais sans recette → membre présent, repas non tracké
+                        kcal_total += slot_kcal
+                        prot_total += slot_prot
 
         kcal_target = daily_kcal_target * nb_jours
         prot_target = daily_prot_target * nb_jours
