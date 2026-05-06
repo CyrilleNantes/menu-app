@@ -10,7 +10,7 @@ from django.db import connection, transaction
 
 from .models import (
     Ingredient, IngredientGroup, IngredientRef, KnownIngredient,
-    Meal, MealProposal, NutritionConfig, NotificationPreference,
+    Meal, MealDish, MealProposal, NutritionConfig, NotificationPreference,
     Recipe, RecipeSection, RecipeStep, Review, ShoppingItem, ShoppingList,
     UserProfile, WeekPlan,
 )
@@ -34,18 +34,16 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
 
     meals = (
         Meal.objects
-        .filter(week_plan=plan, absent=False, recipe__isnull=False)
+        .filter(week_plan=plan, absent=False)
         .select_related("recipe")
-        .prefetch_related("recipe__ingredients")
+        .prefetch_related("recipe__ingredients", "dishes__recipe__ingredients")
     )
 
     aggregated: dict[tuple, dict] = {}
 
-    for meal in meals:
-        recipe = meal.recipe
+    def _aggregate_ingredients(recipe, servings_count):
         base = max(recipe.base_servings or 1, 1)
-        ratio = (meal.servings_count or base) / base
-
+        ratio = (servings_count or base) / base
         for ing in recipe.ingredients.all():
             norm_name = ing.name.strip()
             norm_unit = (ing.unit or "").strip()
@@ -62,6 +60,15 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
             entry = aggregated[key]
             if ing.quantity is not None:
                 entry["quantity"] = (entry["quantity"] or 0.0) + ing.quantity * ratio
+
+    for meal in meals:
+        # Plat principal
+        if meal.recipe:
+            _aggregate_ingredients(meal.recipe, meal.servings_count)
+        # Accompagnements
+        for dish in meal.dishes.all():
+            if dish.recipe:
+                _aggregate_ingredients(dish.recipe, dish.servings_count or meal.servings_count)
 
     shopping_list = ShoppingList.objects.create(family=plan.family, week_plan=plan)
 
@@ -369,23 +376,31 @@ def bilan_planning(week_plan) -> dict:
 
     meals = list(
         Meal.objects
-        .filter(week_plan=week_plan, absent=False, recipe__isnull=False)
+        .filter(week_plan=week_plan, absent=False)
         .select_related("recipe")
+        .prefetch_related("dishes__recipe")
     )
 
     absent_count = Meal.objects.filter(week_plan=week_plan, absent=True).count()
     nb_jours = len(week_plan.get_active_dates()) or 7
     total_slots = nb_jours * 2  # midi + soir par jour
 
-    protein_types    = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
+    protein_types    = [m.recipe.protein_type for m in meals if m.recipe and m.recipe.protein_type]
     fish_count       = protein_types.count("poisson")
     red_meat_count   = protein_types.count("boeuf") + protein_types.count("porc")
     white_meat_count = protein_types.count("volaille")
     veg_count        = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
 
-    total_cal    = sum((m.recipe.calories_per_serving  or 0) for m in meals)
-    total_prot   = sum((m.recipe.proteins_per_serving or 0) for m in meals)
-    total_sugars = sum((m.recipe.sugars_per_serving   or 0) for m in meals)
+    total_cal    = sum((m.recipe.calories_per_serving  or 0) for m in meals if m.recipe)
+    total_prot   = sum((m.recipe.proteins_per_serving or 0) for m in meals if m.recipe)
+    total_sugars = sum((m.recipe.sugars_per_serving   or 0) for m in meals if m.recipe)
+    # Accompagnements
+    for m in meals:
+        for dish in m.dishes.all():
+            if dish.recipe:
+                total_cal    += (dish.recipe.calories_per_serving  or 0)
+                total_prot   += (dish.recipe.proteins_per_serving or 0)
+                total_sugars += (dish.recipe.sugars_per_serving   or 0)
 
     cal_target  = config.calories_dinner_target  * (total_slots - absent_count)
     prot_target = config.proteins_dinner_target  * (total_slots - absent_count)
@@ -456,7 +471,7 @@ def bilan_par_membre(plan) -> list[dict]:
         Meal.objects
         .filter(week_plan=plan)
         .select_related('recipe')
-        .prefetch_related('meal_members')
+        .prefetch_related('meal_members', 'dishes__recipe')
     )
     meal_by_slot = {(m.date, m.meal_time): m for m in meals}
 
@@ -504,15 +519,23 @@ def bilan_par_membre(plan) -> list[dict]:
                 if meal.absent:
                     kcal_total += slot_kcal
                     prot_total += slot_prot
-                elif meal.recipe:
-                    slot = (meal.pk,)
-                    if slot not in member_ids_in_meals:
-                        member_ids_in_meals[slot] = frozenset(
-                            meal.meal_members.values_list('id', flat=True)
-                        )
-                    if user.pk in member_ids_in_meals[slot]:
-                        kcal_total += (meal.recipe.calories_per_serving or 0) * factor
-                        prot_total += (meal.recipe.proteins_per_serving or 0) * factor
+                else:
+                    meal_dishes = list(meal.dishes.all())
+                    has_food = bool(meal.recipe or meal_dishes)
+                    if has_food:
+                        slot = (meal.pk,)
+                        if slot not in member_ids_in_meals:
+                            member_ids_in_meals[slot] = frozenset(
+                                meal.meal_members.values_list('id', flat=True)
+                            )
+                        if user.pk in member_ids_in_meals[slot]:
+                            if meal.recipe:
+                                kcal_total += (meal.recipe.calories_per_serving or 0) * factor
+                                prot_total += (meal.recipe.proteins_per_serving or 0) * factor
+                            for dish in meal_dishes:
+                                if dish.recipe:
+                                    kcal_total += (dish.recipe.calories_per_serving or 0) * factor
+                                    prot_total += (dish.recipe.proteins_per_serving or 0) * factor
 
         kcal_target = daily_kcal_target * nb_jours
         prot_target = daily_prot_target * nb_jours
@@ -954,6 +977,7 @@ _BACKUP_APP_MODELS = [
     "Review",                 # → Recipe, User
     "WeekPlan",               # → Family, User
     "Meal",                   # → WeekPlan, Recipe
+    "MealDish",               # → Meal, Recipe
     "MealProposal",           # → Family, Recipe, User, WeekPlan
     "ShoppingList",           # → Family, WeekPlan
     "ShoppingItem",           # → ShoppingList

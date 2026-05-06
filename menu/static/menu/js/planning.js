@@ -209,9 +209,14 @@
             slot.classList.add('meal-slot--filled');
             const servings = data.servings_count
                 ? `<span>${data.servings_count} pers.</span>` : '';
+            // Preserve existing dishes list
+            const existingDishes = body.querySelector('.meal-dishes')?.outerHTML || '';
             body.innerHTML = `
                 <span class="meal-slot__recipe">${escHtml(data.recipe_title)}</span>
-                <div class="meal-slot__meta">${servings}</div>`;
+                <div class="meal-slot__meta">${servings}</div>
+                ${existingDishes}
+                <button type="button" class="btn-add-dish btn btn--ghost btn--xs"
+                        data-meal-id="${data.meal_id}" title="Ajouter un accompagnement">＋</button>`;
         } else {
             slot.classList.remove('meal-slot--filled');
             body.innerHTML = `
@@ -752,6 +757,112 @@
         div.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:9999;max-width:90vw;';
         document.body.appendChild(div);
         setTimeout(() => div.remove(), 3500);
+    }
+
+    // ── Accompagnements (Cuisinier) ───────────────────────────────────────────
+
+    if (IS_COOK) {
+        const dlgDish     = document.getElementById('dialog-add-dish');
+        const dishLabel   = document.getElementById('dialog-dish-label');
+        const dishName    = document.getElementById('dish-recipe-name');
+        let currentDishMealId = null;
+
+        const dishSearch = dlgDish ? makeSearchDropdown(
+            document.getElementById('dish-recipe-search'),
+            document.getElementById('dish-recipe-results'),
+            ({ title }) => { dishName.textContent = title; dishName.classList.remove('text-muted'); }
+        ) : null;
+
+        // Ouvrir le dialog accompagnement
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('.btn-add-dish');
+            if (!btn || !dlgDish) return;
+            e.stopPropagation(); // ne pas ouvrir le dialog repas
+            currentDishMealId = btn.dataset.mealId;
+            dishLabel.textContent = '';
+            dishName.textContent = 'Aucune recette';
+            dishName.classList.add('text-muted');
+            dishSearch.clear();
+            dlgDish.showModal();
+        });
+
+        // Enregistrer un accompagnement
+        document.getElementById('btn-save-dish')?.addEventListener('click', async () => {
+            if (!dishSearch) return;
+            const selected = dishSearch.getSelected();
+            if (!selected.id) { alert('Veuillez sélectionner une recette.'); return; }
+            if (!currentDishMealId) return;
+
+            try {
+                const resp = await fetch(`/planning/${PLAN_ID}/repas/${currentDishMealId}/dish/`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                    body:    JSON.stringify({ recipe_id: parseInt(selected.id) }),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    dlgDish.close();
+                    _appendDishToSlot(currentDishMealId, data.dish_id, data.recipe_title);
+                    refreshBilan();
+                } else {
+                    alert(`Erreur : ${data.error}`);
+                }
+            } catch {
+                alert('Erreur de connexion. Réessayez.');
+            }
+        });
+
+        document.getElementById('btn-cancel-dish')?.addEventListener('click', () => dlgDish?.close());
+
+        // Retirer un accompagnement
+        document.addEventListener('click', async e => {
+            const btn = e.target.closest('.btn-remove-dish');
+            if (!btn) return;
+            e.stopPropagation();
+            const mealId = btn.dataset.mealId;
+            const dishId = btn.dataset.dishId;
+            try {
+                const resp = await fetch(`/planning/${PLAN_ID}/repas/${mealId}/dish/${dishId}/retirer/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': CSRF },
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    const li = btn.closest('.meal-dish');
+                    if (li) {
+                        const ul = li.closest('.meal-dishes');
+                        li.remove();
+                        if (ul && ul.children.length === 0) ul.remove();
+                    }
+                    refreshBilan();
+                }
+            } catch { /* silencieux */ }
+        });
+
+        function _appendDishToSlot(mealId, dishId, recipeTitle) {
+            // Trouver le slot qui contient ce meal-id
+            const addBtn = document.querySelector(`.btn-add-dish[data-meal-id="${mealId}"]`);
+            if (!addBtn) return;
+            const body = addBtn.closest('.meal-slot__body');
+            if (!body) return;
+
+            let ul = body.querySelector('.meal-dishes');
+            if (!ul) {
+                ul = document.createElement('ul');
+                ul.className = 'meal-dishes';
+                addBtn.before(ul);
+            }
+            const li = document.createElement('li');
+            li.className = 'meal-dish';
+            li.dataset.dishId = dishId;
+            li.innerHTML = `
+                <span class="meal-dish__title">+ ${escHtml(recipeTitle)}</span>
+                <button type="button" class="btn-remove-dish btn btn--ghost btn--xs"
+                        data-meal-id="${mealId}"
+                        data-dish-id="${dishId}"
+                        title="Retirer">✕</button>`;
+            ul.appendChild(li);
+        }
     }
 
 })();

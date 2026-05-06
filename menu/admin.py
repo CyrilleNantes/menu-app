@@ -3,7 +3,7 @@ from .models import (
     Family, UserProfile, TokenOAuth,
     NutritionConfig, RecipePhoto,
     Recipe, IngredientGroup, Ingredient, IngredientRef, RecipeStep, RecipeSection,
-    Review, WeekPlan, Meal, MealProposal,
+    Review, WeekPlan, Meal, MealDish, MealProposal,
     ShoppingList, ShoppingItem, NotificationPreference,
 )
 
@@ -138,6 +138,12 @@ class WeekPlanAdmin(admin.ModelAdmin):
 class MealAdmin(admin.ModelAdmin):
     list_display = ("week_plan", "date", "meal_time", "recipe", "is_leftovers")
     list_filter = ("meal_time", "is_leftovers")
+
+
+@admin.register(MealDish)
+class MealDishAdmin(admin.ModelAdmin):
+    list_display = ("meal", "recipe", "role", "servings_count")
+    list_filter  = ("meal__week_plan__family",)
 
 
 @admin.register(MealProposal)

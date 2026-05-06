@@ -565,6 +565,29 @@ class Meal(models.Model):
         return f"{self.date} {self.get_meal_time_display()} — {self.recipe or 'Vide'}"
 
 
+class MealDish(models.Model):
+    """Accompagnement / plat additionnel rattaché à un créneau de planning."""
+    meal = models.ForeignKey(Meal, on_delete=models.CASCADE, related_name="dishes")
+    recipe = models.ForeignKey(
+        Recipe, on_delete=models.SET_NULL, null=True, blank=True, related_name="as_dish"
+    )
+    servings_count = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Portions. Si vide, hérite du servings_count du repas principal.",
+    )
+    role = models.CharField(
+        max_length=50, blank=True, default="",
+        help_text="Libre : 'accompagnement', 'sauce', 'entrée'…",
+    )
+
+    class Meta:
+        verbose_name = "Accompagnement"
+        verbose_name_plural = "Accompagnements"
+
+    def __str__(self):
+        return f"{self.meal} + {self.recipe or '?'}"
+
+
 class MealProposal(models.Model):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="meal_proposals")
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="proposals")

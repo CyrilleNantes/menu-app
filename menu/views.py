@@ -21,7 +21,7 @@ from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
-from .models import Family, Ingredient, IngredientRef, KnownIngredient, Meal, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, IngredientRef, KnownIngredient, Meal, MealDish, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
 from .services import (
     bilan_par_membre,
     bilan_planning,
@@ -535,7 +535,7 @@ def planning_periode(request, plan_id):
     meals_qs = list(
         Meal.objects.filter(week_plan=plan)
         .select_related("recipe")
-        .prefetch_related("meal_members")
+        .prefetch_related("meal_members", "dishes__recipe")
     )
     meal_by_slot = {(m.date, m.meal_time): m for m in meals_qs}
 
@@ -721,6 +721,69 @@ def modifier_meal(request, plan_id):
         "meal_member_ids": list(meal.meal_members.values_list('id', flat=True)),
         "guest_count": meal.guest_count,
     })
+
+
+@require_POST
+@login_required
+def ajouter_dish(request, plan_id, meal_id):
+    """AJAX : ajoute un accompagnement (MealDish) à un repas."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return JsonResponse({"ok": False, "error": "Famille requise", "code": "NO_FAMILY"}, status=403)
+    if not _verifier_cuisinier(request):
+        return JsonResponse({"ok": False, "error": "Réservé aux Cuisiniers", "code": "FORBIDDEN"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+    meal = get_object_or_404(Meal, id=meal_id, week_plan=plan)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({"ok": False, "error": "JSON invalide", "code": "BAD_JSON"}, status=400)
+
+    recipe_id = body.get("recipe_id")
+    if not recipe_id:
+        return JsonResponse({"ok": False, "error": "recipe_id requis", "code": "NO_RECIPE_ID"}, status=400)
+
+    recipe = Recipe.objects.filter(id=recipe_id, actif=True).first()
+    if not recipe:
+        return JsonResponse({"ok": False, "error": "Recette introuvable", "code": "NO_RECIPE"}, status=404)
+
+    role = (body.get("role") or "")[:50]
+
+    dish = MealDish.objects.create(
+        meal=meal,
+        recipe=recipe,
+        servings_count=meal.servings_count,
+        role=role,
+    )
+    logger.debug("MealDish créé : meal=%s recipe='%s'", meal.pk, recipe.title)
+
+    return JsonResponse({
+        "ok": True,
+        "dish_id": dish.id,
+        "recipe_id": recipe.id,
+        "recipe_title": recipe.title,
+        "calories_per_serving": recipe.calories_per_serving,
+    })
+
+
+@require_POST
+@login_required
+def retirer_dish(request, plan_id, meal_id, dish_id):
+    """AJAX : retire un accompagnement (MealDish) d'un repas."""
+    profile = _get_profile(request)
+    if not profile or not profile.family:
+        return JsonResponse({"ok": False, "error": "Famille requise", "code": "NO_FAMILY"}, status=403)
+    if not _verifier_cuisinier(request):
+        return JsonResponse({"ok": False, "error": "Réservé aux Cuisiniers", "code": "FORBIDDEN"}, status=403)
+
+    plan = get_object_or_404(WeekPlan, id=plan_id, family=profile.family)
+    dish = get_object_or_404(MealDish, id=dish_id, meal_id=meal_id, meal__week_plan=plan)
+    dish.delete()
+    logger.debug("MealDish supprimé : dish=%s meal=%s", dish_id, meal_id)
+
+    return JsonResponse({"ok": True, "dish_id": dish_id})
 
 
 @login_required

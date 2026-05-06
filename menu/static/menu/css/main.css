@@ -321,6 +321,12 @@ select.ing-category { background: #fff; cursor: pointer; }
 .meal-slot--leftovers { border-left: 3px solid var(--color-accent); }
 .meal-slot--absent { background: #f5f5f5; opacity: .75; }
 .meal-slot__absent-label { display: block; color: var(--color-muted); font-style: italic; font-size: .8rem; }
+/* Accompagnements */
+.meal-dishes { list-style: none; padding: 0; margin: .2rem 0 .1rem; }
+.meal-dish { display: flex; align-items: center; gap: .3rem; font-size: .75rem; color: var(--color-muted); margin-top: .1rem; }
+.meal-dish__title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn-add-dish { display: block; margin-top: .2rem; font-size: .7rem; opacity: .5; }
+.meal-slot[data-editable]:hover .btn-add-dish { opacity: 1; }
 
 /* Bilan équilibre semaine */
 .planning-bilan { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
