@@ -432,6 +432,10 @@ def planning(request):
         )
     if plan:
         return redirect("menu:planning_periode", plan_id=plan.id)
+    # Un Convive ne peut pas créer de période — évite la boucle planning ↔ creer_periode
+    if not _verifier_cuisinier(request):
+        messages.info(request, "Aucun menu n'a encore été planifié par votre Cuisinier.")
+        return redirect("menu:home")
     return redirect("menu:creer_periode")
 
 
