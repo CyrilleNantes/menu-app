@@ -684,6 +684,12 @@ class KnownIngredient(models.Model):
         help_text="Transco pratique pour la liste de courses : 1 tranche pain de mie = 40g, "
                   "1 gousse d'ail = 5g, 1 œuf = 50g… Laissez vide si non applicable.",
     )
+    transco_unit_label = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name="Libellé unité transco",
+        help_text="Libellé affiché sur la liste de courses : tranche, gousse, œuf, pavé… "
+                  "Indépendant de l'unité par défaut du formulaire recette.",
+    )
     created_at    = models.DateTimeField(auto_now_add=True)
 
     class Meta:

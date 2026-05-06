@@ -46,8 +46,8 @@ def transco_units(quantity_g, known_ingredient):
     """
     try:
         unit_weight = known_ingredient.unit_weight_g
-        unit_label  = known_ingredient.default_unit or ''
-        if not unit_weight or not unit_label or unit_label.lower() in ('g', 'ml', 'kg', 'l', 'cl'):
+        unit_label  = (known_ingredient.transco_unit_label or '').strip()
+        if not unit_weight or not unit_label:
             return ''
         nb = math.ceil(float(quantity_g) / unit_weight)
         return f"{nb} {unit_label}"

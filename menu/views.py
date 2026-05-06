@@ -2050,6 +2050,10 @@ def maj_known_ingredient(request, ki_id):
             ki.unit_weight_g = None
         fields.append('unit_weight_g')
 
+    if 'transco_unit_label' in request.POST:
+        ki.transco_unit_label = request.POST.get('transco_unit_label', '').strip()
+        fields.append('transco_unit_label')
+
     if 'ciqual_ref_id' in request.POST:
         ciqual_id = request.POST.get('ciqual_ref_id', '').strip()
         if ciqual_id:
