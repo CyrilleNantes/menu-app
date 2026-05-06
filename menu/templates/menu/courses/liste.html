@@ -1,5 +1,5 @@
 {% extends "menu/base.html" %}
-{% load static %}
+{% load static menu_extras %}
 
 {% block title %}Liste de courses — {{ plan.period_start|date:"d/m" }} au {{ plan.period_end|date:"d/m/Y" }}{% endblock %}
 
@@ -69,6 +69,9 @@
             <span class="shopping-item__qty text-muted">
                 {% if item.quantity %}{{ item.quantity|floatformat:"-2" }}{% endif %}
                 {% if item.unit %}{{ item.unit }}{% endif %}
+                {% if item.known_ingredient.unit_weight_g and item.known_ingredient.transco_unit_label and item.quantity %}
+                <span class="shopping-item__transco">≈ {{ item.quantity|transco_units:item.known_ingredient }}</span>
+                {% endif %}
             </span>
             {% endif %}
         </li>

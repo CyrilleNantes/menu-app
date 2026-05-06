@@ -162,6 +162,7 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .ingredient-item { display: flex; justify-content: space-between; align-items: baseline; padding: .3rem 0; border-bottom: 1px solid #f1f3f5; font-size: .95rem; }
 .ingredient-item--optional { opacity: .75; font-style: italic; }
 .ingredient-item__qty { font-weight: 600; color: var(--color-primary); white-space: nowrap; margin-left: .5rem; }
+.ingredient-item__nutrition { display: block; font-size: .75rem; color: var(--color-muted); margin-top: .1rem; }
 
 .step-list { list-style: none; display: flex; flex-direction: column; gap: 1.25rem; }
 .step-item { padding: 1rem 1.1rem; background: var(--color-bg); border-radius: var(--radius); border-left: 3px solid var(--color-primary); }
@@ -232,6 +233,7 @@ select.ing-category { background: #fff; cursor: pointer; }
 .ciqual-dropdown__item:last-child { border-bottom: none; }
 .ciqual-dropdown__item:hover { background: #f0f7f2; color: var(--color-primary); }
 .ciqual-badge { display: inline-block; font-size: .72rem; background: #e8f5e9; color: #2e7d32; border-radius: 4px; padding: .1rem .35rem; margin-top: .2rem; }
+.prot-badge { display: inline-block; font-size: .72rem; background: #e3f0fb; color: #1565c0; border-radius: 4px; padding: .1rem .35rem; margin-top: .2rem; margin-left: .25rem; }
 .ing-optional-label { font-size: .8rem; white-space: nowrap; display: flex; align-items: center; gap: .25rem; }
 .btn-icon { background: none; border: 1.5px solid #dee2e6; border-radius: 50%; width: 1.6rem; height: 1.6rem; cursor: pointer; font-size: .75rem; color: var(--color-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .btn-icon:hover { background: #f8d7da; border-color: var(--color-danger); color: var(--color-danger); }
@@ -314,6 +316,10 @@ select.ing-category { background: #fff; cursor: pointer; }
 .meal-slot__time { display: block; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted); margin-bottom: .3rem; }
 .meal-slot__body { font-size: .82rem; }
 .meal-slot__recipe { display: block; font-weight: 600; color: var(--color-text); line-height: 1.3; }
+.meal-slot__recipe--link { text-decoration: none; }
+.meal-slot__recipe--link:hover { text-decoration: underline; color: var(--color-primary); }
+.meal-dish__title--link { text-decoration: none; color: inherit; }
+.meal-dish__title--link:hover { text-decoration: underline; color: var(--color-primary); }
 .meal-slot__meta { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .25rem; color: var(--color-muted); font-size: .75rem; }
 .meal-slot__empty { color: var(--color-muted); font-style: italic; font-size: .8rem; }
 .meal-slot__empty-actions { display: flex; gap: .25rem; margin-top: .25rem; }
@@ -321,6 +327,12 @@ select.ing-category { background: #fff; cursor: pointer; }
 .meal-slot--leftovers { border-left: 3px solid var(--color-accent); }
 .meal-slot--absent { background: #f5f5f5; opacity: .75; }
 .meal-slot__absent-label { display: block; color: var(--color-muted); font-style: italic; font-size: .8rem; }
+/* Accompagnements */
+.meal-dishes { list-style: none; padding: 0; margin: .2rem 0 .1rem; }
+.meal-dish { display: flex; align-items: center; gap: .3rem; font-size: .75rem; color: var(--color-muted); margin-top: .1rem; }
+.meal-dish__title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn-add-dish { display: block; margin-top: .2rem; font-size: .7rem; opacity: .5; }
+.meal-slot[data-editable]:hover .btn-add-dish { opacity: 1; }
 
 /* Bilan équilibre semaine */
 .planning-bilan { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
@@ -623,6 +635,7 @@ select.ing-category { background: #fff; cursor: pointer; }
 .shopping-item--checked .shopping-item__check { border-color: var(--color-primary); background: #d1e7dd; }
 .shopping-item__name { flex: 1; font-size: .92rem; font-weight: 500; }
 .shopping-item__qty { font-size: .82rem; }
+.shopping-item__transco { font-size: .78rem; color: var(--color-primary); background: #f0f7f2; border-radius: 4px; padding: .05rem .3rem; margin-left: .35rem; }
 
 /* État vide */
 .courses-empty { text-align: center; padding: 3rem 1rem; }

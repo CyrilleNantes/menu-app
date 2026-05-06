@@ -97,8 +97,8 @@
       <tr style="background:#f5f5f5;text-align:left">
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Ingrédient</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:70px;text-align:center">Recettes</th>
-        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Synonymes</th>
-        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:80px">Unité déf.</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px" title="Poids en grammes d'une unité pratique (transco liste de courses)">Poids/unité&nbsp;(g)</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:100px" title="Libellé affiché sur la liste de courses : tranche, gousse, œuf…">Libellé unité</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Mapping Ciqual</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px;text-align:right">kcal/100g</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px;text-align:right">prot./100g</th>
@@ -113,20 +113,23 @@
           {% else %}<span style="color:#ccc">—</span>{% endif %}
         </td>
         <td style="padding:.6rem .8rem">
-          <div style="display:flex;gap:.4rem;align-items:center">
-            <input type="text" class="ki-synonymes" value="{{ ki.synonymes }}"
-                   placeholder="ex: spag, pâtes, tagliatelles"
-                   style="flex:1;padding:.3rem .5rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;min-width:120px">
-            <button class="btn btn--secondary btn--sm ki-save-syno" style="white-space:nowrap">✓</button>
-            <span class="ki-syno-status" style="display:none;color:#2e7d32;font-size:.8rem">✓</span>
+          <div style="display:flex;gap:.3rem;align-items:center">
+            <input type="text" class="ki-unit-weight" value="{{ ki.unit_weight_g|default:'' }}"
+                   style="width:65px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
+                   placeholder="—"
+                   title="Ex: 40 pour 1 tranche de pain de mie = 40g">
           </div>
         </td>
         <td style="padding:.6rem .8rem">
-          <input type="text" class="ki-default-unit" value="{{ ki.default_unit|default:'g' }}"
-                 maxlength="20"
-                 style="width:60px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
-                 title="Unité par défaut (g, ml, kg, unité…)">
-          <span class="ki-unit-status" style="display:none;color:#2e7d32;font-size:.8rem;margin-left:.2rem">✓</span>
+          <div style="display:flex;gap:.3rem;align-items:center">
+            <input type="text" class="ki-transco-label" value="{{ ki.transco_unit_label|default:'' }}"
+                   maxlength="30"
+                   style="width:70px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
+                   placeholder="tranche…"
+                   title="Ex: tranche, gousse, œuf, pavé">
+            <button class="btn btn--secondary btn--sm ki-save-transco" style="white-space:nowrap">✓</button>
+            <span class="ki-transco-status" style="display:none;color:#2e7d32;font-size:.8rem">✓</span>
+          </div>
         </td>
         <td style="padding:.6rem .8rem">
           <div class="ki-ciqual-cell">
@@ -156,7 +159,7 @@
         <td style="display:none">{{ ki.pk }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="6" style="padding:2rem;text-align:center;color:#888">Aucun ingrédient trouvé</td></tr>
+      <tr><td colspan="7" style="padding:2rem;text-align:center;color:#888">Aucun ingrédient trouvé</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -399,27 +402,27 @@ document.querySelectorAll('.ki-row').forEach(row => {
     return r.json();
   }
 
-  // Synonymes
-  const synoInput = row.querySelector('.ki-synonymes');
-  const synoBtn   = row.querySelector('.ki-save-syno');
-  const synoStatus = row.querySelector('.ki-syno-status');
-  synoBtn?.addEventListener('click', async () => {
-    synoBtn.disabled = true;
-    const d = await saveField({ synonymes: synoInput.value });
-    if (d.ok) { synoStatus.style.display = 'inline'; setTimeout(() => synoStatus.style.display = 'none', 2000); }
-    synoBtn.disabled = false;
-  });
-  synoInput?.addEventListener('keydown', e => { if (e.key === 'Enter') synoBtn.click(); });
-
-  // Unité par défaut
-  const unitInput  = row.querySelector('.ki-default-unit');
-  const unitStatus = row.querySelector('.ki-unit-status');
-  const saveUnit = async () => {
-    const d = await saveField({ default_unit: unitInput.value.trim() || 'g' });
-    if (d.ok) { unitStatus.style.display = 'inline'; setTimeout(() => unitStatus.style.display = 'none', 2000); }
+  // Poids/unité + Libellé transco — sauvegarde groupée via bouton ✓
+  const weightInput   = row.querySelector('.ki-unit-weight');
+  const transcoInput  = row.querySelector('.ki-transco-label');
+  const transcoBtn    = row.querySelector('.ki-save-transco');
+  const transcoStatus = row.querySelector('.ki-transco-status');
+  const saveTransco = async () => {
+    transcoBtn.disabled = true;
+    const wVal = weightInput.value.trim();
+    const lVal = transcoInput.value.trim();
+    const d = await saveField({ unit_weight_g: wVal, transco_unit_label: lVal });
+    if (d.ok) {
+      transcoStatus.style.display = 'inline';
+      setTimeout(() => transcoStatus.style.display = 'none', 2000);
+    } else {
+      console.error('saveTransco error', d, 'weight=', wVal, 'label=', lVal);
+    }
+    transcoBtn.disabled = false;
   };
-  unitInput?.addEventListener('change', saveUnit);
-  unitInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveUnit(); });
+  transcoBtn?.addEventListener('click', saveTransco);
+  transcoInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveTransco(); });
+  weightInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveTransco(); });
 
   // Mapping Ciqual — afficher éditeur
   const editBtn    = row.querySelector('.ki-edit-ciqual');

@@ -253,10 +253,32 @@
                         title="Annuler l'absence">✕</button>
                 {% endif %}
             {% elif day.lunch and day.lunch.recipe %}
-                <span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>
+                {% if is_cuisinier %}<span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' day.lunch.recipe.id %}" class="meal-slot__recipe meal-slot__recipe--link">{{ day.lunch.recipe.title }}</a>{% endif %}
                 <div class="meal-slot__meta">
                     {% if day.lunch.servings_count %}<span>{{ day.lunch.servings_count }} pers.</span>{% endif %}
                 </div>
+                {% with dishes=day.lunch.dishes.all %}
+                {% if dishes %}
+                <ul class="meal-dishes">
+                    {% for dish in dishes %}{% if dish.recipe %}
+                    <li class="meal-dish" data-dish-id="{{ dish.id }}">
+                        {% if is_cuisinier %}<span class="meal-dish__title">+ {{ dish.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' dish.recipe.id %}" class="meal-dish__title meal-dish__title--link">+ {{ dish.recipe.title }}</a>{% endif %}
+                        {% if is_cuisinier %}
+                        <button type="button" class="btn-remove-dish btn btn--ghost btn--xs"
+                                data-meal-id="{{ day.lunch.id }}"
+                                data-dish-id="{{ dish.id }}"
+                                title="Retirer">✕</button>
+                        {% endif %}
+                    </li>
+                    {% endif %}{% endfor %}
+                </ul>
+                {% endif %}
+                {% if is_cuisinier %}
+                <button type="button" class="btn-add-dish btn btn--ghost btn--xs"
+                        data-meal-id="{{ day.lunch.id }}"
+                        title="Ajouter un accompagnement">＋</button>
+                {% endif %}
+                {% endwith %}
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
                 {% if is_cuisinier %}
@@ -298,10 +320,32 @@
                         title="Annuler l'absence">✕</button>
                 {% endif %}
             {% elif day.dinner and day.dinner.recipe %}
-                <span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>
+                {% if is_cuisinier %}<span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' day.dinner.recipe.id %}" class="meal-slot__recipe meal-slot__recipe--link">{{ day.dinner.recipe.title }}</a>{% endif %}
                 <div class="meal-slot__meta">
                     {% if day.dinner.servings_count %}<span>{{ day.dinner.servings_count }} pers.</span>{% endif %}
                 </div>
+                {% with dishes=day.dinner.dishes.all %}
+                {% if dishes %}
+                <ul class="meal-dishes">
+                    {% for dish in dishes %}{% if dish.recipe %}
+                    <li class="meal-dish" data-dish-id="{{ dish.id }}">
+                        {% if is_cuisinier %}<span class="meal-dish__title">+ {{ dish.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' dish.recipe.id %}" class="meal-dish__title meal-dish__title--link">+ {{ dish.recipe.title }}</a>{% endif %}
+                        {% if is_cuisinier %}
+                        <button type="button" class="btn-remove-dish btn btn--ghost btn--xs"
+                                data-meal-id="{{ day.dinner.id }}"
+                                data-dish-id="{{ dish.id }}"
+                                title="Retirer">✕</button>
+                        {% endif %}
+                    </li>
+                    {% endif %}{% endfor %}
+                </ul>
+                {% endif %}
+                {% if is_cuisinier %}
+                <button type="button" class="btn-add-dish btn btn--ghost btn--xs"
+                        data-meal-id="{{ day.dinner.id }}"
+                        title="Ajouter un accompagnement">＋</button>
+                {% endif %}
+                {% endwith %}
             {% else %}
                 <span class="meal-slot__empty">{% if is_cuisinier %}+ Ajouter{% else %}—{% endif %}</span>
                 {% if is_cuisinier %}
@@ -511,6 +555,31 @@
     <div class="planning-dialog__actions">
         <button type="button" id="btn-submit-propose" class="btn btn--primary">Proposer</button>
         <button type="button" id="btn-cancel-propose" class="btn btn--secondary">Annuler</button>
+    </div>
+</dialog>
+{% endif %}
+
+<!-- ── Dialog : ajouter un accompagnement (Cuisinier) ───────── -->
+{% if is_cuisinier %}
+<dialog id="dialog-add-dish" class="planning-dialog">
+    <h2 class="planning-dialog__title">Ajouter un accompagnement</h2>
+    <p class="planning-dialog__slot" id="dialog-dish-label"></p>
+
+    <div class="form-group">
+        <label class="form-label">Recette</label>
+        <div class="recipe-search-wrap">
+            <input type="text" id="dish-recipe-search"
+                   placeholder="Rechercher…" class="recipe-search-input" autocomplete="off">
+            <ul id="dish-recipe-results" class="recipe-search-results"></ul>
+        </div>
+        <div class="meal-selected-info" id="dish-selected-info">
+            <span id="dish-recipe-name" class="meal-selected-info__name text-muted">Aucune recette</span>
+        </div>
+    </div>
+
+    <div class="planning-dialog__actions">
+        <button type="button" id="btn-save-dish" class="btn btn--primary">Ajouter</button>
+        <button type="button" id="btn-cancel-dish" class="btn btn--secondary">Annuler</button>
     </div>
 </dialog>
 {% endif %}

@@ -254,6 +254,8 @@ class Recipe(models.Model):
     CATEGORY_CHOICES = [
         ("entree", "Entrée"),
         ("plat", "Plat"),
+        ("accompagnement", "Accompagnement"),
+        ("sauce", "Sauce"),
         ("dessert", "Dessert"),
         ("brunch", "Brunch"),
         ("snack", "Snack"),
@@ -565,6 +567,29 @@ class Meal(models.Model):
         return f"{self.date} {self.get_meal_time_display()} — {self.recipe or 'Vide'}"
 
 
+class MealDish(models.Model):
+    """Accompagnement / plat additionnel rattaché à un créneau de planning."""
+    meal = models.ForeignKey(Meal, on_delete=models.CASCADE, related_name="dishes")
+    recipe = models.ForeignKey(
+        Recipe, on_delete=models.SET_NULL, null=True, blank=True, related_name="as_dish"
+    )
+    servings_count = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Portions. Si vide, hérite du servings_count du repas principal.",
+    )
+    role = models.CharField(
+        max_length=50, blank=True, default="",
+        help_text="Libre : 'accompagnement', 'sauce', 'entrée'…",
+    )
+
+    class Meta:
+        verbose_name = "Accompagnement"
+        verbose_name_plural = "Accompagnements"
+
+    def __str__(self):
+        return f"{self.meal} + {self.recipe or '?'}"
+
+
 class MealProposal(models.Model):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="meal_proposals")
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="proposals")
@@ -595,12 +620,17 @@ class ShoppingList(models.Model):
 
 
 class ShoppingItem(models.Model):
-    shopping_list = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="items")
-    name = models.CharField(max_length=200)
-    quantity = models.FloatField(blank=True, null=True)
-    unit = models.CharField(max_length=50, blank=True, null=True)
-    category = models.CharField(max_length=50, blank=True, null=True)
-    checked = models.BooleanField(default=False)
+    shopping_list     = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="items")
+    name              = models.CharField(max_length=200)
+    quantity          = models.FloatField(blank=True, null=True)
+    unit              = models.CharField(max_length=50, blank=True, null=True)
+    category          = models.CharField(max_length=50, blank=True, null=True)
+    checked           = models.BooleanField(default=False)
+    known_ingredient  = models.ForeignKey(
+        'KnownIngredient', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='shopping_items',
+        verbose_name="Ingrédient connu",
+    )
 
     class Meta:
         verbose_name = "Article de courses"
@@ -647,6 +677,18 @@ class KnownIngredient(models.Model):
         max_length=20, default='g', blank=True,
         verbose_name="Unité par défaut",
         help_text="Ex. g, ml, kg, unité — pré-remplit le champ Unité dans le formulaire recette",
+    )
+    unit_weight_g = models.FloatField(
+        null=True, blank=True,
+        verbose_name="Poids d'une unité (g)",
+        help_text="Transco pratique pour la liste de courses : 1 tranche pain de mie = 40g, "
+                  "1 gousse d'ail = 5g, 1 œuf = 50g… Laissez vide si non applicable.",
+    )
+    transco_unit_label = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name="Libellé unité transco",
+        help_text="Libellé affiché sur la liste de courses : tranche, gousse, œuf, pavé… "
+                  "Indépendant de l'unité par défaut du formulaire recette.",
     )
     created_at    = models.DateTimeField(auto_now_add=True)
 

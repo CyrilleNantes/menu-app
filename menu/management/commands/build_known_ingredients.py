@@ -30,7 +30,7 @@ class Command(BaseCommand):
                               if data['ciqual_counter'] else None)
             try:
                 ki = KnownIngredient.objects.get(nom_normalise=nom_norm)
-                # Met à jour le ciqual_ref seulement s'il manque
+                # Trouvé par nom normalisé — met à jour ciqual_ref si manquant
                 if best_ciqual_id and ki.ciqual_ref_id is None:
                     ki.ciqual_ref_id = best_ciqual_id
                     ki.save(update_fields=['ciqual_ref'])
@@ -38,11 +38,23 @@ class Command(BaseCommand):
                 else:
                     skipped += 1
             except KnownIngredient.DoesNotExist:
-                KnownIngredient.objects.create(
+                # Pas trouvé par nom_normalise (ex. normalisation mise à jour).
+                # Repli sur le name unique : crée s'il n'existe pas, corrige
+                # nom_normalise s'il existe déjà avec l'ancienne valeur.
+                ki, was_created = KnownIngredient.objects.get_or_create(
                     name=data['name'],
-                    ciqual_ref_id=best_ciqual_id,
+                    defaults={'ciqual_ref_id': best_ciqual_id},
                 )
-                created += 1
+                if was_created:
+                    created += 1
+                else:
+                    # Existe par name mais nom_normalise périmé → resynchronise
+                    save_fields = ['nom_normalise']
+                    if best_ciqual_id and ki.ciqual_ref_id is None:
+                        ki.ciqual_ref_id = best_ciqual_id
+                        save_fields.append('ciqual_ref')
+                    ki.save(update_fields=save_fields)
+                    updated += 1
 
         self.stdout.write(self.style.SUCCESS(
             f"Terminé : {created} créés, {updated} mis à jour, {skipped} inchangés."
