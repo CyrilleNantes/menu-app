@@ -967,8 +967,13 @@ def exporter_backup() -> bytes:
     compressé dans un fichier zip.
     """
     from django.core import serializers as djser
+    from .models import IngredientRef
 
     data = {"__auth_user": json.loads(djser.serialize("json", DjangoUser.objects.all()))}
+    # Entrées Ciqual créées manuellement (codes "CUSTOM…") — absentes de la BDD de référence standard
+    data["__ingredientref_custom"] = json.loads(
+        djser.serialize("json", IngredientRef.objects.filter(ciqual_code__startswith="CUSTOM"))
+    )
     for name in _BACKUP_APP_MODELS:
         data[name] = json.loads(djser.serialize("json", _get_app_model(name).objects.all()))
 
@@ -986,6 +991,7 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
     Retourne {'total': <nb objets restaurés>}.
     """
     from django.core import serializers as djser
+    from .models import IngredientRef
 
     buf = io.BytesIO(zip_bytes)
     with zf_lib.ZipFile(buf, "r") as zf:
@@ -996,6 +1002,8 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
         for name in reversed(_BACKUP_APP_MODELS):
             _get_app_model(name).objects.all().delete()
         DjangoUser.objects.all().delete()
+        # Supprime uniquement les IngredientRef CUSTOM (les entrées Ciqual standard restent intactes)
+        IngredientRef.objects.filter(ciqual_code__startswith="CUSTOM").delete()
 
         # Restauration dans l'ordre (parents d'abord)
         total = 0
@@ -1003,6 +1011,15 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
             for obj in djser.deserialize("json", json.dumps(data["__auth_user"])):
                 obj.save()
                 total += 1
+
+        # Restaure les IngredientRef CUSTOM avant les Ingredient qui les référencent
+        if "__ingredientref_custom" in data:
+            for obj in djser.deserialize("json", json.dumps(data["__ingredientref_custom"])):
+                try:
+                    obj.save()
+                    total += 1
+                except Exception as exc:
+                    logger.warning("IngredientRef custom ignoré lors de la restauration : %s", exc)
 
         for name in _BACKUP_APP_MODELS:
             if name not in data:
@@ -1022,7 +1039,8 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
 
 def _reset_postgres_sequences():
     """Réinitialise les séquences auto-increment PostgreSQL après restauration."""
-    tables = [DjangoUser._meta.db_table]
+    from .models import IngredientRef
+    tables = [DjangoUser._meta.db_table, IngredientRef._meta.db_table]
     for name in _BACKUP_APP_MODELS:
         tables.append(_get_app_model(name)._meta.db_table)
 
