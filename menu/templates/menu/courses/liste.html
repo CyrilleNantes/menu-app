@@ -69,6 +69,9 @@
             <span class="shopping-item__qty text-muted">
                 {% if item.quantity %}{{ item.quantity|floatformat:"-2" }}{% endif %}
                 {% if item.unit %}{{ item.unit }}{% endif %}
+                {% if item.known_ingredient.unit_weight_g and item.quantity %}
+                <span class="shopping-item__transco">≈ {{ item.quantity|transco_units:item.known_ingredient }}</span>
+                {% endif %}
             </span>
             {% endif %}
         </li>

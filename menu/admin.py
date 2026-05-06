@@ -5,6 +5,7 @@ from .models import (
     Recipe, IngredientGroup, Ingredient, IngredientRef, RecipeStep, RecipeSection,
     Review, WeekPlan, Meal, MealDish, MealProposal,
     ShoppingList, ShoppingItem, NotificationPreference,
+    KnownIngredient,
 )
 
 
@@ -149,6 +150,22 @@ class MealDishAdmin(admin.ModelAdmin):
 @admin.register(MealProposal)
 class MealProposalAdmin(admin.ModelAdmin):
     list_display = ("family", "recipe", "proposed_by", "created_at")
+
+
+@admin.register(KnownIngredient)
+class KnownIngredientAdmin(admin.ModelAdmin):
+    list_display  = ("name", "default_unit", "unit_weight_g", "ciqual_ref")
+    list_editable = ("default_unit", "unit_weight_g")
+    search_fields = ("name", "synonymes")
+    list_filter   = ("default_unit",)
+    fieldsets = (
+        (None, {"fields": ("name", "synonymes", "ciqual_ref")}),
+        ("Transco liste de courses", {
+            "description": "Renseigner ces champs pour afficher les quantités pratiques "
+                           "(ex. tranches, gousses, œufs…) sur la liste de courses.",
+            "fields": ("default_unit", "unit_weight_g"),
+        }),
+    )
 
 
 @admin.register(ShoppingList)

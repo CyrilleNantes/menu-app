@@ -620,12 +620,17 @@ class ShoppingList(models.Model):
 
 
 class ShoppingItem(models.Model):
-    shopping_list = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="items")
-    name = models.CharField(max_length=200)
-    quantity = models.FloatField(blank=True, null=True)
-    unit = models.CharField(max_length=50, blank=True, null=True)
-    category = models.CharField(max_length=50, blank=True, null=True)
-    checked = models.BooleanField(default=False)
+    shopping_list     = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="items")
+    name              = models.CharField(max_length=200)
+    quantity          = models.FloatField(blank=True, null=True)
+    unit              = models.CharField(max_length=50, blank=True, null=True)
+    category          = models.CharField(max_length=50, blank=True, null=True)
+    checked           = models.BooleanField(default=False)
+    known_ingredient  = models.ForeignKey(
+        'KnownIngredient', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='shopping_items',
+        verbose_name="Ingrédient connu",
+    )
 
     class Meta:
         verbose_name = "Article de courses"
@@ -672,6 +677,12 @@ class KnownIngredient(models.Model):
         max_length=20, default='g', blank=True,
         verbose_name="Unité par défaut",
         help_text="Ex. g, ml, kg, unité — pré-remplit le champ Unité dans le formulaire recette",
+    )
+    unit_weight_g = models.FloatField(
+        null=True, blank=True,
+        verbose_name="Poids d'une unité (g)",
+        help_text="Transco pratique pour la liste de courses : 1 tranche pain de mie = 40g, "
+                  "1 gousse d'ail = 5g, 1 œuf = 50g… Laissez vide si non applicable.",
     )
     created_at    = models.DateTimeField(auto_now_add=True)
 

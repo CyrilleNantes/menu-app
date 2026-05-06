@@ -635,6 +635,7 @@ select.ing-category { background: #fff; cursor: pointer; }
 .shopping-item--checked .shopping-item__check { border-color: var(--color-primary); background: #d1e7dd; }
 .shopping-item__name { flex: 1; font-size: .92rem; font-weight: 500; }
 .shopping-item__qty { font-size: .82rem; }
+.shopping-item__transco { font-size: .78rem; color: var(--color-primary); background: #f0f7f2; border-radius: 4px; padding: .05rem .3rem; margin-left: .35rem; }
 
 /* État vide */
 .courses-empty { text-align: center; padding: 3rem 1rem; }

@@ -36,7 +36,10 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
         Meal.objects
         .filter(week_plan=plan, absent=False)
         .select_related("recipe")
-        .prefetch_related("recipe__ingredients", "dishes__recipe__ingredients")
+        .prefetch_related(
+            "recipe__ingredients__known_ingredient",
+            "dishes__recipe__ingredients__known_ingredient",
+        )
     )
 
     aggregated: dict[tuple, dict] = {}
@@ -55,9 +58,13 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
                     "unit": norm_unit or None,
                     "category": ing.category or None,
                     "quantity": None,
+                    "known_ingredient": ing.known_ingredient,
                 }
 
             entry = aggregated[key]
+            # Garde la référence known_ingredient dès qu'on en trouve une
+            if entry["known_ingredient"] is None and ing.known_ingredient:
+                entry["known_ingredient"] = ing.known_ingredient
             if ing.quantity is not None:
                 entry["quantity"] = (entry["quantity"] or 0.0) + ing.quantity * ratio
 
@@ -85,6 +92,7 @@ def generer_liste_courses(plan: WeekPlan) -> ShoppingList:
             unit=item["unit"],
             category=item["category"],
             checked=False,
+            known_ingredient=item.get("known_ingredient"),
         )
         for item in sorted_items
     ])

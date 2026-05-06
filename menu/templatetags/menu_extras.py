@@ -1,3 +1,4 @@
+import math
 from django import template
 
 register = template.Library()
@@ -34,3 +35,21 @@ def format_timer(seconds):
     if secs:
         return f"{mins} min {secs:02d}"
     return f"{mins} min"
+
+
+@register.filter
+def transco_units(quantity_g, known_ingredient):
+    """
+    Convertit une quantité en grammes en unités pratiques pour la liste de courses.
+    Ex : 160 | transco_units:ki  →  "4 tranches"  (si unit_weight_g=40, default_unit='tranche')
+    Arrondi au plafond. Retourne une chaîne vide si la transco n'est pas applicable.
+    """
+    try:
+        unit_weight = known_ingredient.unit_weight_g
+        unit_label  = known_ingredient.default_unit or ''
+        if not unit_weight or not unit_label or unit_label.lower() in ('g', 'ml', 'kg', 'l', 'cl'):
+            return ''
+        nb = math.ceil(float(quantity_g) / unit_weight)
+        return f"{nb} {unit_label}"
+    except Exception:
+        return ''
