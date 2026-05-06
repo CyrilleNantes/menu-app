@@ -1022,7 +1022,8 @@ def api_recettes(request):
         "id", "title", "category", "complexity", "base_servings", "calories_per_serving"
     )
     if q:
-        qs = qs.filter(title__icontains=q)
+        from .models import _normaliser_nom
+        qs = qs.filter(title_normalise__icontains=_normaliser_nom(q))
     qs = qs.order_by("title")[:20]
     results = [
         {
@@ -1372,7 +1373,8 @@ def liste_recettes(request):
     tri = request.GET.get("tri", "recentes")
 
     if q:
-        qs = qs.filter(title__icontains=q)
+        from .models import _normaliser_nom
+        qs = qs.filter(title_normalise__icontains=_normaliser_nom(q))
     if categorie:
         qs = qs.filter(category=categorie)
     if saison:

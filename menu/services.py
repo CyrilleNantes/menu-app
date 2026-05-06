@@ -970,9 +970,14 @@ def exporter_backup() -> bytes:
     from .models import IngredientRef
 
     data = {"__auth_user": json.loads(djser.serialize("json", DjangoUser.objects.all()))}
-    # Entrées Ciqual créées manuellement (codes "CUSTOM…") — absentes de la BDD de référence standard
-    data["__ingredientref_custom"] = json.loads(
-        djser.serialize("json", IngredientRef.objects.filter(ciqual_code__startswith="CUSTOM"))
+    # Toutes les IngredientRef utilisées par des ingrédients de recettes (CUSTOM ou modifiées en prod)
+    ref_ids = set(
+        _get_app_model("Ingredient").objects
+        .exclude(ciqual_ref=None)
+        .values_list("ciqual_ref_id", flat=True)
+    )
+    data["__ingredientref_used"] = json.loads(
+        djser.serialize("json", IngredientRef.objects.filter(pk__in=ref_ids))
     )
     for name in _BACKUP_APP_MODELS:
         data[name] = json.loads(djser.serialize("json", _get_app_model(name).objects.all()))
@@ -1002,8 +1007,6 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
         for name in reversed(_BACKUP_APP_MODELS):
             _get_app_model(name).objects.all().delete()
         DjangoUser.objects.all().delete()
-        # Supprime uniquement les IngredientRef CUSTOM (les entrées Ciqual standard restent intactes)
-        IngredientRef.objects.filter(ciqual_code__startswith="CUSTOM").delete()
 
         # Restauration dans l'ordre (parents d'abord)
         total = 0
@@ -1012,14 +1015,20 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
                 obj.save()
                 total += 1
 
-        # Restaure les IngredientRef CUSTOM avant les Ingredient qui les référencent
-        if "__ingredientref_custom" in data:
-            for obj in djser.deserialize("json", json.dumps(data["__ingredientref_custom"])):
-                try:
-                    obj.save()
-                    total += 1
-                except Exception as exc:
-                    logger.warning("IngredientRef custom ignoré lors de la restauration : %s", exc)
+        # Restaure les IngredientRef référencées avant les Ingredient (compatibilité ancienne clé)
+        for ref_key in ("__ingredientref_used", "__ingredientref_custom"):
+            if ref_key in data:
+                ref_ids_to_restore = {
+                    entry["pk"] for entry in data[ref_key]
+                }
+                IngredientRef.objects.filter(pk__in=ref_ids_to_restore).delete()
+                for obj in djser.deserialize("json", json.dumps(data[ref_key])):
+                    try:
+                        obj.save()
+                        total += 1
+                    except Exception as exc:
+                        logger.warning("IngredientRef ignorée lors de la restauration : %s", exc)
+                break
 
         for name in _BACKUP_APP_MODELS:
             if name not in data:
