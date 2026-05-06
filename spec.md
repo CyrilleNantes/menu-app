@@ -1,7 +1,7 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v5.5** — affichée dans le footer de l'application.
+> Version courante : **v5.6** — affichée dans le footer de l'application.
 > Dernière mise à jour : 2026-05-06
 
 ---
@@ -357,7 +357,9 @@ Base de connaissance des ingrédients utilisés dans les recettes. Intermédiair
 | `nom_normalise` | `CharField(200)` | non | — | Calculé automatiquement via `_normaliser_nom(name)` à chaque save |
 | `synonymes` | `TextField` | oui | `""` | Noms alternatifs séparés par virgules — utilisés dans l'autocomplete |
 | `ciqual_ref` | `ForeignKey(IngredientRef)` | oui | — | Correspondance Ciqual (`SET_NULL`) |
-| `default_unit` | `CharField(20)` | non | `'g'` | Unité pré-remplie dans le formulaire recette |
+| `default_unit` | `CharField(20)` | non | `'g'` | Unité pré-remplie dans le formulaire recette (toujours `'g'` en pratique) |
+| `unit_weight_g` | `FloatField` | oui | — | Poids en grammes d'une unité pratique (transco liste de courses) |
+| `transco_unit_label` | `CharField(30)` | non | `''` | Libellé de l'unité pratique : `tranche`, `gousse`, `citron`… |
 | `created_at` | `DateTimeField` | non | auto | Date de création |
 
 **Propriétés calculées** : `kcal_100g`, `proteines_100g` — délèguent à `ciqual_ref`.
@@ -505,6 +507,7 @@ Article dans une liste de courses.
 | `unit` | `CharField(50)` | oui | — | Unité |
 | `category` | `CharField(50)` | oui | — | Catégorie (viandes, légumes…) |
 | `checked` | `BooleanField` | non | `False` | Coché lors des courses |
+| `known_ingredient` | `ForeignKey(KnownIngredient)` | oui | — | Référence base de connaissance (`SET_NULL`) — alimentée à la génération |
 
 ---
 
@@ -790,10 +793,11 @@ Accessible au Cuisinier (ignorer) et au Convive proposant (annuler). Vérifié c
 **Accès** : Cuisinier uniquement — plan `published` uniquement (le bouton n'apparaît pas sur un brouillon)
 
 **Règles de gestion** :
-1. Récupère tous les `Meal` du plan avec `is_leftovers=False` et `recipe` non null
-2. Pour chaque `Meal`, calcule les quantités de chaque ingrédient : `quantite_ingredient × (servings_count / base_servings)`
-3. Agrège les ingrédients identiques (même nom + même unité) en les additionnant
-4. Crée ou recrée le `ShoppingList` et les `ShoppingItem` associés (suppression + recréation)
+1. Récupère tous les `Meal` du plan avec `absent=False` et `recipe` non null, plus leurs `MealDish`
+2. Pour chaque `Meal` (plat principal + accompagnements), calcule les quantités : `quantite_ingredient × (servings_count / base_servings)`
+3. Agrège les ingrédients identiques (même nom + même unité) en les additionnant — arrondi au plafond (`math.ceil`)
+4. Propage la FK `known_ingredient` depuis `Ingredient.known_ingredient` vers `ShoppingItem.known_ingredient`
+5. Crée ou recrée le `ShoppingList` et les `ShoppingItem` associés (suppression + recréation)
 
 ---
 
@@ -807,6 +811,7 @@ Accessible au Cuisinier (ignorer) et au Convive proposant (annuler). Vérifié c
 **Contenu** :
 - Articles regroupés par catégorie
 - Cochage possible sur mobile (mise à jour AJAX de `ShoppingItem.checked`)
+- **Transco pratique** : si `ShoppingItem.known_ingredient` a `unit_weight_g` et `transco_unit_label` renseignés, affiche `≈ N libellé(s)` à côté du poids — calculé avec `math.ceil(qty_g / unit_weight_g)` via le filtre template `transco_units`
 
 ---
 
@@ -1244,6 +1249,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0018_userprofile_nutrition_targets` | 2026-05-05 | `UserProfile` : 5 champs kcal par repas + `daily_prot_target` (remplacé en 0019) |
 | `0019_userprofile_prot_fields_and_profile_type` | 2026-05-05 | `UserProfile` : suppression `daily_prot_target`, ajout 5 champs protéines par repas + `profile_type` |
 | `0020_recipe_title_normalise` | 2026-05-06 | `Recipe.title_normalise` CharField db_index — recherche insensible aux accents et ligatures. Population des recettes existantes via `RunPython`. |
+| `0021_mealdish` | 2026-05-06 | Modèle `MealDish` — accompagnements sur créneau planning (`Meal` FK + `Recipe` FK + `role` + `servings_count`) |
+| `0022_shoppingitem_known_ingredient_knowningredient_unit_weight_g` | 2026-05-06 | `KnownIngredient.unit_weight_g` FloatField + `ShoppingItem.known_ingredient` FK |
+| `0023_knowningredient_transco_unit_label` | 2026-05-06 | `KnownIngredient.transco_unit_label` CharField — libellé pratique indépendant de `default_unit` |
 
 ---
 
@@ -1281,6 +1289,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v5.3 | 2026-05-06 | Recherche recettes insensible aux accents et ligatures (`Recipe.title_normalise`, `_normaliser_nom` étendu à œ→oe / æ→ae). Backup/Restore fiabilisé : toutes les tables applicatives incluses, savepoints par objet, Gunicorn timeout 300s. Migration 0020. |
 | v5.4 | 2026-05-06 | Documentation : deux chemins d'upload photo distincts — formulaire d'édition → `Recipe.photo_url` (photo principale) ; bouton galerie → `RecipePhoto` (carousel, promotable). |
 | v5.5 | 2026-05-06 | Catégories recette : ajout `accompagnement` et `sauce` dans `CATEGORY_CHOICES`. Accompagnements sur créneau planning : modèle `MealDish`, migration 0021, liste de courses et bilan nutrition inclus, UI planning (＋ / ✕). |
+| v5.6 | 2026-05-06 | **Fiche recette** : infos nutritionnelles discrètes sous chaque ingrédient mappé (qty · kcal/100g · prot/100g). **Formulaire recette** : badge bleu protéines (`.prot-badge`) à côté du badge vert kcal. **Planning convive** : titres de recettes et accompagnements cliquables vers la fiche. **Fix bilan_par_membre** : membre présent sur la période mais non assigné à un repas → cible du créneau (plus 0). **Transco liste de courses** : `KnownIngredient.unit_weight_g` + `transco_unit_label` (migrations 0022–0023), `ShoppingItem.known_ingredient` FK, affichage `≈ N tranches` via filtre `transco_units`. Page Management : colonnes Poids/unité + Libellé unité éditables inline (colonne Synonymes retirée). |
 
 ### Détail v2.0
 
