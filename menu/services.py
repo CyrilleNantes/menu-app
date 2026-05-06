@@ -845,9 +845,7 @@ def sauvegarder_recette_depuis_post(recipe: Recipe, post_data: dict) -> None:
 
     group_count = _parse_int(post_data.get("group_count", "0")) or 0
     for g in range(group_count):
-        group_name = post_data.get(f"group_name_{g}", "").strip()
-        if not group_name:
-            continue
+        group_name = post_data.get(f"group_name_{g}", "").strip() or "Ingrédients"
         group = IngredientGroup.objects.create(recipe=recipe, name=group_name, order=g)
 
         ing_count = _parse_int(post_data.get(f"group_ing_count_{g}", "0")) or 0
