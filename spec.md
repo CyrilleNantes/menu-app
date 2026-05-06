@@ -1,7 +1,7 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v5.3** — affichée dans le footer de l'application.
+> Version courante : **v5.4** — affichée dans le footer de l'application.
 > Dernière mise à jour : 2026-05-06
 
 ---
@@ -596,7 +596,7 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 - Sections libres : ajout dynamique
 
 **Règles de gestion** :
-1. La photo est uploadée vers Cloudinary via `integrations/cloudinary.py` → l'URL retournée est stockée dans `photo_url`
+1. La photo est uploadée vers Cloudinary via `integrations/cloudinary.py` → l'URL retournée est stockée dans `Recipe.photo_url` (photo principale de la recette — visible dans le catalogue et l'en-tête de la fiche). Ce champ n'alimente **pas** la galerie `RecipePhoto`.
 2. À la saisie de chaque ingrédient (debounce 350ms), une requête AJAX interroge `services.rechercher_connus()` (base `KnownIngredient`) et propose les correspondances dans une dropdown avec badge kcal/100g. Si kcal=NULL (sel, eau), affiche "Ciqual ✓". Si kcal=0, affiche "0 kcal/100g".
 3. Si un `KnownIngredient` est sélectionné, son `ciqual_ref` est résolu et les macros sont calculées (quantité → grammes → facteur × kcal/100g)
 4. Les macros de la recette sont recalculées via `services.calculer_macros_recette()` à chaque enregistrement : calcul direct depuis `ciqual_ref`, tous les ingrédients inclus (optionnels compris)
@@ -1113,6 +1113,10 @@ Affichées dans la vue planning (`planning_semaine`). Jamais bloquantes, jamais 
 
 ## 5.21 Galerie photos recette
 
+> **Deux chemins d'upload distincts :**
+> - **Formulaire d'édition** (section 5.4, champ `photo`) → met à jour `Recipe.photo_url` (photo principale, catalogue + en-tête fiche). N'alimente pas la galerie.
+> - **Bouton "Ajouter une photo"** sur la fiche recette (ci-dessous) → crée un `RecipePhoto` dans la galerie. La photo peut ensuite être promue en photo principale via "Mettre en avant".
+
 **Upload :**
 **URL** : `POST /recettes/<id>/photos/ajouter/` → `menu:ajouter_photo_recette`
 **Accès** : tout utilisateur connecté
@@ -1275,6 +1279,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v5.1 | 2026-05-05 | Catégorie ingrédient normalisée : texte libre → select 9 valeurs (`épicerie`, `légumes`, `crèmerie`, `viandes`, `poissonnerie`, `boulangerie`, `surgelés`, `boissons`, `autre`). Ordre colonnes formulaire recette réorganisé. |
 | v5.2 | 2026-05-05 | Profil nutritionnel personnel : 5 champs kcal par repas + `profile_type`, sélecteur PNNS 6 profils avec références dynamiques, deux tableaux séparés kcal/protéines. `bilan_par_membre()` intègre les repas hors planning depuis le profil, cible = `daily_kcal_total × nb_jours`. Affichage bilan : "Cible : X kcal · Y%". Migrations 0018–0019. |
 | v5.3 | 2026-05-06 | Recherche recettes insensible aux accents et ligatures (`Recipe.title_normalise`, `_normaliser_nom` étendu à œ→oe / æ→ae). Backup/Restore fiabilisé : toutes les tables applicatives incluses, savepoints par objet, Gunicorn timeout 300s. Migration 0020. |
+| v5.4 | 2026-05-06 | Documentation : deux chemins d'upload photo distincts — formulaire d'édition → `Recipe.photo_url` (photo principale) ; bouton galerie → `RecipePhoto` (carousel, promotable). |
 
 ### Détail v2.0
 
