@@ -253,7 +253,7 @@
                         title="Annuler l'absence">✕</button>
                 {% endif %}
             {% elif day.lunch and day.lunch.recipe %}
-                <span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>
+                {% if is_cuisinier %}<span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' day.lunch.recipe.id %}" class="meal-slot__recipe meal-slot__recipe--link">{{ day.lunch.recipe.title }}</a>{% endif %}
                 <div class="meal-slot__meta">
                     {% if day.lunch.servings_count %}<span>{{ day.lunch.servings_count }} pers.</span>{% endif %}
                 </div>
@@ -262,7 +262,7 @@
                 <ul class="meal-dishes">
                     {% for dish in dishes %}{% if dish.recipe %}
                     <li class="meal-dish" data-dish-id="{{ dish.id }}">
-                        <span class="meal-dish__title">+ {{ dish.recipe.title }}</span>
+                        {% if is_cuisinier %}<span class="meal-dish__title">+ {{ dish.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' dish.recipe.id %}" class="meal-dish__title meal-dish__title--link">+ {{ dish.recipe.title }}</a>{% endif %}
                         {% if is_cuisinier %}
                         <button type="button" class="btn-remove-dish btn btn--ghost btn--xs"
                                 data-meal-id="{{ day.lunch.id }}"
@@ -320,7 +320,7 @@
                         title="Annuler l'absence">✕</button>
                 {% endif %}
             {% elif day.dinner and day.dinner.recipe %}
-                <span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>
+                {% if is_cuisinier %}<span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' day.dinner.recipe.id %}" class="meal-slot__recipe meal-slot__recipe--link">{{ day.dinner.recipe.title }}</a>{% endif %}
                 <div class="meal-slot__meta">
                     {% if day.dinner.servings_count %}<span>{{ day.dinner.servings_count }} pers.</span>{% endif %}
                 </div>
@@ -329,7 +329,7 @@
                 <ul class="meal-dishes">
                     {% for dish in dishes %}{% if dish.recipe %}
                     <li class="meal-dish" data-dish-id="{{ dish.id }}">
-                        <span class="meal-dish__title">+ {{ dish.recipe.title }}</span>
+                        {% if is_cuisinier %}<span class="meal-dish__title">+ {{ dish.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' dish.recipe.id %}" class="meal-dish__title meal-dish__title--link">+ {{ dish.recipe.title }}</a>{% endif %}
                         {% if is_cuisinier %}
                         <button type="button" class="btn-remove-dish btn btn--ghost btn--xs"
                                 data-meal-id="{{ day.dinner.id }}"
