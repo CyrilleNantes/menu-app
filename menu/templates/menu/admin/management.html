@@ -99,6 +99,7 @@
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:70px;text-align:center">Recettes</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Synonymes</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:80px">Unité déf.</th>
+        <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px" title="Poids en grammes d'une unité pratique (transco liste de courses)">Poids/unité&nbsp;(g)</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd">Mapping Ciqual</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px;text-align:right">kcal/100g</th>
         <th style="padding:.6rem .8rem;border-bottom:2px solid #ddd;width:90px;text-align:right">prot./100g</th>
@@ -129,6 +130,14 @@
           <span class="ki-unit-status" style="display:none;color:#2e7d32;font-size:.8rem;margin-left:.2rem">✓</span>
         </td>
         <td style="padding:.6rem .8rem">
+          <input type="number" class="ki-unit-weight" value="{{ ki.unit_weight_g|default:'' }}"
+                 min="0" step="any"
+                 style="width:70px;padding:.3rem .4rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;text-align:center"
+                 placeholder="—"
+                 title="Ex: 40 pour 1 tranche de pain de mie = 40g">
+          <span class="ki-weight-status" style="display:none;color:#2e7d32;font-size:.8rem;margin-left:.2rem">✓</span>
+        </td>
+        <td style="padding:.6rem .8rem">
           <div class="ki-ciqual-cell">
             <span class="ki-ciqual-label" style="font-size:.85rem;color:{% if ki.ciqual_ref %}#333{% else %}#aaa{% endif %}">
               {{ ki.ciqual_ref.nom_fr|default:"— non qualifié" }}
@@ -156,7 +165,7 @@
         <td style="display:none">{{ ki.pk }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="6" style="padding:2rem;text-align:center;color:#888">Aucun ingrédient trouvé</td></tr>
+      <tr><td colspan="7" style="padding:2rem;text-align:center;color:#888">Aucun ingrédient trouvé</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -420,6 +429,16 @@ document.querySelectorAll('.ki-row').forEach(row => {
   };
   unitInput?.addEventListener('change', saveUnit);
   unitInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveUnit(); });
+
+  // Poids par unité (transco liste de courses)
+  const weightInput  = row.querySelector('.ki-unit-weight');
+  const weightStatus = row.querySelector('.ki-weight-status');
+  const saveWeight = async () => {
+    const d = await saveField({ unit_weight_g: weightInput.value.trim() });
+    if (d.ok) { weightStatus.style.display = 'inline'; setTimeout(() => weightStatus.style.display = 'none', 2000); }
+  };
+  weightInput?.addEventListener('change', saveWeight);
+  weightInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveWeight(); });
 
   // Mapping Ciqual — afficher éditeur
   const editBtn    = row.querySelector('.ki-edit-ciqual');

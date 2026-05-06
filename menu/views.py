@@ -2042,6 +2042,14 @@ def maj_known_ingredient(request, ki_id):
         ki.default_unit = request.POST.get('default_unit', '').strip() or 'g'
         fields.append('default_unit')
 
+    if 'unit_weight_g' in request.POST:
+        val = request.POST.get('unit_weight_g', '').strip()
+        try:
+            ki.unit_weight_g = float(val) if val else None
+        except ValueError:
+            ki.unit_weight_g = None
+        fields.append('unit_weight_g')
+
     if 'ciqual_ref_id' in request.POST:
         ciqual_id = request.POST.get('ciqual_ref_id', '').strip()
         if ciqual_id:
