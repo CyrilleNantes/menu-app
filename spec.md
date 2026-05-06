@@ -1,7 +1,7 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v5.4** — affichée dans le footer de l'application.
+> Version courante : **v5.5** — affichée dans le footer de l'application.
 > Dernière mise à jour : 2026-05-06
 
 ---
@@ -257,7 +257,7 @@ Catalogue global partagé entre toutes les familles.
 | `base_servings` | `PositiveIntegerField` | non | — | Nombre de parts de référence |
 | `prep_time` | `PositiveIntegerField` | oui | — | Temps de préparation (minutes) |
 | `cook_time` | `PositiveIntegerField` | oui | — | Temps de cuisson (minutes) |
-| `category` | `CharField(20)` | non | — | `entree` / `plat` / `dessert` / `brunch` / `snack` |
+| `category` | `CharField(20)` | non | — | `entree` / `plat` / `accompagnement` / `sauce` / `dessert` / `brunch` / `snack` |
 | `cuisine_type` | `CharField(50)` | oui | — | Française / Asiatique / Méditerranéenne… |
 | `seasons` | `JSONField` | non | `[]` | Ex. `["printemps", "ete"]` |
 | `health_tags` | `JSONField` | non | `[]` | Ex. `["leger", "proteine"]` |
@@ -1280,6 +1280,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v5.2 | 2026-05-05 | Profil nutritionnel personnel : 5 champs kcal par repas + `profile_type`, sélecteur PNNS 6 profils avec références dynamiques, deux tableaux séparés kcal/protéines. `bilan_par_membre()` intègre les repas hors planning depuis le profil, cible = `daily_kcal_total × nb_jours`. Affichage bilan : "Cible : X kcal · Y%". Migrations 0018–0019. |
 | v5.3 | 2026-05-06 | Recherche recettes insensible aux accents et ligatures (`Recipe.title_normalise`, `_normaliser_nom` étendu à œ→oe / æ→ae). Backup/Restore fiabilisé : toutes les tables applicatives incluses, savepoints par objet, Gunicorn timeout 300s. Migration 0020. |
 | v5.4 | 2026-05-06 | Documentation : deux chemins d'upload photo distincts — formulaire d'édition → `Recipe.photo_url` (photo principale) ; bouton galerie → `RecipePhoto` (carousel, promotable). |
+| v5.5 | 2026-05-06 | Catégories recette : ajout `accompagnement` et `sauce` dans `CATEGORY_CHOICES`. Accompagnements sur créneau planning : modèle `MealDish`, migration 0021, liste de courses et bilan nutrition inclus, UI planning (＋ / ✕). |
 
 ### Détail v2.0
 

@@ -254,6 +254,8 @@ class Recipe(models.Model):
     CATEGORY_CHOICES = [
         ("entree", "Entrée"),
         ("plat", "Plat"),
+        ("accompagnement", "Accompagnement"),
+        ("sauce", "Sauce"),
         ("dessert", "Dessert"),
         ("brunch", "Brunch"),
         ("snack", "Snack"),
