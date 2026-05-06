@@ -1030,6 +1030,7 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
                         logger.warning("IngredientRef ignorée lors de la restauration : %s", exc)
                 break
 
+        errors = []
         for name in _BACKUP_APP_MODELS:
             if name not in data:
                 continue
@@ -1038,12 +1039,14 @@ def restaurer_backup(zip_bytes: bytes) -> dict:
                     obj.save()
                     total += 1
                 except Exception as exc:
-                    logger.warning("Objet ignoré lors de la restauration (%s) : %s", name, exc)
+                    msg = f"{name} pk={obj.object.pk} : {exc}"
+                    logger.warning("Objet ignoré lors de la restauration — %s", msg)
+                    errors.append(msg)
 
     # Réinitialisation des séquences hors transaction (setval est non-transactionnel)
     _reset_postgres_sequences()
-    logger.info("Backup restauré : %d objets.", total)
-    return {"total": total}
+    logger.info("Backup restauré : %d objets, %d erreurs.", total, len(errors))
+    return {"total": total, "errors": errors}
 
 
 def _reset_postgres_sequences():
