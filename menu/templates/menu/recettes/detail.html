@@ -169,7 +169,14 @@
             <ul class="ingredient-list">
                 {% for ing in group.ingredients.all %}
                 <li class="ingredient-item {% if ing.is_optional %}ingredient-item--optional{% endif %}">
-                    <span class="ingredient-item__name">{{ ing.name }}{% if ing.is_optional %} <em>(optionnel)</em>{% endif %}</span>
+                    <span class="ingredient-item__name">
+                        {{ ing.name }}{% if ing.is_optional %} <em>(optionnel)</em>{% endif %}
+                        {% if ing.ciqual_ref %}
+                        <span class="ingredient-item__nutrition">
+                            {% if ing.quantity %}{{ ing.quantity|floatformat:"-2" }}{% if ing.unit %} {{ ing.unit }}{% endif %}{% endif %}{% if ing.ciqual_ref.kcal_100g is not None %}{% if ing.quantity %} · {% endif %}{{ ing.ciqual_ref.kcal_100g|floatformat:0 }} kcal/100g{% endif %}{% if ing.ciqual_ref.proteines_100g is not None %} · {{ ing.ciqual_ref.proteines_100g|floatformat:1 }}g prot/100g{% endif %}
+                        </span>
+                        {% endif %}
+                    </span>
                     {% if ing.quantity or ing.quantity_note or ing.unit %}
                     <span class="ingredient-item__qty">
                         {% if ing.quantity_note %}

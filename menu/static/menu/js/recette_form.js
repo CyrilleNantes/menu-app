@@ -258,14 +258,23 @@ const ING_CATEGORIES = [
                 unitInput.value = li.dataset.defaultUnit || 'g';
             }
             closeCiqualDropdown(wrap);
-            // Afficher indicateur de correspondance Ciqual
+            // Badge kcal (vert)
             const badge = wrap.querySelector('.ciqual-badge');
             if (badge) {
-                // Tester !== '' pour distinguer "0 kcal" (sel, eau) de "pas de donnée"
                 badge.textContent = li.dataset.cal100 !== ''
                     ? `${Math.round(Number(li.dataset.cal100))} kcal/100g`
                     : 'Ciqual ✓';
                 badge.hidden = false;
+            }
+            // Badge protéines (bleu)
+            const protBadge = wrap.querySelector('.prot-badge');
+            if (protBadge) {
+                if (li.dataset.prot100 !== '') {
+                    protBadge.textContent = `${Number(li.dataset.prot100).toFixed(1)}g prot/100g`;
+                    protBadge.hidden = false;
+                } else {
+                    protBadge.hidden = true;
+                }
             }
             return;
         }

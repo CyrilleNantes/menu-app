@@ -162,6 +162,7 @@ body { font-family: var(--font); background: var(--color-bg); color: var(--color
 .ingredient-item { display: flex; justify-content: space-between; align-items: baseline; padding: .3rem 0; border-bottom: 1px solid #f1f3f5; font-size: .95rem; }
 .ingredient-item--optional { opacity: .75; font-style: italic; }
 .ingredient-item__qty { font-weight: 600; color: var(--color-primary); white-space: nowrap; margin-left: .5rem; }
+.ingredient-item__nutrition { display: block; font-size: .75rem; color: var(--color-muted); margin-top: .1rem; }
 
 .step-list { list-style: none; display: flex; flex-direction: column; gap: 1.25rem; }
 .step-item { padding: 1rem 1.1rem; background: var(--color-bg); border-radius: var(--radius); border-left: 3px solid var(--color-primary); }
@@ -232,6 +233,7 @@ select.ing-category { background: #fff; cursor: pointer; }
 .ciqual-dropdown__item:last-child { border-bottom: none; }
 .ciqual-dropdown__item:hover { background: #f0f7f2; color: var(--color-primary); }
 .ciqual-badge { display: inline-block; font-size: .72rem; background: #e8f5e9; color: #2e7d32; border-radius: 4px; padding: .1rem .35rem; margin-top: .2rem; }
+.prot-badge { display: inline-block; font-size: .72rem; background: #e3f0fb; color: #1565c0; border-radius: 4px; padding: .1rem .35rem; margin-top: .2rem; margin-left: .25rem; }
 .ing-optional-label { font-size: .8rem; white-space: nowrap; display: flex; align-items: center; gap: .25rem; }
 .btn-icon { background: none; border: 1.5px solid #dee2e6; border-radius: 50%; width: 1.6rem; height: 1.6rem; cursor: pointer; font-size: .75rem; color: var(--color-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .btn-icon:hover { background: #f8d7da; border-color: var(--color-danger); color: var(--color-danger); }
