@@ -2043,7 +2043,7 @@ def maj_known_ingredient(request, ki_id):
         fields.append('default_unit')
 
     if 'unit_weight_g' in request.POST:
-        val = request.POST.get('unit_weight_g', '').strip()
+        val = request.POST.get('unit_weight_g', '').strip().replace(',', '.')
         try:
             ki.unit_weight_g = float(val) if val else None
         except ValueError:
