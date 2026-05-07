@@ -263,12 +263,14 @@ def profil(request):
     google_connected = TokenOAuth.objects.filter(user=request.user, service="google").exists()
 
     google_tasklists = []
+    google_tasklists_error = False
     if google_connected:
         try:
             from .integrations.google_tasks import google_tasks_get_tasklists
             google_tasklists = google_tasks_get_tasklists(request.user)
         except Exception as exc:
             logger.warning("profil : impossible de charger les tasklists Google : %s", exc)
+            google_tasklists_error = True
 
     ctx = {
         "profile":              profile,
@@ -277,8 +279,9 @@ def profil(request):
         "nb_avis":              nb_avis,
         "nb_proposals":         nb_proposals,
         "famille_members":      famille_members,
-        "google_connected":     google_connected,
-        "google_tasklists":     google_tasklists,
+        "google_connected":       google_connected,
+        "google_tasklists":       google_tasklists,
+        "google_tasklists_error": google_tasklists_error,
         "dietary_tag_choices":  DIETARY_TAG_CHOICES,
         "rank_cuisinier":       UserProfile._RANK_CUISINIER,
         "rank_convive":         UserProfile._RANK_CONVIVE,

@@ -7,6 +7,7 @@ Format : "{quantité} {unité} {nom}" ou "{nom}" si pas de quantité.
 """
 
 import logging
+import math
 
 import httpx
 
@@ -19,10 +20,10 @@ TASKS_BASE = "https://tasks.googleapis.com/tasks/v1"
 
 def _task_title(item) -> str:
     """
-    Construit le titre de la tâche selon le format : "{quantité} {unité} {nom}".
+    Construit le titre de la tâche selon le format : "{quantité} {unité} {nom} (≈ transco)".
     Exemples :
       - "2 kg pommes de terre"
-      - "3 œufs"
+      - "20 g ail (≈ 4 gousses)"
       - "sel"
     """
     parts = []
@@ -37,7 +38,18 @@ def _task_title(item) -> str:
     if item.unit:
         parts.append(item.unit)
     parts.append(item.name)
-    return " ".join(parts)
+    title = " ".join(parts)
+
+    # Ajout de la transco si disponible
+    try:
+        ki = item.known_ingredient
+        if ki and item.quantity and ki.unit_weight_g and ki.transco_unit_label:
+            nb = math.ceil(float(item.quantity) / ki.unit_weight_g)
+            title += f" (≈ {nb} {ki.transco_unit_label.strip()})"
+    except Exception:
+        pass
+
+    return title
 
 
 # ─── Export principal ─────────────────────────────────────────────────────────
@@ -77,7 +89,7 @@ def google_tasks_export_courses(user, shopping_list) -> dict:
         f"({plan.period_start.strftime('%d/%m')} – {plan.period_end.strftime('%d/%m/%Y')})"
     )
 
-    items = shopping_list.items.filter(checked=False).order_by("category", "name")
+    items = shopping_list.items.filter(checked=False).select_related("known_ingredient").order_by("category", "name")
 
     created = skipped = 0
     url = f"{TASKS_BASE}/lists/{tasklist_id}/tasks"

@@ -161,28 +161,34 @@
         </form>
 
         <!-- Sélecteur liste Google Tasks -->
-        {% if google_tasklists %}
-        <form method="post" action="{% url 'menu:choisir_tasklist' %}" class="creneaux-form" style="margin-top:1rem">
-            {% csrf_token %}
+        <div class="creneaux-form" style="margin-top:1rem">
             <p class="creneaux-form__title">Liste Google Tasks pour les courses :</p>
-            <div class="tasklist-row">
-                <select name="tasklist_id" id="tasklist-select" class="input-sm tasklist-select" required>
-                    {% for tl in google_tasklists %}
-                    <option value="{{ tl.id }}"
-                            data-title="{{ tl.title }}"
-                            {% if tl.id == profile.google_tasklist_id %}selected{% endif %}>
-                        {{ tl.title }}
-                    </option>
-                    {% endfor %}
-                </select>
-                <input type="hidden" name="tasklist_title" id="tasklist-title-input">
-                <button type="submit" class="btn btn--secondary btn--sm">Enregistrer</button>
-            </div>
-            {% if not profile.google_tasklist_id %}
-            <p class="text-muted" style="font-size:.85rem;margin-top:.25rem">Aucune liste sélectionnée — export vers "To Do" par défaut.</p>
+            {% if google_tasklists %}
+            <form method="post" action="{% url 'menu:choisir_tasklist' %}">
+                {% csrf_token %}
+                <div class="tasklist-row">
+                    <select name="tasklist_id" id="tasklist-select" class="input-sm tasklist-select" required>
+                        {% for tl in google_tasklists %}
+                        <option value="{{ tl.id }}"
+                                data-title="{{ tl.title }}"
+                                {% if tl.id == profile.google_tasklist_id %}selected{% endif %}>
+                            {{ tl.title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <input type="hidden" name="tasklist_title" id="tasklist-title-input">
+                    <button type="submit" class="btn btn--secondary btn--sm">Enregistrer</button>
+                </div>
+                {% if not profile.google_tasklist_id %}
+                <p class="text-muted" style="font-size:.85rem;margin-top:.25rem">Aucune liste sélectionnée — export vers "To Do" par défaut.</p>
+                {% endif %}
+            </form>
+            {% elif google_tasklists_error %}
+            <p class="text-muted" style="font-size:.85rem">
+                ⚠️ Impossible de charger tes listes — active l'<a href="https://console.cloud.google.com/apis/library/tasks.googleapis.com?project=menu-app-494518" target="_blank" rel="noopener">API Google Tasks</a> dans la console Google Cloud, puis recharge cette page.
+            </p>
             {% endif %}
-        </form>
-        {% endif %}
+        </div>
 
         {% else %}
         <div class="google-status">
