@@ -63,6 +63,7 @@ urlpatterns = [
     # Google Tasks
     path("courses/<int:plan_id>/export-tasks/", views.export_tasks, name="export_tasks"),
     path("profil/tasklist/", views.choisir_tasklist, name="choisir_tasklist"),
+    path("profil/calendar/", views.choisir_calendar, name="choisir_calendar"),
     # OAuth Google
     path("google/connect/", views.google_connect, name="google_connect"),
     path("google/callback/", views.google_callback, name="google_callback"),

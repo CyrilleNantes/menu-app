@@ -137,3 +137,33 @@ def google_calendar_export_planning(user, plan) -> dict:
         created, updated, skipped, user.id, plan.id,
     )
     return {"created": created, "updated": updated, "skipped": skipped}
+
+
+# ─── Récupération des calendriers disponibles ────────────────────────────────
+
+def google_calendar_get_calendars(user) -> list:
+    """
+    Retourne la liste des calendriers Google de l'utilisateur.
+
+    Retourne : [{"id": "...", "title": "..."}, ...]
+    Lève     : httpx.HTTPError en cas d'échec réseau
+               TokenOAuth.DoesNotExist si pas connecté Google
+    """
+    from menu.integrations.google_auth import google_get_valid_token
+
+    access_token = google_get_valid_token(user)
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    resp = httpx.get(
+        f"{CALENDAR_BASE}/users/me/calendarList",
+        headers=headers,
+        params={"minAccessRole": "writer"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    return [
+        {"id": item["id"], "title": item.get("summary", item["id"])}
+        for item in data.get("items", [])
+    ]

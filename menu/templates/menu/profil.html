@@ -139,6 +139,31 @@
             </form>
         </div>
 
+        <!-- Sélecteur calendrier Google -->
+        <div class="creneaux-form">
+            <p class="creneaux-form__title">Calendrier Google Agenda pour le planning :</p>
+            {% if google_calendars %}
+            <form method="post" action="{% url 'menu:choisir_calendar' %}">
+                {% csrf_token %}
+                <div class="tasklist-row">
+                    <select name="calendar_id" id="calendar-select" class="input-sm tasklist-select" required>
+                        {% for cal in google_calendars %}
+                        <option value="{{ cal.id }}"
+                                data-title="{{ cal.title }}"
+                                {% if cal.id == profile.google_calendar_id %}selected{% elif not profile.google_calendar_id and cal.id == "primary" %}selected{% endif %}>
+                            {{ cal.title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <input type="hidden" name="calendar_title" id="calendar-title-input">
+                    <button type="submit" class="btn btn--secondary btn--sm">Enregistrer</button>
+                </div>
+            </form>
+            {% elif google_calendars_error %}
+            <p class="text-muted" style="font-size:.85rem">⚠️ Impossible de charger les calendriers. Recharge la page.</p>
+            {% endif %}
+        </div>
+
         <!-- Créneaux horaires -->
         <form method="post" action="{% url 'menu:modifier_creneaux_calendar' %}" class="creneaux-form">
             {% csrf_token %}
@@ -474,17 +499,18 @@
 
 {% block extra_js %}
 <script>
-(function () {
-    const sel = document.getElementById('tasklist-select');
-    const hidden = document.getElementById('tasklist-title-input');
+function syncHidden(selId, hiddenId) {
+    const sel = document.getElementById(selId);
+    const hidden = document.getElementById(hiddenId);
     if (!sel || !hidden) return;
-
-    function syncTitle() {
+    function sync() {
         const opt = sel.options[sel.selectedIndex];
         hidden.value = opt ? (opt.dataset.title || opt.text) : '';
     }
-    syncTitle();
-    sel.addEventListener('change', syncTitle);
-})();
+    sync();
+    sel.addEventListener('change', sync);
+}
+syncHidden('tasklist-select', 'tasklist-title-input');
+syncHidden('calendar-select', 'calendar-title-input');
 </script>
 {% endblock %}
