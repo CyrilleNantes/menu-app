@@ -159,6 +159,31 @@
             </div>
             <button type="submit" class="btn btn--secondary btn--sm" style="margin-top:.5rem">Enregistrer les créneaux</button>
         </form>
+
+        <!-- Sélecteur liste Google Tasks -->
+        {% if google_tasklists %}
+        <form method="post" action="{% url 'menu:choisir_tasklist' %}" class="creneaux-form" style="margin-top:1rem">
+            {% csrf_token %}
+            <p class="creneaux-form__title">Liste Google Tasks pour les courses :</p>
+            <div class="tasklist-row">
+                <select name="tasklist_id" id="tasklist-select" class="input-sm tasklist-select" required>
+                    {% for tl in google_tasklists %}
+                    <option value="{{ tl.id }}"
+                            data-title="{{ tl.title }}"
+                            {% if tl.id == profile.google_tasklist_id %}selected{% endif %}>
+                        {{ tl.title }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <input type="hidden" name="tasklist_title" id="tasklist-title-input">
+                <button type="submit" class="btn btn--secondary btn--sm">Enregistrer</button>
+            </div>
+            {% if not profile.google_tasklist_id %}
+            <p class="text-muted" style="font-size:.85rem;margin-top:.25rem">Aucune liste sélectionnée — export vers "To Do" par défaut.</p>
+            {% endif %}
+        </form>
+        {% endif %}
+
         {% else %}
         <div class="google-status">
             <p class="text-muted google-status__desc">
@@ -439,4 +464,21 @@
     </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const sel = document.getElementById('tasklist-select');
+    const hidden = document.getElementById('tasklist-title-input');
+    if (!sel || !hidden) return;
+
+    function syncTitle() {
+        const opt = sel.options[sel.selectedIndex];
+        hidden.value = opt ? (opt.dataset.title || opt.text) : '';
+    }
+    syncTitle();
+    sel.addEventListener('change', syncTitle);
+})();
+</script>
 {% endblock %}
