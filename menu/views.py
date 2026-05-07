@@ -262,6 +262,14 @@ def profil(request):
 
     google_connected = TokenOAuth.objects.filter(user=request.user, service="google").exists()
 
+    google_tasklists = []
+    if google_connected:
+        try:
+            from .integrations.google_tasks import google_tasks_get_tasklists
+            google_tasklists = google_tasks_get_tasklists(request.user)
+        except Exception as exc:
+            logger.warning("profil : impossible de charger les tasklists Google : %s", exc)
+
     ctx = {
         "profile":              profile,
         "rank_info":            rank_info,
@@ -270,6 +278,7 @@ def profil(request):
         "nb_proposals":         nb_proposals,
         "famille_members":      famille_members,
         "google_connected":     google_connected,
+        "google_tasklists":     google_tasklists,
         "dietary_tag_choices":  DIETARY_TAG_CHOICES,
         "rank_cuisinier":       UserProfile._RANK_CUISINIER,
         "rank_convive":         UserProfile._RANK_CONVIVE,
@@ -2255,6 +2264,31 @@ def modifier_creneaux_calendar(request):
     profile.save(update_fields=["lunch_start", "lunch_end", "dinner_start", "dinner_end"])
     messages.success(request, "Créneaux Google Calendar mis à jour.")
     logger.debug("modifier_creneaux_calendar : créneaux mis à jour pour user %s", request.user.id)
+    return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def choisir_tasklist(request):
+    """Enregistre la liste Google Tasks choisie pour l'export de la liste de courses."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    tasklist_id    = request.POST.get("tasklist_id", "").strip()
+    tasklist_title = request.POST.get("tasklist_title", "").strip()
+
+    if not tasklist_id:
+        messages.error(request, "Sélectionne une liste Google Tasks.")
+        return redirect("menu:profil")
+
+    profile.google_tasklist_id = tasklist_id
+    profile.save(update_fields=["google_tasklist_id"])
+
+    label = tasklist_title or tasklist_id
+    messages.success(request, f"✅ Liste Google Tasks « {label} » enregistrée.")
+    logger.debug("choisir_tasklist : tasklist_id=%s pour user %s", tasklist_id, request.user.id)
     return redirect("menu:profil")
 
 

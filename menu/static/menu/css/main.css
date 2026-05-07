@@ -692,6 +692,8 @@ select.ing-category { background: #fff; cursor: pointer; }
 .creneaux-label { font-size: .88rem; min-width: 6rem; }
 .creneaux-input { width: 7rem; padding: .3rem .5rem; font-size: .88rem; border: 1px solid #ced4da; border-radius: 4px; }
 .creneaux-sep { color: var(--color-muted); font-size: .85rem; }
+.tasklist-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.tasklist-select { flex: 1; min-width: 10rem; padding: .3rem .5rem; font-size: .88rem; border: 1px solid #ced4da; border-radius: 4px; }
 
 @media (max-width: 600px) {
     .form-row--3 { grid-template-columns: 1fr; }

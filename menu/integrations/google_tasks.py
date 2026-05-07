@@ -105,3 +105,28 @@ def google_tasks_export_courses(user, shopping_list) -> dict:
         created, skipped, user.id, shopping_list.id,
     )
     return {"created": created, "skipped": skipped}
+
+
+# ─── Récupération des listes disponibles ─────────────────────────────────────
+
+def google_tasks_get_tasklists(user) -> list:
+    """
+    Retourne la liste des task lists Google Tasks de l'utilisateur.
+
+    Retourne : [{"id": "...", "title": "..."}, ...]
+    Lève     : httpx.HTTPError en cas d'échec réseau
+               TokenOAuth.DoesNotExist si pas connecté Google
+    """
+    from menu.integrations.google_auth import google_get_valid_token
+
+    access_token = google_get_valid_token(user)
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    resp = httpx.get(f"{TASKS_BASE}/users/@me/lists", headers=headers, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    return [
+        {"id": item["id"], "title": item["title"]}
+        for item in data.get("items", [])
+    ]
