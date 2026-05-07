@@ -264,6 +264,8 @@ def profil(request):
 
     google_tasklists = []
     google_tasklists_error = False
+    google_calendars = []
+    google_calendars_error = False
     if google_connected:
         try:
             from .integrations.google_tasks import google_tasks_get_tasklists
@@ -271,6 +273,12 @@ def profil(request):
         except Exception as exc:
             logger.warning("profil : impossible de charger les tasklists Google : %s", exc)
             google_tasklists_error = True
+        try:
+            from .integrations.google_calendar import google_calendar_get_calendars
+            google_calendars = google_calendar_get_calendars(request.user)
+        except Exception as exc:
+            logger.warning("profil : impossible de charger les calendriers Google : %s", exc)
+            google_calendars_error = True
 
     ctx = {
         "profile":              profile,
@@ -279,9 +287,11 @@ def profil(request):
         "nb_avis":              nb_avis,
         "nb_proposals":         nb_proposals,
         "famille_members":      famille_members,
-        "google_connected":       google_connected,
-        "google_tasklists":       google_tasklists,
-        "google_tasklists_error": google_tasklists_error,
+        "google_connected":        google_connected,
+        "google_tasklists":        google_tasklists,
+        "google_tasklists_error":  google_tasklists_error,
+        "google_calendars":        google_calendars,
+        "google_calendars_error":  google_calendars_error,
         "dietary_tag_choices":  DIETARY_TAG_CHOICES,
         "rank_cuisinier":       UserProfile._RANK_CUISINIER,
         "rank_convive":         UserProfile._RANK_CONVIVE,
@@ -2292,6 +2302,31 @@ def choisir_tasklist(request):
     label = tasklist_title or tasklist_id
     messages.success(request, f"✅ Liste Google Tasks « {label} » enregistrée.")
     logger.debug("choisir_tasklist : tasklist_id=%s pour user %s", tasklist_id, request.user.id)
+    return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def choisir_calendar(request):
+    """Enregistre le calendrier Google choisi pour l'export du planning."""
+    profile = _get_profile(request)
+    if not profile:
+        messages.error(request, "Profil introuvable.")
+        return redirect("menu:profil")
+
+    calendar_id    = request.POST.get("calendar_id", "").strip()
+    calendar_title = request.POST.get("calendar_title", "").strip()
+
+    if not calendar_id:
+        messages.error(request, "Sélectionne un calendrier Google.")
+        return redirect("menu:profil")
+
+    profile.google_calendar_id = calendar_id
+    profile.save(update_fields=["google_calendar_id"])
+
+    label = calendar_title or calendar_id
+    messages.success(request, f"📅 Calendrier Google « {label} » enregistré.")
+    logger.debug("choisir_calendar : calendar_id=%s pour user %s", calendar_id, request.user.id)
     return redirect("menu:profil")
 
 
