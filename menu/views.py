@@ -1478,6 +1478,18 @@ def liste_recettes(request):
     elif tri == "plus_simples":
         ordre_complexite = {"simple": 0, "intermediaire": 1, "elabore": 2}
         qs = sorted(qs, key=lambda r: ordre_complexite.get(r.complexity, 1))
+    elif tri == "kcal_asc":
+        from django.db.models import F
+        qs = qs.order_by(F("calories_per_serving").asc(nulls_last=True))
+    elif tri == "kcal_desc":
+        from django.db.models import F
+        qs = qs.order_by(F("calories_per_serving").desc(nulls_last=True))
+    elif tri == "prot_asc":
+        from django.db.models import F
+        qs = qs.order_by(F("proteins_per_serving").asc(nulls_last=True))
+    elif tri == "prot_desc":
+        from django.db.models import F
+        qs = qs.order_by(F("proteins_per_serving").desc(nulls_last=True))
     else:
         qs = qs.order_by("-created_at")
 

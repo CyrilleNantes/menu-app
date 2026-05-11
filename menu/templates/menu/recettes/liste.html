@@ -36,9 +36,13 @@
     </select>
 
     <select name="tri">
-        <option value="recentes" {% if tri == "recentes" %}selected{% endif %}>Plus récentes</option>
-        <option value="mieux_notees" {% if tri == "mieux_notees" %}selected{% endif %}>Mieux notées</option>
-        <option value="plus_simples" {% if tri == "plus_simples" %}selected{% endif %}>Plus simples</option>
+        <option value="recentes"    {% if tri == "recentes"    %}selected{% endif %}>Plus récentes</option>
+        <option value="mieux_notees"{% if tri == "mieux_notees"%}selected{% endif %}>Mieux notées</option>
+        <option value="plus_simples"{% if tri == "plus_simples"%}selected{% endif %}>Plus simples</option>
+        <option value="kcal_asc"    {% if tri == "kcal_asc"    %}selected{% endif %}>🔥 Kcal croissant</option>
+        <option value="kcal_desc"   {% if tri == "kcal_desc"   %}selected{% endif %}>🔥 Kcal décroissant</option>
+        <option value="prot_asc"    {% if tri == "prot_asc"    %}selected{% endif %}>💪 Protéines croissant</option>
+        <option value="prot_desc"   {% if tri == "prot_desc"   %}selected{% endif %}>💪 Protéines décroissant</option>
     </select>
 
     <button type="submit" class="btn btn--primary">Filtrer</button>
@@ -61,6 +65,16 @@
             <h2 class="recette-card__title">{{ recette.title }}</h2>
             {% if recette.description %}
             <p class="recette-card__desc">{{ recette.description|truncatechars:80 }}</p>
+            {% endif %}
+            {% if recette.calories_per_serving or recette.proteins_per_serving %}
+            <div class="recette-card__macros">
+                {% if recette.calories_per_serving %}
+                <span class="macro-badge macro-badge--kcal">🔥 {{ recette.calories_per_serving|floatformat:0 }} kcal</span>
+                {% endif %}
+                {% if recette.proteins_per_serving %}
+                <span class="macro-badge macro-badge--prot">💪 {{ recette.proteins_per_serving|floatformat:0 }} g prot</span>
+                {% endif %}
+            </div>
             {% endif %}
             <div class="recette-card__meta">
                 <span class="badge badge--{{ recette.complexity }}">{{ recette.get_complexity_display }}</span>

@@ -779,6 +779,11 @@ select.ing-category { background: #fff; cursor: pointer; }
 .nutri-status--ok      { background: #d4f4e2; color: #1a6b3c; }
 .nutri-status--partial { background: #fff3cd; color: #7d5a00; }
 .nutri-status--missing { background: #fde8e8; color: #a12121; }
+/* Badges macros sur les cartes recette */
+.recette-card__macros { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .4rem; }
+.macro-badge { font-size: .78rem; font-weight: 600; padding: .18rem .5rem; border-radius: 99px; white-space: nowrap; }
+.macro-badge--kcal { background: #fff3e0; color: #e65100; }
+.macro-badge--prot { background: #e8f5e9; color: #2e7d32; }
 /* Bandeau statut nutritionnel — fiche détail */
 .nutri-status-banner { margin: 0; padding: .55rem .9rem; border-radius: var(--radius); font-size: .85rem; }
 .nutri-status-banner--partial { background: #fff8e1; color: #7d5a00; border-left: 3px solid #f5c518; }
