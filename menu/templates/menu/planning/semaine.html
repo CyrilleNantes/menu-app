@@ -488,46 +488,58 @@
 <!-- ── Dialog : modifier un repas (Cuisinier) ───────────────── -->
 {% if is_cuisinier %}
 <div id="dialog-meal" class="meal-overlay" style="display:none">
-  <div class="planning-dialog">
-    <h2 class="planning-dialog__title">Modifier le repas</h2>
-    <p class="planning-dialog__slot" id="dialog-meal-label"></p>
+  <div class="planning-dialog planning-dialog--wide">
 
-    <div class="form-group">
-        <label class="form-label">Recette</label>
-        <div class="recipe-search-wrap">
-            <input type="text" id="meal-recipe-search"
-                   placeholder="Rechercher…" class="recipe-search-input" autocomplete="off">
-            <ul id="meal-recipe-results" class="recipe-search-results"></ul>
-        </div>
-        <div class="meal-selected-info" id="meal-selected-info">
-            <span id="meal-recipe-name" class="meal-selected-info__name text-muted">Aucune recette</span>
-            <button type="button" id="btn-clear-recipe" class="btn-icon" title="Vider">✕</button>
-        </div>
-        <button type="button" id="btn-browse-recipes" class="btn btn--ghost btn--sm browse-btn">
-            🖼️ Parcourir le catalogue
-        </button>
-    </div>
-
-    <div class="form-group">
-        <label class="form-label">Convives</label>
+    <!-- En-tête compact : titre · convives · recette sélectionnée · actions -->
+    <div class="meal-dialog-top">
+      <div class="meal-dialog-top__info">
+        <h2 class="planning-dialog__title">Modifier le repas</h2>
+        <p class="planning-dialog__slot" id="dialog-meal-label"></p>
+      </div>
+      <div class="meal-dialog-top__convives">
+        <span class="form-label">Convives</span>
         <div class="meal-members-list" id="meal-members-list">
-            {% for member in family_members %}
-            <label class="meal-member-toggle" id="meal-member-{{ member.user.id }}">
-                <input type="checkbox" class="meal-member-cb" value="{{ member.user.id }}">
-                <span>{{ member.user.first_name|default:member.user.email }}</span>
-            </label>
-            {% endfor %}
+          {% for member in family_members %}
+          <label class="meal-member-toggle" id="meal-member-{{ member.user.id }}">
+            <input type="checkbox" class="meal-member-cb" value="{{ member.user.id }}">
+            <span>{{ member.user.first_name|default:member.user.email }}</span>
+          </label>
+          {% endfor %}
         </div>
         <div style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
-            <label class="form-label" style="margin:0">+ Invités</label>
-            <input type="number" id="meal-guest-count" min="0" max="20" value="0" class="input-short" style="width:4rem">
+          <label class="form-label" style="margin:0">+ Invités</label>
+          <input type="number" id="meal-guest-count" min="0" max="20" value="0" class="input-short" style="width:4rem">
         </div>
-    </div>
-
-    <div class="planning-dialog__actions">
+      </div>
+      <div class="meal-dialog-top__actions">
+        <div class="meal-selected-info" id="meal-selected-info">
+          <span id="meal-recipe-name" class="meal-selected-info__name text-muted">Aucune recette sélectionnée</span>
+          <button type="button" id="btn-clear-recipe" class="btn-icon" title="Vider la sélection">✕</button>
+        </div>
         <button type="button" id="btn-save-meal" class="btn btn--primary">Enregistrer</button>
         <button type="button" id="btn-cancel-meal" class="btn btn--secondary">Annuler</button>
+      </div>
     </div>
+
+    <!-- Catalogue intégré -->
+    <div class="meal-browse-section">
+      <div class="meal-browse-filters">
+        <input type="search" id="browse-search" placeholder="Rechercher une recette…" class="browse-search-input" autocomplete="off">
+        <select id="browse-categorie" class="browse-filter-select">
+          <option value="">Toutes catégories</option>
+          <option value="plat">Plat</option>
+          <option value="entree">Entrée</option>
+          <option value="accompagnement">Accompagnement</option>
+          <option value="dessert">Dessert</option>
+          <option value="sauce">Sauce</option>
+          <option value="brunch">Brunch</option>
+          <option value="snack">Snack</option>
+        </select>
+      </div>
+      <div id="browse-loading" class="browse-loading">Chargement…</div>
+      <div id="browse-grid" class="browse-grid"></div>
+    </div>
+
   </div>
 </div>
 {% endif %}
@@ -589,34 +601,6 @@
 </dialog>
 {% endif %}
 
-<!-- ── Overlay : parcourir le catalogue (Cuisinier) ─────────── -->
-{% if is_cuisinier %}
-<div id="dialog-browse" class="browse-overlay" style="display:none" aria-modal="true" role="dialog">
-    <div class="browse-dialog">
-        <div class="browse-dialog__header">
-            <h2 class="browse-dialog__title">🖼️ Catalogue des recettes</h2>
-            <div class="browse-dialog__filters">
-                <input type="search" id="browse-search" placeholder="Rechercher…" class="browse-search-input" autocomplete="off">
-                <select id="browse-categorie" class="browse-filter-select">
-                    <option value="">Toutes catégories</option>
-                    <option value="plat">Plat</option>
-                    <option value="entree">Entrée</option>
-                    <option value="accompagnement">Accompagnement</option>
-                    <option value="dessert">Dessert</option>
-                    <option value="sauce">Sauce</option>
-                    <option value="brunch">Brunch</option>
-                    <option value="snack">Snack</option>
-                </select>
-                <button type="button" id="btn-close-browse" class="btn btn--secondary btn--sm">✕ Fermer</button>
-            </div>
-        </div>
-        <div class="browse-dialog__body">
-            <div id="browse-loading" class="browse-loading">Chargement…</div>
-            <div id="browse-grid" class="browse-grid"></div>
-        </div>
-    </div>
-</div>
-{% endif %}
 
 {% endblock %}
 

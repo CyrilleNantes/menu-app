@@ -68,26 +68,99 @@
         };
     }
 
-    // ── Dialogue : modifier un repas (Cuisinier) ─────────────────────────────
+    // ── Dialogue : modifier un repas — catalogue intégré (Cuisinier) ───────────
 
     if (IS_COOK) {
-        const dlg            = document.getElementById('dialog-meal');
-        const dlgLabel       = document.getElementById('dialog-meal-label');
-        const recipeName     = document.getElementById('meal-recipe-name');
+        const dlg             = document.getElementById('dialog-meal');
+        const dlgLabel        = document.getElementById('dialog-meal-label');
+        const recipeName      = document.getElementById('meal-recipe-name');
         const guestCountInput = document.getElementById('meal-guest-count');
+        const browseGrid      = document.getElementById('browse-grid');
+        const browseLoad      = document.getElementById('browse-loading');
+        const browseSearch    = document.getElementById('browse-search');
+        const browseCat       = document.getElementById('browse-categorie');
 
-        const search = makeSearchDropdown(
-            document.getElementById('meal-recipe-search'),
-            document.getElementById('meal-recipe-results'),
-            ({ title }) => { recipeName.textContent = title; recipeName.classList.remove('text-muted'); }
-        );
+        let currentSlot   = {};
+        let currentRecipe = { id: null, title: '' };
+        let browseCache   = null;
 
-        document.getElementById('meal-recipe-search')?.addEventListener('suggestion-select', e => {
-            search.setSelected(e.detail.id, e.detail.title);
-        });
+        function cloudThumb(url) {
+            if (!url || !url.includes('/upload/')) return '';
+            return url.replace('/upload/', '/upload/f_auto,q_auto,w_300,c_limit/', 1);
+        }
 
-        let currentSlot = {};
+        function setRecipe(id, title) {
+            currentRecipe = { id: id || null, title: title || '' };
+            if (recipeName) {
+                recipeName.textContent = title || 'Aucune recette sélectionnée';
+                recipeName.classList.toggle('text-muted', !title);
+            }
+            browseGrid?.querySelectorAll('.browse-card').forEach(c => {
+                c.classList.toggle('browse-card--selected',
+                    id != null && parseInt(c.dataset.id) === parseInt(id));
+            });
+        }
 
+        // Exposer pour le handler suggestions
+        window._setMealRecipe = setRecipe;
+
+        function renderBrowseGrid(recipes) {
+            if (!browseGrid) return;
+            browseGrid.innerHTML = '';
+            if (!recipes.length) {
+                browseGrid.innerHTML = '<p class="browse-empty">Aucune recette trouvée.</p>';
+                return;
+            }
+            recipes.forEach(r => {
+                const card = document.createElement('div');
+                card.className = 'browse-card';
+                if (currentRecipe.id != null && parseInt(r.id) === currentRecipe.id) {
+                    card.classList.add('browse-card--selected');
+                }
+                card.dataset.id    = r.id;
+                card.dataset.title = r.title;
+                const thumb = cloudThumb(r.photo_url);
+                const macros = [
+                    r.calories_per_serving ? `🔥 ${r.calories_per_serving} kcal` : '',
+                    r.proteins_per_serving  ? `💪 ${r.proteins_per_serving} g`   : '',
+                ].filter(Boolean).join(' · ');
+                card.innerHTML = `
+                    ${thumb
+                        ? `<div class="browse-card__photo" style="background-image:url('${escHtml(thumb)}')"></div>`
+                        : `<div class="browse-card__photo browse-card__photo--empty">🍽️</div>`}
+                    <div class="browse-card__body">
+                        <span class="browse-card__cat">${escHtml(r.category)}</span>
+                        <p class="browse-card__title">${escHtml(r.title)}</p>
+                        ${macros ? `<p class="browse-card__macros">${macros}</p>` : ''}
+                    </div>`;
+                browseGrid.appendChild(card);
+            });
+        }
+
+        function filterBrowse() {
+            if (!browseCache) return;
+            const q   = (browseSearch?.value || '').toLowerCase().trim();
+            const cat = browseCat?.value || '';
+            const filtered = browseCache.filter(r =>
+                (!q || r.title.toLowerCase().includes(q)) &&
+                (!cat || r.category === cat)
+            );
+            renderBrowseGrid(filtered);
+        }
+
+        async function loadCatalog() {
+            if (browseCache) { filterBrowse(); return; }
+            if (browseLoad) browseLoad.style.display = 'block';
+            try {
+                const resp = await fetch('/api/recettes/?browse=1');
+                const data = await resp.json();
+                browseCache = data.ok ? data.results : [];
+            } catch { browseCache = []; }
+            if (browseLoad) browseLoad.style.display = 'none';
+            filterBrowse();
+        }
+
+        // Ouvrir le dialogue en cliquant sur un créneau
         document.querySelectorAll('.meal-slot[data-editable]').forEach(slot => {
             slot.addEventListener('click', function () {
                 if (this.dataset.absent === 'true') return;
@@ -97,7 +170,7 @@
                     date:         this.dataset.date,
                     meal_time:    this.dataset.mealTime,
                     meal_id:      this.dataset.mealId || null,
-                    recipe_id:    this.dataset.recipeId || null,
+                    recipe_id:    this.dataset.recipeId ? parseInt(this.dataset.recipeId) : null,
                     recipe_title: this.dataset.recipeTitle || '',
                     member_ids:   effectiveMemberIds,
                     guest_count:  parseInt(this.dataset.guests) || 0,
@@ -106,40 +179,46 @@
                 const label = currentSlot.meal_time === 'lunch' ? 'Midi' : 'Soir';
                 dlgLabel.textContent = `${currentSlot.date} — ${label}`;
 
-                search.setSelected(currentSlot.recipe_id, currentSlot.recipe_title);
-                recipeName.textContent = currentSlot.recipe_title || 'Aucune recette';
-                recipeName.classList.toggle('text-muted', !currentSlot.recipe_title);
+                // Recette courante (peut être null si créneau vide)
+                setRecipe(currentSlot.recipe_id, currentSlot.recipe_title);
 
-                // Initialiser les checkboxes membres
+                // Convives
                 document.querySelectorAll('.meal-member-cb').forEach(cb => {
                     cb.checked = currentSlot.member_ids.includes(parseInt(cb.value));
                 });
                 if (guestCountInput) guestCountInput.value = currentSlot.guest_count;
 
+                // Réinitialiser les filtres catalogue
+                if (browseSearch) browseSearch.value = '';
+                if (browseCat)    browseCat.value    = '';
+
                 dlg.style.display = 'flex';
+                loadCatalog();
             });
         });
 
-        document.getElementById('btn-clear-recipe')?.addEventListener('click', () => {
-            search.clear();
-            recipeName.textContent = 'Aucune recette';
-            recipeName.classList.add('text-muted');
+        // Sélectionner une recette via le catalogue
+        browseGrid?.addEventListener('click', e => {
+            const card = e.target.closest('.browse-card');
+            if (!card) return;
+            setRecipe(parseInt(card.dataset.id, 10), card.dataset.title);
         });
+
+        document.getElementById('btn-clear-recipe')?.addEventListener('click', () => setRecipe(null, ''));
+        browseSearch?.addEventListener('input', filterBrowse);
+        browseCat?.addEventListener('change', filterBrowse);
 
         // Enregistrer
         document.getElementById('btn-save-meal')?.addEventListener('click', async () => {
-            const selected = search.getSelected();
-            const memberIds = [...document.querySelectorAll('.meal-member-cb:checked')]
-                .map(cb => parseInt(cb.value));
+            const memberIds  = [...document.querySelectorAll('.meal-member-cb:checked')].map(cb => parseInt(cb.value));
             const guestCount = parseInt(guestCountInput?.value || '0') || 0;
             const body = {
                 date:        currentSlot.date,
                 meal_time:   currentSlot.meal_time,
-                recipe_id:   selected.id ? parseInt(selected.id) : null,
+                recipe_id:   currentRecipe.id ? parseInt(currentRecipe.id) : null,
                 member_ids:  memberIds,
                 guest_count: guestCount,
             };
-
             try {
                 const resp = await fetch(`/planning/${PLAN_ID}/meal/`, {
                     method:  'POST',
@@ -150,11 +229,7 @@
                 if (data.ok) {
                     dlg.style.display = 'none';
                     updateSlotDOM(currentSlot.date, currentSlot.meal_time, data);
-                    // Réafficher les alertes d'équilibre (le menu a changé)
-                    if (typeof window._resetAlertesDismissed === 'function') {
-                        window._resetAlertesDismissed();
-                    }
-                    // Rafraîchir le bilan
+                    if (typeof window._resetAlertesDismissed === 'function') window._resetAlertesDismissed();
                     refreshBilan();
                 } else {
                     alert(`Erreur : ${data.error}`);
@@ -525,18 +600,10 @@
             if (slot) {
                 // Déclencher le click sur le slot pour ouvrir le dialog repas
                 slot.click();
-                // Puis pré-remplir la recette après ouverture (micro-délai pour le showModal)
+                // Pré-sélectionner la recette dans le catalogue intégré
                 setTimeout(() => {
-                    const recipeSearch = document.getElementById('meal-recipe-search');
-                    const recipeName   = document.getElementById('meal-recipe-name');
-                    if (recipeSearch && recipeName) {
-                        recipeSearch.value  = btn.dataset.recipeTitle;
-                        recipeName.textContent = btn.dataset.recipeTitle;
-                        recipeName.classList.remove('text-muted');
-                        // Mettre à jour l'état interne du search helper via un événement custom
-                        recipeSearch.dispatchEvent(new CustomEvent('suggestion-select', {
-                            detail: { id: btn.dataset.recipeId, title: btn.dataset.recipeTitle }
-                        }));
+                    if (typeof window._setMealRecipe === 'function') {
+                        window._setMealRecipe(parseInt(btn.dataset.recipeId, 10), btn.dataset.recipeTitle);
                     }
                 }, 50);
             }
@@ -866,109 +933,6 @@
         }
     }
 
-    // ── Catalogue browsable (Cuisinier) ──────────────────────────────────────
-
-    if (IS_COOK) {
-        const dlgBrowse   = document.getElementById('dialog-browse');
-        const browseGrid  = document.getElementById('browse-grid');
-        const browseLoad  = document.getElementById('browse-loading');
-        const browseSearch    = document.getElementById('browse-search');
-        const browseCat       = document.getElementById('browse-categorie');
-        let   browseCache    = null;
-        let   browseCallback = null;
-
-        function cloudThumb(url) {
-            if (!url || !url.includes('/upload/')) return '';
-            return url.replace('/upload/', '/upload/f_auto,q_auto,w_300,c_limit/', 1);
-        }
-
-        function renderBrowseGrid(recipes) {
-            browseGrid.innerHTML = '';
-            if (!recipes.length) {
-                browseGrid.innerHTML = '<p class="browse-empty">Aucune recette trouvée.</p>';
-                return;
-            }
-            recipes.forEach(r => {
-                const card = document.createElement('div');
-                card.className = 'browse-card';
-                card.dataset.id    = r.id;
-                card.dataset.title = r.title;
-                const thumb = cloudThumb(r.photo_url);
-                const macros = [
-                    r.calories_per_serving ? `🔥 ${r.calories_per_serving} kcal` : '',
-                    r.proteins_per_serving  ? `💪 ${r.proteins_per_serving} g` : '',
-                ].filter(Boolean).join(' · ');
-                card.innerHTML = `
-                    ${thumb
-                        ? `<div class="browse-card__photo" style="background-image:url('${escHtml(thumb)}')"></div>`
-                        : `<div class="browse-card__photo browse-card__photo--empty">🍽️</div>`}
-                    <div class="browse-card__body">
-                        <span class="browse-card__cat">${escHtml(r.category)}</span>
-                        <p class="browse-card__title">${escHtml(r.title)}</p>
-                        ${macros ? `<p class="browse-card__macros">${macros}</p>` : ''}
-                    </div>`;
-                browseGrid.appendChild(card);
-            });
-        }
-
-        function filterBrowse() {
-            if (!browseCache) return;
-            const q   = (browseSearch?.value || '').toLowerCase().trim();
-            const cat = browseCat?.value || '';
-            const filtered = browseCache.filter(r => {
-                return (!q || r.title.toLowerCase().includes(q)) &&
-                       (!cat || r.category === cat);
-            });
-            renderBrowseGrid(filtered);
-        }
-
-        function closeBrowse() {
-            if (dlgBrowse) dlgBrowse.style.display = 'none';
-        }
-
-        async function openBrowse(callback) {
-            if (!dlgBrowse) return;
-            browseCallback = callback;
-            if (browseSearch) browseSearch.value = '';
-            if (browseCat)    browseCat.value    = '';
-            dlgBrowse.style.display = 'flex';
-            if (!browseCache) {
-                if (browseLoad) browseLoad.style.display = 'block';
-                if (browseGrid) browseGrid.innerHTML = '';
-                try {
-                    const resp = await fetch('/api/recettes/?browse=1');
-                    const data = await resp.json();
-                    browseCache = data.ok ? data.results : [];
-                } catch { browseCache = []; }
-                if (browseLoad) browseLoad.style.display = 'none';
-            }
-            filterBrowse();
-        }
-
-        document.getElementById('btn-browse-recipes')?.addEventListener('click', () => {
-            // Le meal-overlay reste ouvert (z-index 100), le browse-overlay s'ouvre par-dessus (z-index 200)
-            openBrowse(({ id, title }) => {
-                const recipeName  = document.getElementById('meal-recipe-name');
-                const searchInput = document.getElementById('meal-recipe-search');
-                if (recipeName)  { recipeName.textContent = title; recipeName.classList.remove('text-muted'); }
-                if (searchInput)   searchInput.value = title;
-                searchInput?.dispatchEvent(new CustomEvent('suggestion-select',
-                    { detail: { id, title }, bubbles: true }));
-            });
-        });
-
-        browseGrid?.addEventListener('click', e => {
-            const card = e.target.closest('.browse-card');
-            if (!card || !browseCallback) return;
-            closeBrowse();
-            browseCallback({ id: parseInt(card.dataset.id, 10), title: card.dataset.title });
-        });
-
-        document.getElementById('btn-close-browse')?.addEventListener('click', closeBrowse);
-        dlgBrowse?.addEventListener('click', e => { if (e.target === dlgBrowse) closeBrowse(); });
-        browseSearch?.addEventListener('input', filterBrowse);
-        browseCat?.addEventListener('change', filterBrowse);
-    }
 
 })();
 

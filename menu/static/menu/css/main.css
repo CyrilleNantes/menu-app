@@ -395,39 +395,41 @@ select.ing-category { background: #fff; cursor: pointer; }
 .proposal-slot-select { padding: .35rem .5rem; border: 1.5px solid #ced4da; border-radius: var(--radius); font-size: .82rem; }
 .proposals-count { color: var(--color-muted); font-size: .85rem; font-weight: 400; }
 
-/* Overlay repas (div, remplace <dialog> pour éviter le top-layer) */
+/* Overlay repas */
 .meal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); padding: 1rem; }
-/* Dialog planning (boîte blanche à l'intérieur des overlays) */
+/* Dialog planning — boîte blanche de base */
 .planning-dialog { background: #fff; border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.2); padding: 1.75rem; max-width: 420px; width: 94%; }
 .planning-dialog::backdrop { background: rgba(0,0,0,.45); }
 .planning-dialog__title { font-size: 1.1rem; font-weight: 700; margin-bottom: .35rem; }
-.planning-dialog__slot { font-size: .88rem; color: var(--color-muted); margin-bottom: 1.1rem; }
+.planning-dialog__slot { font-size: .88rem; color: var(--color-muted); margin-bottom: .5rem; }
 .planning-dialog__actions { display: flex; gap: .75rem; margin-top: 1.25rem; }
-/* Bouton parcourir dans le dialog repas */
-.browse-btn { margin-top: .5rem; font-size: .85rem; color: var(--color-primary); border: 1px dashed var(--color-primary); width: 100%; }
-/* Overlay catalogue browsable (z-index > meal-overlay pour s'afficher par-dessus) */
-.browse-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 1rem; }
-.browse-dialog { background: #fff; border-radius: var(--radius); box-shadow: 0 8px 40px rgba(0,0,0,.25); width: 94vw; max-width: 1100px; height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
-.browse-dialog__header { padding: 1rem 1.25rem .75rem; border-bottom: 1px solid #dee2e6; flex-shrink: 0; }
-.browse-dialog__title { font-size: 1.1rem; font-weight: 700; margin-bottom: .65rem; }
-.browse-dialog__filters { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+/* Panneau repas large (catalogue intégré) */
+.planning-dialog--wide { max-width: min(920px, 96vw); width: 96vw; max-height: 90vh; padding: 0; display: flex; flex-direction: column; }
+.meal-dialog-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem 1.5rem; padding: 1.1rem 1.5rem; border-bottom: 1px solid #e9ecef; flex-shrink: 0; background: #fff; border-radius: var(--radius) var(--radius) 0 0; }
+.meal-dialog-top__info { min-width: 130px; }
+.meal-dialog-top__convives { flex: 1; min-width: 200px; }
+.meal-dialog-top__actions { display: flex; flex-direction: column; gap: .5rem; align-items: flex-end; min-width: 180px; }
+.meal-browse-section { flex: 1; overflow-y: auto; padding: 1rem 1.5rem 1.5rem; background: #fff; border-radius: 0 0 var(--radius) var(--radius); }
+.meal-browse-filters { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .85rem; }
+/* Catalogue de recettes */
 .browse-search-input { flex: 1; min-width: 180px; padding: .4rem .7rem; border: 1px solid #ced4da; border-radius: 4px; font-size: .9rem; }
 .browse-filter-select { padding: .4rem .6rem; border: 1px solid #ced4da; border-radius: 4px; font-size: .9rem; }
-.browse-dialog__body { flex: 1; overflow-y: auto; padding: 1rem 1.25rem; }
 .browse-loading { text-align: center; padding: 2rem; color: var(--color-muted); }
 .browse-empty { text-align: center; padding: 2rem; color: var(--color-muted); }
-.browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; }
-.browse-card { border: 1px solid #dee2e6; border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: box-shadow .15s, transform .15s; background: #fff; }
+.browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .85rem; }
+.browse-card { border: 2px solid #dee2e6; border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: box-shadow .15s, transform .15s, border-color .15s; background: #fff; }
 .browse-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); transform: translateY(-2px); }
-.browse-card__photo { height: 120px; background-size: cover; background-position: center; background-color: #f0f0f0; }
+.browse-card--selected { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(45,106,79,.2); }
+.browse-card__photo { height: 110px; background-size: cover; background-position: center; background-color: #f0f0f0; }
 .browse-card__photo--empty { display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #ccc; }
-.browse-card__body { padding: .6rem .75rem .75rem; }
-.browse-card__cat { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--color-primary); }
-.browse-card__title { font-size: .88rem; font-weight: 600; margin: .2rem 0 .3rem; line-height: 1.3; }
-.browse-card__macros { font-size: .75rem; color: var(--color-muted); }
+.browse-card__body { padding: .5rem .65rem .65rem; }
+.browse-card__cat { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--color-primary); }
+.browse-card__title { font-size: .85rem; font-weight: 600; margin: .2rem 0 .25rem; line-height: 1.3; }
+.browse-card__macros { font-size: .72rem; color: var(--color-muted); }
 @media (max-width: 600px) {
   .browse-grid { grid-template-columns: repeat(2, 1fr); gap: .6rem; }
-  .browse-dialog { width: 100vw; height: 100vh; border-radius: 0; }
+  .meal-dialog-top { gap: .75rem; padding: .9rem 1rem; }
+  .planning-dialog--wide { max-height: 96vh; }
 }
 
 /* Recherche de recette dans dialog */
