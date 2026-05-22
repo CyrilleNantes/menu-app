@@ -162,8 +162,10 @@
 
         // Ouvrir le dialogue en cliquant sur un créneau
         document.querySelectorAll('.meal-slot[data-editable]').forEach(slot => {
-            slot.addEventListener('click', function () {
+            slot.addEventListener('click', function (e) {
                 if (this.dataset.absent === 'true') return;
+                // Ne pas ouvrir le dialogue si on clique sur un bouton d'action du créneau
+                if (e.target.closest('.btn-absent, .btn-suggestions, .btn-unabsent, .btn-add-dish, .btn-remove-dish')) return;
                 const slotMemberIds = JSON.parse(this.dataset.members || '[]');
                 const effectiveMemberIds = slotMemberIds.length ? slotMemberIds : PRESENT_MEMBER_IDS;
                 currentSlot = {
