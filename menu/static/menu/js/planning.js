@@ -921,21 +921,25 @@
             renderBrowseGrid(filtered);
         }
 
+        function closeBrowse() {
+            if (dlgBrowse) dlgBrowse.style.display = 'none';
+        }
+
         async function openBrowse(callback) {
             if (!dlgBrowse) return;
             browseCallback = callback;
-            browseSearch.value = '';
-            browseCat.value    = '';
-            dlgBrowse.showModal();
+            if (browseSearch) browseSearch.value = '';
+            if (browseCat)    browseCat.value    = '';
+            dlgBrowse.style.display = 'flex';
             if (!browseCache) {
-                browseLoad.style.display = 'block';
-                browseGrid.innerHTML = '';
+                if (browseLoad) browseLoad.style.display = 'block';
+                if (browseGrid) browseGrid.innerHTML = '';
                 try {
                     const resp = await fetch('/api/recettes/?browse=1');
                     const data = await resp.json();
                     browseCache = data.ok ? data.results : [];
                 } catch { browseCache = []; }
-                browseLoad.style.display = 'none';
+                if (browseLoad) browseLoad.style.display = 'none';
             }
             filterBrowse();
         }
@@ -954,12 +958,12 @@
         browseGrid?.addEventListener('click', e => {
             const card = e.target.closest('.browse-card');
             if (!card || !browseCallback) return;
-            dlgBrowse.close();
+            closeBrowse();
             browseCallback({ id: parseInt(card.dataset.id, 10), title: card.dataset.title });
         });
 
-        document.getElementById('btn-close-browse')?.addEventListener('click', () => dlgBrowse?.close());
-        dlgBrowse?.addEventListener('click', e => { if (e.target === dlgBrowse) dlgBrowse.close(); });
+        document.getElementById('btn-close-browse')?.addEventListener('click', closeBrowse);
+        dlgBrowse?.addEventListener('click', e => { if (e.target === dlgBrowse) closeBrowse(); });
         browseSearch?.addEventListener('input', filterBrowse);
         browseCat?.addEventListener('change', filterBrowse);
     }
