@@ -116,7 +116,7 @@
                 });
                 if (guestCountInput) guestCountInput.value = currentSlot.guest_count;
 
-                dlg.showModal();
+                dlg.style.display = 'flex';
             });
         });
 
@@ -148,7 +148,7 @@
                 });
                 const data = await resp.json();
                 if (data.ok) {
-                    dlg.close();
+                    dlg.style.display = 'none';
                     updateSlotDOM(currentSlot.date, currentSlot.meal_time, data);
                     // Réafficher les alertes d'équilibre (le menu a changé)
                     if (typeof window._resetAlertesDismissed === 'function') {
@@ -164,7 +164,8 @@
             }
         });
 
-        document.getElementById('btn-cancel-meal')?.addEventListener('click', () => dlg.close());
+        document.getElementById('btn-cancel-meal')?.addEventListener('click', () => { dlg.style.display = 'none'; });
+        dlg?.addEventListener('click', e => { if (e.target === dlg) dlg.style.display = 'none'; });
     }
 
     // ── Mise à jour du DOM après sauvegarde ──────────────────────────────────
@@ -873,9 +874,8 @@
         const browseLoad  = document.getElementById('browse-loading');
         const browseSearch    = document.getElementById('browse-search');
         const browseCat       = document.getElementById('browse-categorie');
-        let   browseCache      = null;
-        let   browseCallback   = null;
-        let   browseCancelBack = null;
+        let   browseCache    = null;
+        let   browseCallback = null;
 
         function cloudThumb(url) {
             if (!url || !url.includes('/upload/')) return '';
@@ -922,15 +922,13 @@
             renderBrowseGrid(filtered);
         }
 
-        function closeBrowse(cancelled = false) {
+        function closeBrowse() {
             if (dlgBrowse) dlgBrowse.style.display = 'none';
-            if (cancelled && browseCancelBack) browseCancelBack();
         }
 
-        async function openBrowse(callback, cancelCallback = null) {
+        async function openBrowse(callback) {
             if (!dlgBrowse) return;
-            browseCallback   = callback;
-            browseCancelBack = cancelCallback;
+            browseCallback = callback;
             if (browseSearch) browseSearch.value = '';
             if (browseCat)    browseCat.value    = '';
             dlgBrowse.style.display = 'flex';
@@ -948,22 +946,14 @@
         }
 
         document.getElementById('btn-browse-recipes')?.addEventListener('click', () => {
-            // Fermer dialog-meal pour libérer le top-layer, puis ouvrir l'overlay
-            const dlgMeal = document.getElementById('dialog-meal');
-            if (dlgMeal) dlgMeal.close();
-
+            // Le meal-overlay reste ouvert (z-index 100), le browse-overlay s'ouvre par-dessus (z-index 200)
             openBrowse(({ id, title }) => {
-                // Recette choisie → rouvrir dialog-meal avec la recette pré-remplie
                 const recipeName  = document.getElementById('meal-recipe-name');
                 const searchInput = document.getElementById('meal-recipe-search');
                 if (recipeName)  { recipeName.textContent = title; recipeName.classList.remove('text-muted'); }
                 if (searchInput)   searchInput.value = title;
                 searchInput?.dispatchEvent(new CustomEvent('suggestion-select',
                     { detail: { id, title }, bubbles: true }));
-                if (dlgMeal) dlgMeal.showModal();
-            }, () => {
-                // Catalogue fermé sans sélection → rouvrir dialog-meal tel quel
-                if (dlgMeal) dlgMeal.showModal();
             });
         });
 
@@ -974,8 +964,8 @@
             browseCallback({ id: parseInt(card.dataset.id, 10), title: card.dataset.title });
         });
 
-        document.getElementById('btn-close-browse')?.addEventListener('click', () => closeBrowse(true));
-        dlgBrowse?.addEventListener('click', e => { if (e.target === dlgBrowse) closeBrowse(true); });
+        document.getElementById('btn-close-browse')?.addEventListener('click', closeBrowse);
+        dlgBrowse?.addEventListener('click', e => { if (e.target === dlgBrowse) closeBrowse(); });
         browseSearch?.addEventListener('input', filterBrowse);
         browseCat?.addEventListener('change', filterBrowse);
     }

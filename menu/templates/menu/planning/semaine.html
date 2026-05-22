@@ -487,7 +487,8 @@
 
 <!-- ── Dialog : modifier un repas (Cuisinier) ───────────────── -->
 {% if is_cuisinier %}
-<dialog id="dialog-meal" class="planning-dialog">
+<div id="dialog-meal" class="meal-overlay" style="display:none">
+  <div class="planning-dialog">
     <h2 class="planning-dialog__title">Modifier le repas</h2>
     <p class="planning-dialog__slot" id="dialog-meal-label"></p>
 
@@ -527,7 +528,8 @@
         <button type="button" id="btn-save-meal" class="btn btn--primary">Enregistrer</button>
         <button type="button" id="btn-cancel-meal" class="btn btn--secondary">Annuler</button>
     </div>
-</dialog>
+  </div>
+</div>
 {% endif %}
 
 <!-- ── Dialog : proposer une recette (Convive) ──────────────── -->
