@@ -502,6 +502,9 @@
             <span id="meal-recipe-name" class="meal-selected-info__name text-muted">Aucune recette</span>
             <button type="button" id="btn-clear-recipe" class="btn-icon" title="Vider">✕</button>
         </div>
+        <button type="button" id="btn-browse-recipes" class="btn btn--ghost btn--sm browse-btn">
+            🖼️ Parcourir le catalogue
+        </button>
     </div>
 
     <div class="form-group">
@@ -580,6 +583,33 @@
     <div class="planning-dialog__actions">
         <button type="button" id="btn-save-dish" class="btn btn--primary">Ajouter</button>
         <button type="button" id="btn-cancel-dish" class="btn btn--secondary">Annuler</button>
+    </div>
+</dialog>
+{% endif %}
+
+<!-- ── Dialog : parcourir le catalogue (Cuisinier) ──────────── -->
+{% if is_cuisinier %}
+<dialog id="dialog-browse" class="browse-dialog">
+    <div class="browse-dialog__header">
+        <h2 class="browse-dialog__title">🖼️ Catalogue des recettes</h2>
+        <div class="browse-dialog__filters">
+            <input type="search" id="browse-search" placeholder="Rechercher…" class="browse-search-input" autocomplete="off">
+            <select id="browse-categorie" class="browse-filter-select">
+                <option value="">Toutes catégories</option>
+                <option value="plat">Plat</option>
+                <option value="entree">Entrée</option>
+                <option value="accompagnement">Accompagnement</option>
+                <option value="dessert">Dessert</option>
+                <option value="sauce">Sauce</option>
+                <option value="brunch">Brunch</option>
+                <option value="snack">Snack</option>
+            </select>
+            <button type="button" id="btn-close-browse" class="btn btn--secondary btn--sm">✕ Fermer</button>
+        </div>
+    </div>
+    <div class="browse-dialog__body">
+        <div id="browse-loading" class="browse-loading">Chargement…</div>
+        <div id="browse-grid" class="browse-grid"></div>
     </div>
 </dialog>
 {% endif %}
