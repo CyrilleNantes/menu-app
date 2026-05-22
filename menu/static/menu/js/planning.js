@@ -865,6 +865,105 @@
         }
     }
 
+    // ── Catalogue browsable (Cuisinier) ──────────────────────────────────────
+
+    if (IS_COOK) {
+        const dlgBrowse   = document.getElementById('dialog-browse');
+        const browseGrid  = document.getElementById('browse-grid');
+        const browseLoad  = document.getElementById('browse-loading');
+        const browseSearch    = document.getElementById('browse-search');
+        const browseCat       = document.getElementById('browse-categorie');
+        let   browseCache     = null;
+        let   browseCallback  = null;
+
+        function cloudThumb(url) {
+            if (!url || !url.includes('/upload/')) return '';
+            return url.replace('/upload/', '/upload/f_auto,q_auto,w_300,c_limit/', 1);
+        }
+
+        function renderBrowseGrid(recipes) {
+            browseGrid.innerHTML = '';
+            if (!recipes.length) {
+                browseGrid.innerHTML = '<p class="browse-empty">Aucune recette trouvée.</p>';
+                return;
+            }
+            recipes.forEach(r => {
+                const card = document.createElement('div');
+                card.className = 'browse-card';
+                card.dataset.id    = r.id;
+                card.dataset.title = r.title;
+                const thumb = cloudThumb(r.photo_url);
+                const macros = [
+                    r.calories_per_serving ? `🔥 ${r.calories_per_serving} kcal` : '',
+                    r.proteins_per_serving  ? `💪 ${r.proteins_per_serving} g` : '',
+                ].filter(Boolean).join(' · ');
+                card.innerHTML = `
+                    ${thumb
+                        ? `<div class="browse-card__photo" style="background-image:url('${escHtml(thumb)}')"></div>`
+                        : `<div class="browse-card__photo browse-card__photo--empty">🍽️</div>`}
+                    <div class="browse-card__body">
+                        <span class="browse-card__cat">${escHtml(r.category)}</span>
+                        <p class="browse-card__title">${escHtml(r.title)}</p>
+                        ${macros ? `<p class="browse-card__macros">${macros}</p>` : ''}
+                    </div>`;
+                browseGrid.appendChild(card);
+            });
+        }
+
+        function filterBrowse() {
+            if (!browseCache) return;
+            const q   = (browseSearch?.value || '').toLowerCase().trim();
+            const cat = browseCat?.value || '';
+            const filtered = browseCache.filter(r => {
+                return (!q || r.title.toLowerCase().includes(q)) &&
+                       (!cat || r.category === cat);
+            });
+            renderBrowseGrid(filtered);
+        }
+
+        async function openBrowse(callback) {
+            if (!dlgBrowse) return;
+            browseCallback = callback;
+            browseSearch.value = '';
+            browseCat.value    = '';
+            dlgBrowse.showModal();
+            if (!browseCache) {
+                browseLoad.style.display = 'block';
+                browseGrid.innerHTML = '';
+                try {
+                    const resp = await fetch('/api/recettes/?browse=1');
+                    const data = await resp.json();
+                    browseCache = data.ok ? data.results : [];
+                } catch { browseCache = []; }
+                browseLoad.style.display = 'none';
+            }
+            filterBrowse();
+        }
+
+        document.getElementById('btn-browse-recipes')?.addEventListener('click', () => {
+            openBrowse(({ id, title }) => {
+                const recipeName  = document.getElementById('meal-recipe-name');
+                const searchInput = document.getElementById('meal-recipe-search');
+                if (recipeName)  { recipeName.textContent = title; recipeName.classList.remove('text-muted'); }
+                if (searchInput)   searchInput.value = title;
+                searchInput?.dispatchEvent(new CustomEvent('suggestion-select',
+                    { detail: { id, title }, bubbles: true }));
+            });
+        });
+
+        browseGrid?.addEventListener('click', e => {
+            const card = e.target.closest('.browse-card');
+            if (!card || !browseCallback) return;
+            dlgBrowse.close();
+            browseCallback({ id: parseInt(card.dataset.id, 10), title: card.dataset.title });
+        });
+
+        document.getElementById('btn-close-browse')?.addEventListener('click', () => dlgBrowse?.close());
+        dlgBrowse?.addEventListener('click', e => { if (e.target === dlgBrowse) dlgBrowse.close(); });
+        browseSearch?.addEventListener('input', filterBrowse);
+        browseCat?.addEventListener('change', filterBrowse);
+    }
+
 })();
 
 // ── Présence ────────────────────────────────────────────────────────────────

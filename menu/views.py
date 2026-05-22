@@ -1105,26 +1105,60 @@ def supprimer_proposition(request, proposal_id):
 
 @login_required
 def api_recettes(request):
-    """API JSON : liste de recettes filtrées par titre (pour le planning)."""
-    q = request.GET.get("q", "").strip()
-    qs = Recipe.objects.filter(actif=True).only(
-        "id", "title", "category", "complexity", "base_servings", "calories_per_serving"
-    )
-    if q:
-        from .models import _normaliser_nom
-        for word in _normaliser_nom(q).split():
-            qs = qs.filter(title_normalise__icontains=word)
-    qs = qs.order_by("title")[:20]
-    results = [
-        {
-            "id": r.id,
-            "title": r.title,
-            "category": r.category,
-            "base_servings": r.base_servings,
-            "calories_per_serving": r.calories_per_serving,
-        }
-        for r in qs
-    ]
+    """
+    API JSON : liste de recettes pour le planning.
+    - ?q=texte       → recherche textuelle, max 20 résultats (autocomplete)
+    - ?browse=1      → catalogue complet pour le parcourir (photo, macros, sans limite texte)
+    - ?categorie=X   → filtre catégorie (compatible browse)
+    """
+    q         = request.GET.get("q", "").strip()
+    browse    = request.GET.get("browse") == "1"
+    categorie = request.GET.get("categorie", "").strip()
+
+    qs = Recipe.objects.filter(actif=True)
+
+    if browse:
+        qs = qs.only(
+            "id", "title", "category", "complexity",
+            "calories_per_serving", "proteins_per_serving", "photo_url",
+        )
+        if categorie:
+            qs = qs.filter(category=categorie)
+        if q:
+            from .models import _normaliser_nom
+            for word in _normaliser_nom(q).split():
+                qs = qs.filter(title_normalise__icontains=word)
+        qs = qs.order_by("title")
+        results = [
+            {
+                "id":                  r.id,
+                "title":               r.title,
+                "category":            r.category,
+                "calories_per_serving": round(r.calories_per_serving) if r.calories_per_serving else None,
+                "proteins_per_serving": round(r.proteins_per_serving) if r.proteins_per_serving else None,
+                "photo_url":           r.photo_url or "",
+            }
+            for r in qs
+        ]
+    else:
+        qs = qs.only(
+            "id", "title", "category", "complexity", "base_servings", "calories_per_serving"
+        )
+        if q:
+            from .models import _normaliser_nom
+            for word in _normaliser_nom(q).split():
+                qs = qs.filter(title_normalise__icontains=word)
+        qs = qs.order_by("title")[:20]
+        results = [
+            {
+                "id":                  r.id,
+                "title":               r.title,
+                "category":            r.category,
+                "base_servings":       r.base_servings,
+                "calories_per_serving": r.calories_per_serving,
+            }
+            for r in qs
+        ]
     return JsonResponse({"ok": True, "results": results})
 
 
