@@ -873,8 +873,9 @@
         const browseLoad  = document.getElementById('browse-loading');
         const browseSearch    = document.getElementById('browse-search');
         const browseCat       = document.getElementById('browse-categorie');
-        let   browseCache     = null;
-        let   browseCallback  = null;
+        let   browseCache      = null;
+        let   browseCallback   = null;
+        let   browseCancelBack = null;
 
         function cloudThumb(url) {
             if (!url || !url.includes('/upload/')) return '';
@@ -921,13 +922,15 @@
             renderBrowseGrid(filtered);
         }
 
-        function closeBrowse() {
+        function closeBrowse(cancelled = false) {
             if (dlgBrowse) dlgBrowse.style.display = 'none';
+            if (cancelled && browseCancelBack) browseCancelBack();
         }
 
-        async function openBrowse(callback) {
+        async function openBrowse(callback, cancelCallback = null) {
             if (!dlgBrowse) return;
-            browseCallback = callback;
+            browseCallback   = callback;
+            browseCancelBack = cancelCallback;
             if (browseSearch) browseSearch.value = '';
             if (browseCat)    browseCat.value    = '';
             dlgBrowse.style.display = 'flex';
@@ -945,13 +948,22 @@
         }
 
         document.getElementById('btn-browse-recipes')?.addEventListener('click', () => {
+            // Fermer dialog-meal pour libérer le top-layer, puis ouvrir l'overlay
+            const dlgMeal = document.getElementById('dialog-meal');
+            if (dlgMeal) dlgMeal.close();
+
             openBrowse(({ id, title }) => {
+                // Recette choisie → rouvrir dialog-meal avec la recette pré-remplie
                 const recipeName  = document.getElementById('meal-recipe-name');
                 const searchInput = document.getElementById('meal-recipe-search');
                 if (recipeName)  { recipeName.textContent = title; recipeName.classList.remove('text-muted'); }
                 if (searchInput)   searchInput.value = title;
                 searchInput?.dispatchEvent(new CustomEvent('suggestion-select',
                     { detail: { id, title }, bubbles: true }));
+                if (dlgMeal) dlgMeal.showModal();
+            }, () => {
+                // Catalogue fermé sans sélection → rouvrir dialog-meal tel quel
+                if (dlgMeal) dlgMeal.showModal();
             });
         });
 
@@ -962,8 +974,8 @@
             browseCallback({ id: parseInt(card.dataset.id, 10), title: card.dataset.title });
         });
 
-        document.getElementById('btn-close-browse')?.addEventListener('click', closeBrowse);
-        dlgBrowse?.addEventListener('click', e => { if (e.target === dlgBrowse) closeBrowse(); });
+        document.getElementById('btn-close-browse')?.addEventListener('click', () => closeBrowse(true));
+        dlgBrowse?.addEventListener('click', e => { if (e.target === dlgBrowse) closeBrowse(true); });
         browseSearch?.addEventListener('input', filterBrowse);
         browseCat?.addEventListener('change', filterBrowse);
     }
