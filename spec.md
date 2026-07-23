@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v5.6** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-05-06
+> Version courante : **v5.9** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-05-22
 
 ---
 
@@ -39,10 +39,10 @@ Permettre à des familles de planifier leurs menus hebdomadaires, gérer un cata
 > ⚠️ CRITIQUE — L'IA ne doit jamais implémenter ce qui suit sans accord explicite.
 
 - Ne PAS utiliser React, Vue ou tout framework JS — vanilla JS uniquement
-- Ne PAS utiliser Supabase — Railway PostgreSQL uniquement
+- Ne PAS utiliser Supabase — PostgreSQL (Coolify) uniquement
 - Ne PAS utiliser SQLite — PostgreSQL en dev comme en prod
 - Ne PAS exposer d'API REST publique (pas de DRF)
-- Ne PAS implémenter Docker
+- Ne PAS ajouter de Dockerfile ou de conteneurisation manuelle dans le code applicatif (Coolify build et déploie via Nixpacks, hors périmètre du code du projet)
 - Ne PAS ajouter de système de messagerie entre utilisateurs
 - Ne PAS implémenter de notifications push — email uniquement, implémentation ultérieure
 - Ne PAS gérer des allergies avec un moteur de règles complexe — tags simples uniquement
@@ -131,7 +131,10 @@ Chaque utilisateur appartient à **une seule famille**. Un Cuisinier crée sa fa
 
 **Scopes requis** :
 - `https://www.googleapis.com/auth/calendar.events` (écriture événements uniquement — moindre privilège)
+- `https://www.googleapis.com/auth/calendar.readonly` (lecture de `calendarList.list` — nécessaire pour peupler le sélecteur de calendrier du profil, `calendar.events` seul ne le permet pas)
 - `https://www.googleapis.com/auth/tasks` (écriture tâches)
+
+> Un utilisateur déjà connecté avant l'ajout du scope `calendar.readonly` doit reconnecter son compte Google (déconnexion/reconnexion) pour que le nouveau scope s'applique — le refresh token existant ne l'inclut pas rétroactivement.
 
 ### 3.3 Référentiel nutritionnel Ciqual (ANSES) — version retravaillée
 
@@ -566,8 +569,9 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 **Règles de gestion** :
 1. Affiche toutes les recettes `actif=True` du catalogue global
 2. Filtres disponibles : catégorie, saison courante, type de cuisine, complexité
-3. Tri disponible : récentes, mieux notées, les plus simples
+3. Tri disponible : récentes, mieux notées, les plus simples, kcal croissant/décroissant, protéines croissant/décroissant (`ORDER BY` avec `nulls_last` — les recettes sans calcul nutritionnel restent en fin de liste plutôt que remonter en tête)
 4. Barre de recherche sur `title_normalise` — insensible aux accents et aux ligatures (`roti` trouve `Rôti`, `boeuf` trouve `bœuf`). La requête est normalisée via `_normaliser_nom` avant comparaison.
+5. Chaque carte recette affiche des badges 🔥 kcal et 💪 g protéines quand `calories_per_serving` / `proteins_per_serving` sont renseignés (masqués sinon)
 
 ---
 
@@ -719,12 +723,17 @@ Préférences de notification par utilisateur et par canal. Utilisé par les ser
 **Vue** : `modifier_meal(request, plan_id)`
 **Accès** : Cuisinier uniquement
 
+**Panneau repas** : cliquer un créneau ouvre un panneau unique large (920px, `div` overlay, pas de `<dialog>` natif — voir note ci-dessous) qui intègre directement le catalogue de recettes (filtres catégorie/recherche, grid scrollable avec photos et badges kcal/protéines) : plus de bouton "Parcourir" ni d'overlay secondaire. Cliquer une carte sélectionne la recette (highlight vert) dans le formulaire ; "Enregistrer" sauvegarde, "Annuler" ferme tout sans modification.
+
+> **Note technique — pourquoi un `div` overlay et pas `<dialog>`** : le premier essai empilait deux `<dialog>` HTML natifs (formulaire repas + catalogue), mais le "top layer" du navigateur bloque le `showModal()` d'un second dialog par-dessus un premier. Après plusieurs itérations (fermeture/réouverture séquentielle du dialog repas, conversion en `div` avec z-index), la solution retenue au 22/05/2026 est un panneau unique fusionné : plus de superposition de couches, plus de conflit top-layer.
+
 **Règles de gestion** :
 1. Crée ou met à jour un `Meal` pour une date + créneau donnés
 2. Si `recipe=None` → créneau vide (cantine, repas extérieur)
 3. Si `absent=True` → créneau marqué absent (personne ne mange à la maison)
 4. `member_ids` : liste d'IDs User filtrée aux membres de la famille — `servings_count = len(member_ids) + guest_count`
 5. `meal_members` mis à jour en M2M après `update_or_create`
+6. Les boutons d'action du créneau (absent, suggestions, accompagnement) ont un guard `stopPropagation` en tête de leur handler pour ne pas déclencher l'ouverture du panneau repas au clic
 
 **Réponse** :
 - `{"ok": true, "meal_id": 42, "recipe_title": "Hachis Parmentier", "servings_count": 2, "meal_member_ids": [1, 3], "guest_count": 0}`
@@ -869,11 +878,13 @@ Vue dédiée mobile avec :
 **Règles de gestion** :
 1. Vérifie le token OAuth (renouvelle si expiré)
 2. Pousse chaque `ShoppingItem` non coché vers la liste Google Tasks cible via `integrations/google_tasks.py`
-3. Chaque article = une tâche avec titre `"{quantite} {unite} {nom}"`
+3. Chaque article = une tâche avec titre `"{quantite} {unite} {nom}"` — si `known_ingredient` a une transco (`unit_weight_g` + `transco_unit_label`), le titre inclut aussi `"≈ N libellé(s)"` (même règle que l'affichage liste de courses, section 5.13)
+4. `select_related('known_ingredient')` sur la requête pour éviter le N+1 lors du calcul de la transco par article
 
 **Gestion des erreurs** :
 - Google non connecté → message warning + redirection vers la liste de courses
 - Erreur API Google → message flash + log
+- Google Tasks API non activée côté compte Google → message d'erreur explicite affiché au lieu de masquer silencieusement le sélecteur de liste (voir 5.23)
 
 ---
 
@@ -1207,6 +1218,30 @@ Toutes les actions mutantes utilisent `@require_POST` et affichent un résumé v
 - Suppression avec confirmation (`POST /management/ciqual/<ref_id>/supprimer/`) — `SET_NULL` sur `KnownIngredient.ciqual_ref`
 - Les entrées personnalisées sont distinguées par un badge "perso"
 
+> **Saisie `unit_weight_g`** : accepte la virgule comme séparateur décimal (locale FR, ex. `12,5`) en plus du point — remplacée par un point avant `float()` côté serveur (`maj_known_ingredient`).
+
+---
+
+## 5.23 Sélecteurs Google Calendar / Google Tasks (page profil)
+
+**URL page profil** : `GET /profil/`
+**URLs de sauvegarde** :
+- `POST /profil/calendar/` → `menu:choisir_calendar`
+- `POST /profil/tasklist/` → `menu:choisir_tasklist`
+
+**Accès** : tout utilisateur connecté avec Google déjà connecté (`google_connected=True`)
+
+**Règles de gestion** :
+1. À l'affichage du profil, si Google est connecté : appel à `google_calendar_get_calendars(user)` (`integrations/google_calendar.py`) et `google_tasks_get_tasklists(user)` (`integrations/google_tasks.py`) pour peupler deux sélecteurs indépendants
+2. `google_calendar_get_calendars` interroge `GET .../users/me/calendarList` avec `minAccessRole=writer` — ne retourne que les calendriers où l'utilisateur peut créer des événements
+3. Sélection pré-remplie : le calendrier/liste déjà enregistré (`UserProfile.google_calendar_id` / `google_tasklist_id`), ou `primary` par défaut si rien n'est encore choisi
+4. Un champ hidden (`calendar_title` / `tasklist_title`) est synchronisé en JS au choix (`syncHidden(selectId, hiddenId)`, factorisée pour les deux sélecteurs) — le libellé humain est conservé en plus de l'ID technique
+5. Soumission indépendante par sélecteur (deux `<form>` distincts, chacun avec son propre bouton "Enregistrer")
+
+**Gestion des erreurs** :
+- Échec de l'appel API (réseau, scope manquant, API non activée) → `google_calendars_error` / `google_tasklists_error` à `True`, message "⚠️ Impossible de charger les [calendriers/listes]. Recharge la page." affiché à la place du sélecteur, plutôt que de le masquer silencieusement
+- Erreur loggée en `warning`, ne bloque pas le reste de l'affichage du profil
+
 ---
 
 ## 8. Fixtures de référence
@@ -1290,6 +1325,9 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v5.4 | 2026-05-06 | Documentation : deux chemins d'upload photo distincts — formulaire d'édition → `Recipe.photo_url` (photo principale) ; bouton galerie → `RecipePhoto` (carousel, promotable). |
 | v5.5 | 2026-05-06 | Catégories recette : ajout `accompagnement` et `sauce` dans `CATEGORY_CHOICES`. Accompagnements sur créneau planning : modèle `MealDish`, migration 0021, liste de courses et bilan nutrition inclus, UI planning (＋ / ✕). |
 | v5.6 | 2026-05-06 | **Fiche recette** : infos nutritionnelles discrètes sous chaque ingrédient mappé (qty · kcal/100g · prot/100g). **Formulaire recette** : badge bleu protéines (`.prot-badge`) à côté du badge vert kcal. **Planning convive** : titres de recettes et accompagnements cliquables vers la fiche. **Fix bilan_par_membre** : membre présent sur la période mais non assigné à un repas → cible du créneau (plus 0). **Transco liste de courses** : `KnownIngredient.unit_weight_g` + `transco_unit_label` (migrations 0022–0023), `ShoppingItem.known_ingredient` FK, affichage `≈ N tranches` via filtre `transco_units`. Page Management : colonnes Poids/unité + Libellé unité éditables inline (colonne Synonymes retirée). |
+| v5.7 | 2026-05-07 | **Profil — sélecteurs Google** (5.23) : sélecteur de liste Google Tasks cible + sélecteur de calendrier Google Agenda cible (`google_calendar_get_calendars`, `minAccessRole=writer`), pré-remplis et sauvegardés indépendamment. Scope `calendar.readonly` ajouté (requis pour `calendarList.list` — reconnexion Google nécessaire pour les comptes déjà connectés). Export Google Tasks : transco (`≈ N unités`) ajoutée au titre de chaque tâche, `select_related` sur `known_ingredient`, message d'erreur explicite si l'API Tasks n'est pas activée. Fix : `unit_weight_g` accepte la virgule comme séparateur décimal (locale FR). |
+| v5.8 | 2026-05-11 | Catalogue recettes : badges 🔥 kcal / 💪 protéines sur les cartes (si renseignés) + 4 options de tri nutritionnel (kcal et protéines, croissant/décroissant, `nulls_last`). |
+| v5.9 | 2026-05-22 | Planning : formulaire repas et catalogue de recettes fusionnés en un seul panneau (920px) avec filtres et grid scrollable intégrés — suppression du bouton "Parcourir" et de l'overlay secondaire, résolution d'un conflit de "top layer" `<dialog>` rencontré en cours d'implémentation. Fix : clic sur les boutons d'action du créneau (absent/suggestions/accompagnement) n'ouvre plus le panneau repas par erreur (guard `stopPropagation`). |
 
 ### Détail v2.0
 

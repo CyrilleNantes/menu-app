@@ -26,15 +26,15 @@ Avant toute intervention sur un projet, l'IA DOIT :
 |----------------------|------------------------------------------------------------------------|
 | Langage              | Python 3.x                                                             |
 | Framework web        | Django (version stable récente)                                        |
-| Base de données      | PostgreSQL (prod ET dev — via Railway)                                 |
+| Base de données      | PostgreSQL (prod ET dev — via Coolify)                                 |
 | Serveur WSGI         | Gunicorn                                                               |
 | Fichiers statiques   | WhiteNoise                                                             |
 | Variables d'env      | `python-dotenv` — fichier `.env` à la racine                           |
 | ORM URL BDD          | `dj-database-url`                                                      |
 | Appels API externes  | `httpx` (bibliothèque HTTP standard pour tous les appels sortants)     |
-| Déploiement          | Railway (deux environnements séparés : prod sur `main`, dev sur `dev`) |
+| Déploiement          | Coolify sur VPS (deux environnements séparés : prod sur `main`, dev sur `dev`) |
 
-> SQLite n'est pas utilisé. Tout développement se fait sur Railway avec PostgreSQL,
+> SQLite n'est pas utilisé. Tout développement se fait avec PostgreSQL,
 > y compris en environnement de dev.
 
 ### 2.2 Architecture Django standard
@@ -67,15 +67,15 @@ config/
 
 ### 2.3 Environnements dev / prod
 
-| Variable d'env          | Dev (Railway)            | Prod (Railway)              |
+| Variable d'env          | Dev (Coolify)            | Prod (Coolify)              |
 |-------------------------|--------------------------|-----------------------------|
-| `SECRET_KEY`            | valeur dans Railway      | valeur dans Railway         |
+| `SECRET_KEY`            | valeur dans Coolify      | valeur dans Coolify         |
 | `DEBUG`                 | `"True"`                 | `"False"` (défaut)          |
 | `ENVIRONMENT`           | `"dev"`                  | absent → `"production"`     |
-| `DATABASE_URL`          | URL PostgreSQL Railway   | URL PostgreSQL Railway      |
-| `RAILWAY_PUBLIC_DOMAIN` | domaine Railway dev      | domaine Railway prod        |
+| `DATABASE_URL`          | URL PostgreSQL Coolify (Postgres dédié attaché à l'app) | URL PostgreSQL Coolify (Postgres dédié attaché à l'app) |
+| `RAILWAY_PUBLIC_DOMAIN` | domaine Coolify dev (nom de variable hérité de Railway, réutilisé tel quel) | domaine Coolify prod |
 
-Un projet Railway unique avec deux environnements :
+Un projet Coolify avec deux environnements :
 - **Prod** : branche `main`
 - **Dev** : branche `dev`, variable `ENVIRONMENT=dev`
 
@@ -86,7 +86,7 @@ Quand `IS_DEV` est `True`, une bannière d'avertissement s'affiche sur toutes le
 
 - Un framework JS (React, Vue, etc.) — vanilla JS uniquement
 - DRF pour exposer une API REST — non pertinent pour des apps Django classiques
-- Docker — Railway gère le déploiement sans conteneur local
+- Un Dockerfile applicatif custom — Coolify build l'image automatiquement via Nixpacks, pas de conteneurisation manuelle à ajouter
 - Un ORM différent de Django ORM
 - Une base de données autre que PostgreSQL
 - `requests` — utiliser `httpx` à la place
@@ -98,7 +98,7 @@ Quand `IS_DEV` est `True`, une bannière d'avertissement s'affiche sur toutes le
 ### 3.1 Règle absolue sur les secrets
 
 Toute clé d'API, token OAuth, secret de service externe :
-- **Toujours dans les variables d'env Railway** (jamais dans le code, jamais dans `spec.md`)
+- **Toujours dans les variables d'env Coolify** (jamais dans le code, jamais dans `spec.md`)
 - Nommage : `NOM_SERVICE_API_KEY` (ex. `OPENAI_API_KEY`, `GOOGLE_CLIENT_SECRET`)
 - Documentée dans `spec.md` section 3 — uniquement le nom de la variable, jamais sa valeur
 
