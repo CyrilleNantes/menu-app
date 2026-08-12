@@ -2030,7 +2030,7 @@ def management_page(request):
     filtre = request.GET.get('filtre', 'tous')
 
     ings = KnownIngredient.objects.select_related('ciqual_ref').annotate(
-        nb_recettes=Count('ciqual_ref__ingredients__recipe', distinct=True)
+        nb_recettes=Count('usages__recipe', distinct=True)
     )
     if q:
         ings = ings.filter(Q(name__icontains=q) | Q(synonymes__icontains=q))
