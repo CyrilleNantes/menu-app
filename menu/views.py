@@ -2156,6 +2156,28 @@ def maj_known_ingredient(request, ki_id):
 
 
 @login_required
+def known_ingredient_recettes(request, ki_id):
+    """Liste les recettes dont un ingrédient correspond textuellement (nom normalisé) à ce KnownIngredient."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Accès refusé'}, status=403)
+
+    ki = get_object_or_404(KnownIngredient, pk=ki_id)
+    matches = {}
+    for recipe_id, title, name in (
+        Ingredient.objects.filter(recipe__actif=True)
+        .values_list('recipe_id', 'recipe__title', 'name')
+    ):
+        if _normaliser_nom(name) == ki.nom_normalise:
+            matches[recipe_id] = title
+
+    recettes = [
+        {'id': rid, 'title': title, 'url': reverse('menu:modifier_recette', args=[rid])}
+        for rid, title in sorted(matches.items(), key=lambda x: x[1])
+    ]
+    return JsonResponse({'ok': True, 'recettes': recettes})
+
+
+@login_required
 def export_backup(request):
     if not _verifier_staff(request):
         messages.error(request, "Accès réservé aux administrateurs.")
