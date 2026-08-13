@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v5.9** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-05-22
+> Version courante : **v5.10** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-08-13
 
 ---
 
@@ -265,7 +265,7 @@ Catalogue global partagé entre toutes les familles.
 | `seasons` | `JSONField` | non | `[]` | Ex. `["printemps", "ete"]` |
 | `health_tags` | `JSONField` | non | `[]` | Ex. `["leger", "proteine"]` |
 | `complexity` | `CharField(20)` | non | `"simple"` | `simple` / `intermediaire` / `elabore` |
-| `protein_type` | `CharField(20)` | oui | `null` | Protéine principale : `boeuf` / `volaille` / `porc` / `poisson` / `oeufs` / `legumineuses` / `autre` / `aucune`. Utilisé par l'algorithme de suggestions pour assurer la variété. |
+| `protein_type` | `CharField(20)` | oui | `null` | Protéine principale : `boeuf` / `veau` / `volaille` / `porc` / `poisson` / `oeufs` / `legumineuses` / `autre` / `aucune`. Utilisé par l'algorithme de suggestions pour assurer la variété. `veau` compte comme viande rouge au même titre que `boeuf`/`porc` (voir 5.18). |
 | `calories_per_serving` | `FloatField` | oui | — | Kcal par portion (calculé via Ciqual) |
 | `kcal_per_100g_raw` | `FloatField` | oui | — | Kcal pour 100g brut (total kcal / total poids ingrédients avant cuisson × 100) |
 | `proteins_per_serving` | `FloatField` | oui | — | Protéines (g) par portion (calculé) |
@@ -346,7 +346,7 @@ Modifiable via la page `/management/ciqual/`. Les entrées personnalisées ont u
 | `fibres_100g` | `FloatField` | oui | — | Fibres alimentaires (g/100g) |
 | `sel_100g` | `FloatField` | oui | — | Sel (g/100g) |
 | `default_weight_g` | `FloatField` | oui | — | Poids par défaut pour unités dénombrables (ex. 1 œuf = 60g) |
-| `protein_type` | `CharField(20)` | oui | — | Type de protéine (`boeuf`, `volaille`, `poisson`, etc.) |
+| `protein_type` | `CharField(20)` | oui | — | Type de protéine (`boeuf`, `veau`, `volaille`, `poisson`, etc.) |
 | `shopping_category` | `CharField(50)` | oui | — | Catégorie liste de courses |
 
 ### 4.6c `KnownIngredient`
@@ -955,7 +955,7 @@ Toutes les valeurs sont des **repères indicatifs de bonne pratique**, jamais de
 |-------|-------------|--------|-------------|
 | `calories_dinner_target` | `PositiveIntegerField` | `850` | Cible kcal pour un dîner (adulte référence, `portions_factor = 1.0`) |
 | `proteins_dinner_target` | `PositiveIntegerField` | `27` | Cible protéines (g) pour un dîner |
-| `max_red_meat_per_week` | `PositiveSmallIntegerField` | `3` | Max repas viande rouge par semaine (bœuf + porc) |
+| `max_red_meat_per_week` | `PositiveSmallIntegerField` | `3` | Max repas viande rouge par semaine (bœuf + veau + porc) |
 | `min_fish_per_week` | `PositiveSmallIntegerField` | `1` | Min repas poisson par semaine |
 | `min_vegetarian_per_week` | `PositiveSmallIntegerField` | `1` | Min repas végétarien par semaine (`protein_type = "aucune"` ou `"legumineuses"`) |
 | `min_days_before_repeat` | `PositiveSmallIntegerField` | `14` | Jours minimum avant de replanifier un même plat |
@@ -1007,7 +1007,7 @@ Chaque recette candidate reçoit un score sur 5 dimensions. Les poids varient dy
 - Score neutre 0.5 si aucun avis famille
 
 **Dimension 3 — Variété protéines (nominal 20%) :**
-- Score 0 (règle dure) si : même `protein_type` déjà 2× dans la journée, OU viande rouge (`boeuf` + `porc`) ≥ `max_red_meat_per_week` dans la semaine
+- Score 0 (règle dure) si : même `protein_type` déjà 2× dans la journée, OU viande rouge (`boeuf` + `veau` + `porc`) ≥ `max_red_meat_per_week` dans la semaine
 - Bonus +0.3 si ce `protein_type` absent de la semaine · Malus −0.2 si déjà présent 2× dans la semaine
 - **Bonus adéquation** +0.1 si `proteins_per_serving > 25g` (plafonné à 1.0) — récompense les plats très protéinés indépendamment du type
 
@@ -1116,7 +1116,7 @@ Affichées dans la vue planning (`planning_semaine`). Jamais bloquantes, jamais 
 | Condition | Message affiché |
 |-----------|----------------|
 | 0 repas `protein_type = "poisson"` dans la semaine | 🐟 Pensez à intégrer un repas poisson cette semaine |
-| Repas viande rouge (`boeuf` + `porc`) ≥ `max_red_meat_per_week` | 🥩 Vous avez déjà X repas de viande rouge cette semaine |
+| Repas viande rouge (`boeuf` + `veau` + `porc`) ≥ `max_red_meat_per_week` | 🥩 Vous avez déjà X repas de viande rouge cette semaine |
 | 0 repas végétarien (`protein_type = "aucune"` ou `"legumineuses"`) | 🥦 Un repas végétarien serait bienvenu |
 | Calories semaine > 130% objectif (`NutritionConfig`) | ⚠️ La semaine semble chargée en calories |
 | Protéines semaine < 60% objectif | 💪 Les protéines sont un peu faibles cette semaine |
@@ -1190,6 +1190,12 @@ Usage : `{{ photo.photo_url|cloudinary_img:"gallery" }}`
 | 🧹 Nettoyer Ciqual | `POST /management/actions/clean-ciqual/` | POST | Lance `clean_ciqual` — supprime plats composés et entrées sans kcal |
 | 🗑️ Vider les recettes | `POST /management/actions/reset-recipes/` | POST | `reset_mode=recipes` — supprime Recipe + WeekPlan, conserve KnownIngredient |
 | ⚠️ Reset complet | `POST /management/actions/reset-recipes/` | POST | `reset_mode=full` — supprime Recipe + KnownIngredient + WeekPlan |
+
+### Table `KnownIngredient` — badge Recettes
+
+Chaque ligne affiche un badge **Recettes** cliquable : compte, pour un `KnownIngredient` donné, le nombre de recettes actives où son nom (normalisé — accents/casse/pluriel ignorés) apparaît **littéralement** dans `Ingredient.name`. Le comptage ne suit pas le lien `Ingredient.known_ingredient_id` : ce lien peut se désynchroniser du texte affiché (le formulaire recette ne vide jamais le champ caché `ing_known_id` quand on retouche le texte après une sélection dans l'autocomplete), donc seul le texte reflète fidèlement l'usage réel.
+
+Cliquer le badge ouvre la liste des recettes correspondantes (titre + lien direct vers `menu:modifier_recette`) — `GET /management/ingredients/<ki_id>/recettes/` (AJAX, JSON).
 
 ### Backup & Restore
 
@@ -1287,6 +1293,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0021_mealdish` | 2026-05-06 | Modèle `MealDish` — accompagnements sur créneau planning (`Meal` FK + `Recipe` FK + `role` + `servings_count`) |
 | `0022_shoppingitem_known_ingredient_knowningredient_unit_weight_g` | 2026-05-06 | `KnownIngredient.unit_weight_g` FloatField + `ShoppingItem.known_ingredient` FK |
 | `0023_knowningredient_transco_unit_label` | 2026-05-06 | `KnownIngredient.transco_unit_label` CharField — libellé pratique indépendant de `default_unit` |
+| `0024_alter_ingredientref_protein_type_and_more` | 2026-08-13 | Ajout `veau` aux choix `protein_type` (`Recipe` + `IngredientRef`). Alignement au passage des choix `Recipe.category` (`accompagnement`/`sauce` ajoutés en v5.5 sans migration à l'époque). |
 
 ---
 
@@ -1328,6 +1335,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v5.7 | 2026-05-07 | **Profil — sélecteurs Google** (5.23) : sélecteur de liste Google Tasks cible + sélecteur de calendrier Google Agenda cible (`google_calendar_get_calendars`, `minAccessRole=writer`), pré-remplis et sauvegardés indépendamment. Scope `calendar.readonly` ajouté (requis pour `calendarList.list` — reconnexion Google nécessaire pour les comptes déjà connectés). Export Google Tasks : transco (`≈ N unités`) ajoutée au titre de chaque tâche, `select_related` sur `known_ingredient`, message d'erreur explicite si l'API Tasks n'est pas activée. Fix : `unit_weight_g` accepte la virgule comme séparateur décimal (locale FR). |
 | v5.8 | 2026-05-11 | Catalogue recettes : badges 🔥 kcal / 💪 protéines sur les cartes (si renseignés) + 4 options de tri nutritionnel (kcal et protéines, croissant/décroissant, `nulls_last`). |
 | v5.9 | 2026-05-22 | Planning : formulaire repas et catalogue de recettes fusionnés en un seul panneau (920px) avec filtres et grid scrollable intégrés — suppression du bouton "Parcourir" et de l'overlay secondaire, résolution d'un conflit de "top layer" `<dialog>` rencontré en cours d'implémentation. Fix : clic sur les boutons d'action du créneau (absent/suggestions/accompagnement) n'ouvre plus le panneau repas par erreur (guard `stopPropagation`). |
+| v5.10 | 2026-08-13 | **Type de protéine `veau`** ajouté (`Recipe` + `IngredientRef`, migration 0024), compté comme viande rouge dans le quota PNNS et l'algorithme de suggestions (5.18). **Page Management** : badge Recettes de la table `KnownIngredient` corrigé et rendu cliquable — compte désormais par correspondance de texte réelle (`Ingredient.name` normalisé) au lieu du lien `known_ingredient_id` (qui peut se désynchroniser du texte affiché) ou de la référence Ciqual partagée ; clic → liste des recettes concernées avec lien direct vers l'édition. **Nettoyage de données** (hors spec, ponctuel) : consolidation de `KnownIngredient` (fusion des doublons singulier/pluriel et variantes de formulation, ~140 fiches supprimées, alignement strict sur les ingrédients réellement utilisés). Upload photo : `CLOUDINARY_URL` reconfigurée sur Coolify après la migration Railway → VPS (absente par oubli lors du transfert). |
 
 ### Détail v2.0
 
