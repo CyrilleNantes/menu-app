@@ -73,6 +73,7 @@ urlpatterns = [
     path("management/", views.management_page, name="management_page"),
     path("management/ingredients/ajouter/", views.ajouter_known_ingredient, name="ajouter_known_ingredient"),
     path("management/ingredients/<int:ki_id>/", views.maj_known_ingredient, name="maj_known_ingredient"),
+    path("management/ingredients/<int:ki_id>/recettes/", views.known_ingredient_recettes, name="known_ingredient_recettes"),
     path("management/actions/build/", views.build_known_ingredients_view, name="build_known_ingredients_view"),
     path("management/actions/clean-ciqual/", views.clean_ciqual_view, name="clean_ciqual_view"),
     path("management/actions/import-ciqual/", views.import_ciqual_view, name="import_ciqual_view"),

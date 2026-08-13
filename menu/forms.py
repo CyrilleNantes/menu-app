@@ -32,6 +32,7 @@ class InscriptionForm(forms.Form):
 PROTEIN_TYPE_CHOICES = [
     ("",             "— Non spécifié —"),
     ("boeuf",        "Bœuf"),
+    ("veau",         "Veau"),
     ("volaille",     "Volaille"),
     ("porc",         "Porc"),
     ("poisson",      "Poisson"),

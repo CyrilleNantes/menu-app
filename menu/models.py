@@ -298,6 +298,7 @@ class Recipe(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="recipes")
     PROTEIN_TYPE_CHOICES = [
         ("boeuf",        "Bœuf"),
+        ("veau",         "Veau"),
         ("volaille",     "Volaille"),
         ("porc",         "Porc"),
         ("poisson",      "Poisson"),
@@ -366,7 +367,7 @@ class IngredientRef(models.Model):
     protein_type      = models.CharField(
         max_length=20, blank=True, null=True,
         choices=[
-            ("boeuf", "Bœuf"), ("volaille", "Volaille"), ("porc", "Porc"),
+            ("boeuf", "Bœuf"), ("veau", "Veau"), ("volaille", "Volaille"), ("porc", "Porc"),
             ("poisson", "Poisson"), ("oeufs", "Œufs"),
             ("legumineuses", "Légumineuses"), ("autre", "Autre"),
         ],

@@ -108,8 +108,13 @@
       {% for ki in ingredients %}
       <tr class="ki-row" data-ki-id="{{ ki.pk }}" style="border-bottom:1px solid #eee">
         <td style="padding:.6rem .8rem;font-weight:500">{{ ki.name }}</td>
-        <td style="padding:.6rem .8rem;text-align:center">
-          {% if ki.nb_recettes %}<span style="background:#e8f5e9;color:#2e7d32;border-radius:12px;padding:2px 8px">{{ ki.nb_recettes }}</span>
+        <td style="padding:.6rem .8rem;text-align:center;position:relative">
+          {% if ki.nb_recettes %}
+          <button type="button" class="ki-recettes-badge"
+                  style="background:#e8f5e9;color:#2e7d32;border:none;border-radius:12px;padding:2px 8px;font:inherit;cursor:pointer">
+            {{ ki.nb_recettes }}
+          </button>
+          <ul class="ki-recettes-dropdown" style="display:none;position:absolute;z-index:100;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #ccc;border-radius:4px;min-width:220px;max-height:220px;overflow-y:auto;margin:.2rem 0 0;padding:.3rem 0;list-style:none;font-size:.85rem;text-align:left;box-shadow:0 2px 8px rgba(0,0,0,.12)"></ul>
           {% else %}<span style="color:#ccc">—</span>{% endif %}
         </td>
         <td style="padding:.6rem .8rem">
@@ -424,6 +429,42 @@ document.querySelectorAll('.ki-row').forEach(row => {
   transcoInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveTransco(); });
   weightInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveTransco(); });
 
+  // Badge "Recettes" — liste des recettes correspondantes (nom réel, pas le lien known_ingredient)
+  const recettesBadge    = row.querySelector('.ki-recettes-badge');
+  const recettesDropdown = row.querySelector('.ki-recettes-dropdown');
+  let recettesChargees = false;
+
+  recettesBadge?.addEventListener('click', async () => {
+    const visible = recettesDropdown.style.display !== 'none';
+    document.querySelectorAll('.ki-recettes-dropdown').forEach(d => d.style.display = 'none');
+    if (visible) return;
+
+    if (!recettesChargees) {
+      recettesDropdown.innerHTML = '<li style="padding:.4rem .7rem;color:#888">Chargement…</li>';
+      recettesDropdown.style.display = 'block';
+      const r = await fetch(`/management/ingredients/${kiId}/recettes/`);
+      const d = await r.json();
+      recettesDropdown.innerHTML = '';
+      if (d.ok && d.recettes.length) {
+        d.recettes.forEach(rec => {
+          const li = document.createElement('li');
+          li.style.cssText = 'padding:.3rem .7rem';
+          const a = document.createElement('a');
+          a.href = rec.url;
+          a.target = '_blank';
+          a.textContent = rec.title;
+          a.style.cssText = 'color:#2e7d32;text-decoration:none';
+          li.appendChild(a);
+          recettesDropdown.appendChild(li);
+        });
+        recettesChargees = true;
+      } else {
+        recettesDropdown.innerHTML = '<li style="padding:.4rem .7rem;color:#888">Aucune recette</li>';
+      }
+    }
+    recettesDropdown.style.display = 'block';
+  });
+
   // Mapping Ciqual — afficher éditeur
   const editBtn    = row.querySelector('.ki-edit-ciqual');
   const editDiv    = row.querySelector('.ki-ciqual-edit');
@@ -462,6 +503,11 @@ document.querySelectorAll('.ki-row').forEach(row => {
     }
     saveBtn.disabled = false;
   });
+});
+
+document.addEventListener('click', e => {
+  if (e.target.closest('.ki-recettes-badge') || e.target.closest('.ki-recettes-dropdown')) return;
+  document.querySelectorAll('.ki-recettes-dropdown').forEach(d => d.style.display = 'none');
 });
 
 // ── Dialog restauration ──────────────────────────────────────────────────────

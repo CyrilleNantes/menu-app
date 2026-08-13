@@ -2,6 +2,7 @@ import json
 import logging
 import secrets
 import zipfile
+from collections import defaultdict
 from datetime import date, timedelta
 
 from django.contrib import messages
@@ -21,7 +22,7 @@ from .integrations.cloudinary import upload_photo
 from .integrations.google_auth import google_build_auth_url, google_exchange_code
 from .integrations.google_calendar import google_calendar_export_planning
 from .integrations.google_tasks import google_tasks_export_courses
-from .models import Family, Ingredient, IngredientRef, KnownIngredient, Meal, MealDish, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan
+from .models import Family, Ingredient, IngredientRef, KnownIngredient, Meal, MealDish, MealProposal, NutritionConfig, Recipe, RecipePhoto, Review, ShoppingItem, ShoppingList, TokenOAuth, UserProfile, WeekPlan, _normaliser_nom
 from .services import (
     bilan_par_membre,
     bilan_planning,
@@ -2029,9 +2030,15 @@ def management_page(request):
     q = request.GET.get('q', '').strip()
     filtre = request.GET.get('filtre', 'tous')
 
-    ings = KnownIngredient.objects.select_related('ciqual_ref').annotate(
-        nb_recettes=Count('ciqual_ref__ingredients__recipe', distinct=True)
-    )
+    # Comptage par correspondance de texte (nom normalisé), pas par le lien known_ingredient_id :
+    # ce lien peut se désynchroniser du texte réellement affiché dans la recette (le formulaire
+    # ne vide jamais le champ caché ing_known_id si on retouche le texte après une sélection),
+    # donc seul le texte reflète fidèlement ce qui est vraiment écrit dans les recettes actives.
+    recettes_par_nom_norm = defaultdict(set)
+    for name, recipe_id in Ingredient.objects.filter(recipe__actif=True).values_list('name', 'recipe_id'):
+        recettes_par_nom_norm[_normaliser_nom(name)].add(recipe_id)
+
+    ings = KnownIngredient.objects.select_related('ciqual_ref')
     if q:
         ings = ings.filter(Q(name__icontains=q) | Q(synonymes__icontains=q))
     if filtre == 'sans_ciqual':
@@ -2039,13 +2046,15 @@ def management_page(request):
     elif filtre == 'avec_ciqual':
         ings = ings.filter(ciqual_ref__isnull=False)
 
-    ings = ings.order_by('name')
+    ings = list(ings.order_by('name'))
+    for ki in ings:
+        ki.nb_recettes = len(recettes_par_nom_norm.get(ki.nom_normalise, ()))
 
     return render(request, "menu/admin/management.html", {
         'ingredients': ings,
         'q': q,
         'filtre': filtre,
-        'total': ings.count(),
+        'total': len(ings),
         'is_staff': _verifier_staff(request),
     })
 
@@ -2144,6 +2153,28 @@ def maj_known_ingredient(request, ki_id):
         'kcal_100g': ref.kcal_100g if ref else None,
         'proteines_100g': ref.proteines_100g if ref else None,
     })
+
+
+@login_required
+def known_ingredient_recettes(request, ki_id):
+    """Liste les recettes dont un ingrédient correspond textuellement (nom normalisé) à ce KnownIngredient."""
+    if not (_verifier_staff(request) or _verifier_cuisinier(request)):
+        return JsonResponse({'ok': False, 'error': 'Accès refusé'}, status=403)
+
+    ki = get_object_or_404(KnownIngredient, pk=ki_id)
+    matches = {}
+    for recipe_id, title, name in (
+        Ingredient.objects.filter(recipe__actif=True)
+        .values_list('recipe_id', 'recipe__title', 'name')
+    ):
+        if _normaliser_nom(name) == ki.nom_normalise:
+            matches[recipe_id] = title
+
+    recettes = [
+        {'id': rid, 'title': title, 'url': reverse('menu:modifier_recette', args=[rid])}
+        for rid, title in sorted(matches.items(), key=lambda x: x[1])
+    ]
+    return JsonResponse({'ok': True, 'recettes': recettes})
 
 
 @login_required

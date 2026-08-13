@@ -322,7 +322,7 @@ def calculer_alertes_planning(week_plan, family) -> list[dict]:
     nb_jours = len(week_plan.get_active_dates()) or 7
 
     protein_types = [m.recipe.protein_type for m in meals if m.recipe.protein_type]
-    red_meat_count = protein_types.count("boeuf") + protein_types.count("porc")
+    red_meat_count = protein_types.count("boeuf") + protein_types.count("veau") + protein_types.count("porc")
     fish_count     = protein_types.count("poisson")
     veg_count      = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
 
@@ -395,7 +395,7 @@ def bilan_planning(week_plan) -> dict:
 
     protein_types    = [m.recipe.protein_type for m in meals if m.recipe and m.recipe.protein_type]
     fish_count       = protein_types.count("poisson")
-    red_meat_count   = protein_types.count("boeuf") + protein_types.count("porc")
+    red_meat_count   = protein_types.count("boeuf") + protein_types.count("veau") + protein_types.count("porc")
     white_meat_count = protein_types.count("volaille")
     veg_count        = sum(1 for pt in protein_types if pt in ("aucune", "legumineuses"))
 
@@ -735,7 +735,7 @@ def suggerer_recettes(family, week_plan, target_date, meal_time: str) -> list[di
 
     day_protein_types  = [m.recipe.protein_type for m in day_meals  if m.recipe.protein_type]
     week_protein_types = [m.recipe.protein_type for m in week_meals if m.recipe.protein_type]
-    red_meat_count     = week_protein_types.count("boeuf") + week_protein_types.count("porc")
+    red_meat_count     = week_protein_types.count("boeuf") + week_protein_types.count("veau") + week_protein_types.count("porc")
 
     # ── Scoring ───────────────────────────────────────────────────────────────
     results = []
