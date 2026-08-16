@@ -1,8 +1,8 @@
 # Spécifications Fonctionnelles — Menu Familial
 
 > Document vivant — mis à jour par l'IA après chaque implémentation validée.
-> Version courante : **v5.10** — affichée dans le footer de l'application.
-> Dernière mise à jour : 2026-08-13
+> Version courante : **v5.11** — affichée dans le footer de l'application.
+> Dernière mise à jour : 2026-08-16
 
 ---
 
@@ -210,7 +210,8 @@ Extension du modèle User Django. Un profil par utilisateur.
 |-------|-------------|----------|--------|-------------|
 | `id` | `BigAutoField` | non | auto | Clé primaire |
 | `user` | `OneToOneField(User)` | non | — | Utilisateur Django |
-| `family` | `ForeignKey(Family)` | oui | `null` | Famille d'appartenance (null avant invitation acceptée) |
+| `family` | `ForeignKey(Family)` | oui | `null` | Famille principale d'appartenance (null avant invitation acceptée) |
+| `familles_secondaires` | `ManyToManyField(Family)` | — | `[]` | Familles supplémentaires où ce profil est sélectionnable comme présent/participant sans en changer la famille principale — cas de la garde alternée (voir 5.24). |
 | `role` | `CharField(20)` | non | `"convive"` | `chef_etoile` / `cuisinier` / `convive` |
 | `dietary_tags` | `JSONField` | non | `[]` | Ex. `["gluten", "lactose"]` — liste fixe |
 | `google_calendar_id` | `CharField(200)` | oui | `null` | ID du calendrier Google cible |
@@ -1250,6 +1251,31 @@ Toutes les actions mutantes utilisent `@require_POST` et affichent un résumé v
 
 ---
 
+## 5.24 Membres secondaires de famille (garde alternée)
+
+**Contexte** : un utilisateur (typiquement un enfant) n'appartient qu'à **une seule famille principale** (`UserProfile.family`, inchangé) mais peut être rattaché en plus à une ou plusieurs **familles secondaires** (`UserProfile.familles_secondaires`, M2M) pour rester sélectionnable comme présent/participant dans leur planning — cas typique : garde alternée entre deux foyers utilisant chacun leur propre famille dans l'appli, sans visibilité croisée entre les deux plannings.
+
+**URLs** (page profil) :
+- `POST /famille/membres-secondaires/ajouter/` → `menu:ajouter_membre_secondaire` — rattache un compte existant (recherché par email) comme membre secondaire de la famille de l'appelant
+- `POST /famille/membres-secondaires/<profile_id>/retirer/` → `menu:retirer_membre_secondaire` — détache
+
+**Accès** : `role` = `cuisinier` ou `chef_etoile` uniquement (`peut_gerer_famille` dans le contexte de `menu:profil`)
+
+**Règles de gestion** :
+1. L'ajout se fait par email (le compte doit déjà exister — pas de flux d'invitation dédié, l'enfant a déjà un compte dans sa famille principale, typiquement chez l'autre parent)
+2. Impossible de s'ajouter soi-même, ni d'ajouter quelqu'un déjà membre principal de la famille cible (message d'avertissement)
+3. **Aucune restriction inverse** : un profil peut être membre secondaire de plusieurs familles simultanément
+4. Le rôle (`UserProfile.role`), le profil nutritionnel et le rang (gamification) restent globaux à l'utilisateur, non dupliqués par famille
+
+**Effet sur le planning** — un profil est éligible comme présent/participant pour une famille donnée s'il en est membre **principal OU secondaire** (helper `_membres_eligibles(family)`, `views.py`). Utilisé à 3 endroits :
+- Liste des chips "Présents sur la période" (`planning_periode`)
+- Validation de la présence (`maj_presence`)
+- Validation des participants à un repas (`modifier_meal`)
+
+**Hors périmètre volontaire** : pas de visibilité croisée entre les deux familles (chaque parent ne voit que son propre planning/liste de courses), pas de bascule automatique de "famille active" selon la semaine — la présence/absence par créneau (déjà existante) suffit à représenter qui mange où.
+
+---
+
 ## 8. Fixtures de référence
 
 ### 8.1 Recette exemple — Hachis Parmentier
@@ -1294,6 +1320,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | `0022_shoppingitem_known_ingredient_knowningredient_unit_weight_g` | 2026-05-06 | `KnownIngredient.unit_weight_g` FloatField + `ShoppingItem.known_ingredient` FK |
 | `0023_knowningredient_transco_unit_label` | 2026-05-06 | `KnownIngredient.transco_unit_label` CharField — libellé pratique indépendant de `default_unit` |
 | `0024_alter_ingredientref_protein_type_and_more` | 2026-08-13 | Ajout `veau` aux choix `protein_type` (`Recipe` + `IngredientRef`). Alignement au passage des choix `Recipe.category` (`accompagnement`/`sauce` ajoutés en v5.5 sans migration à l'époque). |
+| `0025_userprofile_familles_secondaires` | 2026-08-16 | `UserProfile.familles_secondaires` ManyToManyField(Family) — membres secondaires (garde alternée), voir 5.24 |
 
 ---
 
@@ -1336,6 +1363,7 @@ Recette complète (8 personnes) utilisée pour valider le modèle de données lo
 | v5.8 | 2026-05-11 | Catalogue recettes : badges 🔥 kcal / 💪 protéines sur les cartes (si renseignés) + 4 options de tri nutritionnel (kcal et protéines, croissant/décroissant, `nulls_last`). |
 | v5.9 | 2026-05-22 | Planning : formulaire repas et catalogue de recettes fusionnés en un seul panneau (920px) avec filtres et grid scrollable intégrés — suppression du bouton "Parcourir" et de l'overlay secondaire, résolution d'un conflit de "top layer" `<dialog>` rencontré en cours d'implémentation. Fix : clic sur les boutons d'action du créneau (absent/suggestions/accompagnement) n'ouvre plus le panneau repas par erreur (guard `stopPropagation`). |
 | v5.10 | 2026-08-13 | **Type de protéine `veau`** ajouté (`Recipe` + `IngredientRef`, migration 0024), compté comme viande rouge dans le quota PNNS et l'algorithme de suggestions (5.18). **Page Management** : badge Recettes de la table `KnownIngredient` corrigé et rendu cliquable — compte désormais par correspondance de texte réelle (`Ingredient.name` normalisé) au lieu du lien `known_ingredient_id` (qui peut se désynchroniser du texte affiché) ou de la référence Ciqual partagée ; clic → liste des recettes concernées avec lien direct vers l'édition. **Nettoyage de données** (hors spec, ponctuel) : consolidation de `KnownIngredient` (fusion des doublons singulier/pluriel et variantes de formulation, ~140 fiches supprimées, alignement strict sur les ingrédients réellement utilisés). Upload photo : `CLOUDINARY_URL` reconfigurée sur Coolify après la migration Railway → VPS (absente par oubli lors du transfert). |
+| v5.11 | 2026-08-16 | **Membres secondaires de famille** (5.24, migration 0025) — un profil (typiquement un enfant en garde alternée) reste rattaché à une seule famille principale mais peut être ajouté comme membre secondaire d'une autre famille pour être sélectionnable comme présent/participant dans son planning. Page profil : nouvelle section de gestion (ajout par email, retrait), réservée Cuisinier/Chef Étoilé. Pas de visibilité croisée entre les deux familles, pas de notion de "famille active" — la présence/absence par créneau existante suffit. Développé sur `dev` avant fusion vers `main`. |
 
 ### Détail v2.0
 
