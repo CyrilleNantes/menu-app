@@ -42,6 +42,12 @@ class UserProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     family = models.ForeignKey(Family, on_delete=models.SET_NULL, null=True, blank=True, related_name="members")
+    familles_secondaires = models.ManyToManyField(
+        Family, blank=True, related_name="membres_secondaires",
+        verbose_name="Familles secondaires",
+        help_text="Ex. enfant en garde alternée, membre d'une famille principale et présent/sélectionnable "
+                  "dans le planning d'une ou plusieurs autres familles.",
+    )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="convive")
     dietary_tags = models.JSONField(default=list, blank=True)
     google_calendar_id = models.CharField(max_length=200, null=True, blank=True)

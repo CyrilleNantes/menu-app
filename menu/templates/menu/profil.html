@@ -119,6 +119,45 @@
             <code class="profil-invite__link">{{ request.META.HTTP_HOST }}{% url 'menu:rejoindre_famille' profile.family.invite_token %}</code>
         </p>
     </section>
+
+    <!-- ── Membres secondaires (garde alternée) ─────────────────────── -->
+    {% if peut_gerer_famille or membres_secondaires %}
+    <section class="profil-section">
+        <h2 class="profil-section__title">🔁 Membres secondaires</h2>
+        <p class="text-muted">
+            Un membre secondaire appartient à une autre famille mais reste sélectionnable comme présent
+            dans le planning de <strong>{{ profile.family.name }}</strong> — utile pour un enfant en garde alternée.
+        </p>
+        {% if membres_secondaires %}
+        <ul class="profil-membres">
+            {% for m in membres_secondaires %}
+            <li class="profil-membre">
+                <span class="profil-membre__avatar">{{ m.user.first_name|first|upper|default:m.user.email|first|upper }}</span>
+                <span class="profil-membre__name">{{ m.user.first_name|default:m.user.email }}</span>
+                <span class="profil-membre__role text-muted">famille principale : {{ m.family.name }}</span>
+                {% if peut_gerer_famille %}
+                <form method="post" action="{% url 'menu:retirer_membre_secondaire' m.pk %}" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn--secondary btn--sm"
+                            onclick="return confirm('Retirer {{ m.user.first_name|default:m.user.email }} de cette famille ?')">Retirer</button>
+                </form>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">Aucun membre secondaire pour l'instant.</p>
+        {% endif %}
+        {% if peut_gerer_famille %}
+        <form method="post" action="{% url 'menu:ajouter_membre_secondaire' %}" class="profil-invite">
+            {% csrf_token %}
+            <input type="email" name="email" placeholder="Email du compte à ajouter" required
+                   style="padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.9rem;min-width:220px">
+            <button type="submit" class="btn btn--secondary btn--sm">+ Ajouter comme membre secondaire</button>
+        </form>
+        {% endif %}
+    </section>
+    {% endif %}
     {% endif %}
 
     <!-- ── Intégrations Google ──────────────────────────────────── -->

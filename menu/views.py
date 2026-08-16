@@ -252,12 +252,20 @@ def profil(request):
 
     # Membres de la famille
     famille_members = []
+    membres_secondaires = []
     if profile.family:
         famille_members = list(
             UserProfile.objects
             .filter(family=profile.family)
             .exclude(user=request.user)
             .select_related("user")
+            .order_by("user__first_name")
+        )
+        # Membres rattachés en plus à cette famille (ex. enfant en garde alternée)
+        membres_secondaires = list(
+            UserProfile.objects
+            .filter(familles_secondaires=profile.family)
+            .select_related("user", "family")
             .order_by("user__first_name")
         )
 
@@ -288,6 +296,8 @@ def profil(request):
         "nb_avis":              nb_avis,
         "nb_proposals":         nb_proposals,
         "famille_members":      famille_members,
+        "membres_secondaires":  membres_secondaires,
+        "peut_gerer_famille":   profile.role in ("cuisinier", "chef_etoile"),
         "google_connected":        google_connected,
         "google_tasklists":        google_tasklists,
         "google_tasklists_error":  google_tasklists_error,
@@ -298,6 +308,61 @@ def profil(request):
         "rank_convive":         UserProfile._RANK_CONVIVE,
     }
     return render(request, "menu/profil.html", ctx)
+
+
+@require_POST
+@login_required
+def ajouter_membre_secondaire(request):
+    """
+    Rattache un utilisateur existant (déjà membre d'une autre famille) comme membre
+    secondaire de la famille courante — ex. enfant en garde alternée, sélectionnable
+    dans le planning des deux familles sans en changer la famille principale.
+    """
+    profile = _get_profile(request)
+    if not profile or profile.role not in ("cuisinier", "chef_etoile"):
+        messages.error(request, "Seul un Cuisinier peut gérer les membres de la famille.")
+        return redirect("menu:profil")
+    if not profile.family:
+        messages.error(request, "Vous devez appartenir à une famille.")
+        return redirect("menu:profil")
+
+    email = request.POST.get("email", "").strip()
+    if not email:
+        messages.error(request, "Adresse email requise.")
+        return redirect("menu:profil")
+
+    cible = User.objects.filter(email__iexact=email).select_related("profile").first()
+    if not cible or not hasattr(cible, "profile"):
+        messages.error(request, f"Aucun compte trouvé pour « {email} ».")
+        return redirect("menu:profil")
+
+    if cible == request.user:
+        messages.error(request, "Vous ne pouvez pas vous ajouter vous-même.")
+        return redirect("menu:profil")
+    if cible.profile.family_id == profile.family_id:
+        messages.warning(request, f"{cible.profile.user.first_name or cible.email} est déjà membre principal de cette famille.")
+        return redirect("menu:profil")
+
+    cible.profile.familles_secondaires.add(profile.family)
+    messages.success(request, f"{cible.profile.user.first_name or cible.email} ajouté(e) comme membre secondaire.")
+    return redirect("menu:profil")
+
+
+@require_POST
+@login_required
+def retirer_membre_secondaire(request, profile_id):
+    """Détache un membre secondaire de la famille courante."""
+    profile = _get_profile(request)
+    if not profile or profile.role not in ("cuisinier", "chef_etoile"):
+        messages.error(request, "Seul un Cuisinier peut gérer les membres de la famille.")
+        return redirect("menu:profil")
+    if not profile.family:
+        return redirect("menu:profil")
+
+    cible = get_object_or_404(UserProfile, pk=profile_id)
+    cible.familles_secondaires.remove(profile.family)
+    messages.success(request, "Membre secondaire retiré.")
+    return redirect("menu:profil")
 
 
 @login_required
@@ -429,6 +494,19 @@ def _get_profile(request):
         return request.user.profile
     except UserProfile.DoesNotExist:
         return None
+
+
+def _membres_eligibles(family):
+    """
+    Profils sélectionnables comme présents/participants pour une famille donnée :
+    membres principaux (`family`) + membres secondaires (`familles_secondaires`,
+    ex. enfant en garde alternée rattaché en plus à cette famille).
+    """
+    return (
+        UserProfile.objects
+        .filter(Q(family=family) | Q(familles_secondaires=family))
+        .distinct()
+    )
 
 
 # ─── Planning par période ─────────────────────────────────────────────────────
@@ -615,8 +693,7 @@ def planning_periode(request, plan_id):
 
     # Présence
     family_members = list(
-        UserProfile.objects
-        .filter(family=profile.family)
+        _membres_eligibles(profile.family)
         .select_related("user")
         .order_by("user__first_name")
     )
@@ -727,9 +804,9 @@ def modifier_meal(request, plan_id):
             "absent": False,
         },
     )
-    # Valider les member_ids (doivent appartenir à la famille)
+    # Valider les member_ids (doivent appartenir à la famille, principale ou secondaire)
     valid_member_ids = list(
-        plan.family.members.filter(user_id__in=member_ids).values_list('user_id', flat=True)
+        _membres_eligibles(plan.family).filter(user_id__in=member_ids).values_list('user_id', flat=True)
     )
     meal.meal_members.set(valid_member_ids)
 
@@ -954,8 +1031,8 @@ def maj_presence(request, plan_id):
     guests = [g.strip() for g in body.get("guests", []) if g.strip()]
 
     valid_ids = set(
-        UserProfile.objects
-        .filter(family=profile.family, user_id__in=member_ids)
+        _membres_eligibles(profile.family)
+        .filter(user_id__in=member_ids)
         .values_list("user_id", flat=True)
     )
     with transaction.atomic():
