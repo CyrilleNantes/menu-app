@@ -253,7 +253,10 @@
                         title="Annuler l'absence">✕</button>
                 {% endif %}
             {% elif day.lunch and day.lunch.recipe %}
-                {% if is_cuisinier %}<span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' day.lunch.recipe.id %}" class="meal-slot__recipe meal-slot__recipe--link">{{ day.lunch.recipe.title }}</a>{% endif %}
+                <div class="meal-slot__recipe-row">
+                    {% if day.lunch.recipe.photo_url %}<img src="{{ day.lunch.recipe.photo_url|cloudinary_img:'thumb' }}" class="meal-slot__thumb" alt="" loading="lazy">{% endif %}
+                    {% if is_cuisinier %}<span class="meal-slot__recipe">{{ day.lunch.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' day.lunch.recipe.id %}" class="meal-slot__recipe meal-slot__recipe--link">{{ day.lunch.recipe.title }}</a>{% endif %}
+                </div>
                 <div class="meal-slot__meta">
                     {% if day.lunch.servings_count %}<span>{{ day.lunch.servings_count }} pers.</span>{% endif %}
                 </div>
@@ -320,7 +323,10 @@
                         title="Annuler l'absence">✕</button>
                 {% endif %}
             {% elif day.dinner and day.dinner.recipe %}
-                {% if is_cuisinier %}<span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' day.dinner.recipe.id %}" class="meal-slot__recipe meal-slot__recipe--link">{{ day.dinner.recipe.title }}</a>{% endif %}
+                <div class="meal-slot__recipe-row">
+                    {% if day.dinner.recipe.photo_url %}<img src="{{ day.dinner.recipe.photo_url|cloudinary_img:'thumb' }}" class="meal-slot__thumb" alt="" loading="lazy">{% endif %}
+                    {% if is_cuisinier %}<span class="meal-slot__recipe">{{ day.dinner.recipe.title }}</span>{% else %}<a href="{% url 'menu:detail_recette' day.dinner.recipe.id %}" class="meal-slot__recipe meal-slot__recipe--link">{{ day.dinner.recipe.title }}</a>{% endif %}
+                </div>
                 <div class="meal-slot__meta">
                     {% if day.dinner.servings_count %}<span>{{ day.dinner.servings_count }} pers.</span>{% endif %}
                 </div>
